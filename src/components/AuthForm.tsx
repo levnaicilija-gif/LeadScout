@@ -3,15 +3,16 @@ import { useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
-  const sb = supabaseBrowser(); const r = useRouter();
+  const r = useRouter();
   const [f, setF] = useState({ email: '', password: '', name: '', agency: '' }); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false); const [sent, setSent] = useState(false);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr('');
+    const sb = supabaseBrowser();
     if (mode === 'login') { const { error } = await sb.auth.signInWithPassword({ email: f.email, password: f.password }); if (error) setErr(error.message); else r.push('/app/today'); }
     else { const { error } = await sb.auth.signUp({ email: f.email, password: f.password, options: { data: { name: f.name, agency: f.agency } } }); if (error) setErr(error.message); else setSent(true); }
     setBusy(false);
   };
-  const magic = async () => { setBusy(true); const { error } = await sb.auth.signInWithOtp({ email: f.email, options: { emailRedirectTo: `${location.origin}/app/today` } }); setErr(error?.message ?? ''); if (!error) setSent(true); setBusy(false); };
+  const magic = async () => { setBusy(true); const sb = supabaseBrowser(); const { error } = await sb.auth.signInWithOtp({ email: f.email, options: { emailRedirectTo: `${location.origin}/app/today` } }); setErr(error?.message ?? ''); if (!error) setSent(true); setBusy(false); };
   if (sent) return <div className="text-[13px]">Check your email — we sent you a link.</div>;
   return (<form onSubmit={submit} className="text-[13px]">
     {mode === 'signup' && <><label className="block text-[12px] text-ink3 mt-3 mb-1">Your name</label><input required className="w-full border border-line rounded px-3 py-2.5" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /><label className="block text-[12px] text-ink3 mt-3 mb-1">Agency name</label><input required className="w-full border border-line rounded px-3 py-2.5" value={f.agency} onChange={(e) => setF({ ...f, agency: e.target.value })} /></>}
