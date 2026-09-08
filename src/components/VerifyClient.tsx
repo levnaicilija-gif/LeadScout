@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { PreviewPdf } from './PreviewPdf';
 export function VerifyClient({ mode }: { mode: 'cert' | 'cv' }) {
   const [over, setOver] = useState(false); const [busy, setBusy] = useState(false); const [job, setJob] = useState(''); const [res, setRes] = useState<any>(null);
   const run = async (files: FileList | File[]) => {
@@ -34,7 +35,7 @@ export function VerifyClient({ mode }: { mode: 'cert' | 'cv' }) {
         <KV rows={[['Removed', x.removed.join(', ')], ['Kept', 'trade, certificates with status, projects by type and country, rotations, languages, availability'], ['Certs in CV', `${x.crossCheck.claimed.length} claimed · ${x.crossCheck.verified} verified on file`]]} />
         <div className="text-[12px] text-ink3 mt-3 mb-1">Three bullets for the client</div><ul className="list-disc pl-5 text-[13px]">{x.bullets.map((b: string, j: number) => <li key={j}>{b}</li>)}</ul>
         {x.score && <div className="mt-3 border border-line rounded p-3 grid grid-cols-[auto_1fr] gap-3 text-[13px]"><b className="text-[28px] font-semibold text-accent leading-none">{x.score.score}</b><div><span className="text-ok">Fits</span> {x.score.fits.join(' · ')}<br /><span className="text-warn">Missing</span> {x.score.missing.join(' · ') || '—'}<br /><span className="text-bad">Blocker</span> {x.score.blockers.join(' · ') || 'none'}</div></div>}
-        <div className="flex gap-2 mt-3"><a className="btn btn-primary" href={`/v/${x.candidate.reference_code.toLowerCase()}`} target="_blank">Preview verification page</a><button className="btn" onClick={() => navigator.clipboard.writeText(x.bullets.join('\n'))}>Copy bullets</button></div>
+        <div className="flex gap-2 mt-3"><PreviewPdf candidateId={x.candidate.id} disabled={!x.piiPassed} /><a className="btn" href={`/v/${x.candidate.reference_code.toLowerCase()}`} target="_blank">Preview verification page</a><button className="btn" onClick={() => navigator.clipboard.writeText(x.bullets.join('\n'))}>Copy bullets</button></div>
       </div><div className="border border-line rounded bg-[#FAFBFC] p-3 text-[12px] w-[220px] leading-relaxed"><b className="block text-[13px]">{x.candidate.reference_code}</b>{x.profile.trade}<br /><span className="bg-ink text-ink rounded-sm">name redacted</span><br />{x.profile.certificates.slice(0, 2).join(' · ')}<br />{x.profile.projects.slice(0, 2).map((p: any) => `${p.type}, ${p.country} ${p.years}`).join('; ')}<br />{x.profile.languages.join(', ')}</div></div>)}
     </div>}
   </>);

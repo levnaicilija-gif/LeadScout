@@ -52,6 +52,43 @@ export function piiRegexHits(text: string, fullName?: string, employers: string[
   return hits;
 }
 
+/**
+ * Second PII pass, after piiRegexHits. The regex catches shapes (a phone, an email, a known
+ * name); this catches what a shape cannot — an employer named in prose, a town so small it
+ * identifies the person, a licence or passport number, a named vessel or site. Returns the
+ * offending strings so the caller can show the recruiter exactly what to remove.
+ */
+export const PiiReviewSchema = z.object({
+  // `clean` is derived from findings, not trusted: a review that lists leaks and still says
+  // clean must fail closed. kind/why are cosmetic — never let a missing label drop a finding.
+  clean: z.boolean().optional(),
+  findings: z.array(z.object({ text: z.string(), kind: z.string().default('pii'), why: z.string().default('') })).default([]),
+}).transform((r) => ({ findings: r.findings, clean: r.findings.length === 0 }));
+/**
+ * The model is kept deliberately trigger-happy — a missed leak is far worse than a warning
+ * the recruiter dismisses — and CODE decides what is permitted afterwards. Softening the
+ * prompt to stop it flagging certificate numbers made it miss a name and a phone number, so
+ * the allow-list lives here instead, where it is deterministic.
+ *
+ * `allowed` holds values we deliberately print (certificate numbers, certifying bodies, the
+ * agency line). A finding is dropped only when it is itself one of those values or part of
+ * one — never when an allowed value merely appears inside a longer finding, which would let
+ * "Marko J., FROSIO Level II" through.
+ */
+export async function piiModelReview(clientFacingText: string, allowed: string[] = []) {
+  const r = await askJson(
+    PiiReviewSchema,
+    'This text is about to be sent to a client as an ANONYMISED candidate summary. It must not identify the candidate or their current/previous employers. Find anything that does: personal names, employer or agency names, phone numbers, emails, addresses, dates of birth, passport/licence/ID numbers, social or portfolio links, a named vessel/site/project so specific it identifies the person, or an unusually small home town. Certificate numbers, certifying bodies (FROSIO, BINDT, IRATA...), countries, years, trades, rotations and languages are all FINE and must not be reported. Quote each offending span verbatim in `text`. clean = true only when you find nothing.',
+    clientFacingText.slice(0, 20000),
+  );
+  const ok = allowed.filter(Boolean).map((a) => a.toLowerCase().trim());
+  const findings = r.findings.filter((f) => {
+    const t = f.text.toLowerCase().trim();
+    return !!t && !ok.some((a) => a.includes(t));
+  });
+  return { findings, clean: findings.length === 0 };
+}
+
 export const BulletsSchema = z.object({ bullets: z.array(z.string()).length(3) });
 export const clientBullets = (anon: object, verified: object[], jobContext?: string) =>
   askJson(BulletsSchema, 'Write exactly three bullets that best sell this anonymized candidate to a client. Each bullet must cite a verifiable fact from the data (certificate + check date, project type + year, availability/rotation). No name. No employer names. Max 28 words each.', JSON.stringify({ candidate: anon, verified_certificates: verified, job: jobContext ?? null }));

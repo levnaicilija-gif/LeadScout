@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { supabaseServer, currentUser } from '@/lib/supabase/server';
-import { parseCv, anonymize, clientBullets, scoreAgainstJob, piiRegexHits } from '@/lib/ai/documents';
+import { parseCv, anonymize, clientBullets, scoreAgainstJob, piiRegexHits, piiModelReview } from '@/lib/ai/documents';
 import { claude, MODEL_EXTRACT } from '@/lib/ai/claude';
+import { renderClientCv, clientCvText, clientCvAllowed, type ClientCvData } from '@/lib/pdf/render';
 export const maxDuration = 120;
 
 /** POST multipart: files[] (CVs), job? (text), lead_id?, campaign_id? → per CV: profile, anonymized, bullets, score; if >1 CV and job: ranking + recommendation. */
@@ -9,6 +10,7 @@ export async function POST(req: Request) {
   const me = await currentUser(); if (!me) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
   const sb = supabaseServer(); const form = await req.formData();
   const files = form.getAll('files') as File[]; const job = (form.get('job') as string | null) ?? undefined;
+  const { data: ws } = await sb.from('workspaces').select('name').eq('id', me.workspace_id).maybeSingle();
   const results: any[] = [];
   for (const f of files) {
     const bytes = Buffer.from(await f.arrayBuffer());
@@ -23,13 +25,29 @@ export async function POST(req: Request) {
     const { data: verified } = await sb.from('verifications').select('result, valid_until, checked_where, checked_at, documents!inner(candidate_id, cert_body)').eq('documents.candidate_id', cand.id);
     const crossCheck = { claimed: profile.certificates_claimed, verified: (verified ?? []).length };
     const { bullets } = await clientBullets(anon, verified ?? [], job);
-    const clientText = [bullets.join(' '), JSON.stringify(anon)].join('\n');
-    const pii = piiRegexHits(clientText, profile.full_name, profile.projects.map((p) => p.employer ?? '').filter(Boolean));
     const score = job ? await scoreAgainstJob(anon, verified ?? [], job) : null;
     if (score) await sb.from('scores').insert({ candidate_id: cand.id, ...score });
     const slug = code.toLowerCase();
-    await sb.from('anonymized_cvs').insert({ candidate_id: cand.id, public_slug: slug, bullets, certs_cross_check: crossCheck, pii_check_passed: pii.length === 0 });
-    results.push({ candidate: { id: cand.id, reference_code: code }, profile: anon, removed: ['name', 'phone', 'email', 'address', 'photo', 'date of birth', 'employer names'], bullets, crossCheck, piiHits: pii, score });
+
+    // Build exactly what the client will see, then check THAT — not a summary of it.
+    const employers = profile.projects.map((p) => p.employer ?? '').filter(Boolean);
+    const pdfData = clientCvData(code, profile, anon, verified ?? [], bullets, slug, ws?.name);
+    const clientText = clientCvText(pdfData);
+
+    const regexHits = piiRegexHits(clientText, profile.full_name, employers);
+    const review = await piiModelReview(clientText, clientCvAllowed(pdfData));
+    const piiHits = [...regexHits, ...review.findings.map((f) => `${f.kind}: "${f.text}" — ${f.why}`)];
+    const passed = piiHits.length === 0;
+
+    // Guardrail: a client PDF that fails the PII check is never written to storage.
+    let pdfPath: string | null = null;
+    if (passed) {
+      const pdf = await renderClientCv(pdfData);
+      pdfPath = `${me.workspace_id}/client-cv/${cand.id}-${slug}.pdf`;
+      await sb.storage.from('pdfs').upload(pdfPath, pdf, { contentType: 'application/pdf', upsert: true });
+    }
+    await sb.from('anonymized_cvs').insert({ candidate_id: cand.id, public_slug: slug, storage_path: pdfPath, bullets, certs_cross_check: crossCheck, pii_check_passed: passed });
+    results.push({ candidate: { id: cand.id, reference_code: code }, profile: anon, removed: ['name', 'phone', 'email', 'address', 'photo', 'date of birth', 'employer names'], bullets, crossCheck, piiHits, piiPassed: passed, pdfPath, score });
   }
   let recommendation: string | null = null;
   if (job && results.length > 1) {
@@ -40,6 +58,31 @@ export async function POST(req: Request) {
   }
   return NextResponse.json({ results, recommendation });
 }
+/** Shapes the anonymised profile for the PDF. Employer names never reach it — anonymize() drops them. */
+function clientCvData(code: string, profile: any, anon: any, verified: any[], bullets: string[], slug: string, agency?: string): ClientCvData {
+  const certs = verified.map((v: any) => ({
+    name: [v.documents?.cert_body?.toUpperCase(), v.documents?.extracted?.level && `Level ${v.documents.extracted.level}`].filter(Boolean).join(' ') || 'Certificate',
+    number: v.documents?.extracted?.number ?? null,
+    checkedWhere: v.checked_where ?? null,
+    checkedAt: v.checked_at ?? null,
+    validUntil: v.valid_until ?? null,
+    result: v.result,
+  }));
+  return {
+    referenceCode: code,
+    trade: profile.trade,
+    preparedOn: new Date().toISOString(),
+    bullets,
+    certificates: certs,
+    experience: (anon.projects ?? []).map((p: any) => ({ years: p.years, what: [p.type, p.country].filter(Boolean).join(', '), rotation: p.rotation ?? null })),
+    skills: anon.skills ?? [],
+    languages: anon.languages ?? [],
+    availability: anon.availability ?? null,
+    publicUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/v/${slug}`.replace(/^https?:\/\//, ''),
+    agencyLine: agency ?? 'RFBT Recruitment',
+  };
+}
+
 async function cvText(bytes: Buffer, type: string) {
   if (type === 'text/plain') return bytes.toString('utf8');
   // PDF/DOCX/image → let Claude read it directly (vision/document). Simpler than a parser zoo; swap for pdf-parse/mammoth if volume grows.
