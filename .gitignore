@@ -4,3 +4,6 @@ node_modules
 .env
 *.log
 /screenshots
+.vercel
+.env*
+!.env.example
