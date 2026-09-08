@@ -29,10 +29,11 @@ All six registers below were checked live on 2026-09-08.
 | `frosio` | none public | Accredible credential URL/QR on the certificate | `not_supported` without that URL |
 | `winda` | none public (login only) | — | `not_supported`, tells the recruiter what to do instead |
 | `ampp` | none public (sign-in only) | — | `not_supported`, same |
-| `cisrs` `electrical_dk` | — | — | not written yet |
+| `cisrs` | none of its own; CSCS Smart Check covers it but is behind reCAPTCHA | — | `not_supported`, points at the card checker/app |
+| `electrical_dk` | none — Denmark authorises companies, not individuals | — | `not_supported`, points at the company authorisation |
 | `iso9606` (welders) | no public register | — | issuer email + test-report consistency, in `/api/verify` |
 
-Three bodies have no public register at all. FROSIO: frosio.no has no search, the FROSIO
+Five of the eight have no usable public register. FROSIO: frosio.no has no search, the FROSIO
 Portal (apps.frosio.no) is login-only, and Accredible — which issues the certificates —
 has no public search and needs an issuer API token, so the only honest check is the
 credential URL/QR on the certificate or an email to frosio@frosio.no. WINDA: every page
