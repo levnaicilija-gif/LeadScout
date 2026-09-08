@@ -1,14 +1,14 @@
 'use client';
 import { useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
-import { useRouter } from 'next/navigation';
 export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
-  const r = useRouter();
   const [f, setF] = useState({ email: '', password: '', name: '', agency: '' }); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false); const [sent, setSent] = useState(false);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr('');
     const sb = supabaseBrowser();
-    if (mode === 'login') { const { error } = await sb.auth.signInWithPassword({ email: f.email, password: f.password }); if (error) setErr(error.message); else r.push('/app/today'); }
+    // Hard redirect, not router.push: a full load guarantees the freshly written auth cookie
+    // is on the request the middleware and the server layout read.
+    if (mode === 'login') { const { error } = await sb.auth.signInWithPassword({ email: f.email, password: f.password }); if (error) { setErr(error.message); setBusy(false); return; } window.location.href = '/app/today'; return; }
     else { const { error } = await sb.auth.signUp({ email: f.email, password: f.password, options: { data: { name: f.name, agency: f.agency } } }); if (error) setErr(error.message); else setSent(true); }
     setBusy(false);
   };
