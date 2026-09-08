@@ -33,7 +33,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ document: doc, extracted: ext, verification: v, issuerEmailDraft: issuerEmail(ext) });
   }
 
-  const r = await runLookup(ext.cert_body ?? 'other', { number: ext.number, holder: ext.holder, issuer: ext.issuer });
+  const r = await runLookup(ext.cert_body ?? 'other', {
+    number: ext.number, holder: ext.holder, issuer: ext.issuer,
+    method: ext.method ?? ext.process, level: ext.level, credentialUrl: ext.credential_url,
+  });
   let shot: string | null = null;
   if (r.screenshot) { shot = `verify/${doc.id}.png`; await sb.storage.from('screenshots').upload(shot, r.screenshot, { contentType: 'image/png' }); }
   const notes: string[] = [];
@@ -42,7 +45,16 @@ export async function POST(req: Request) {
     const pn = (pp?.extracted as any)?.holder; if (pn && ext.holder && pn.toLowerCase() !== ext.holder.toLowerCase()) notes.push(`Holder mismatch: cert "${ext.holder}" vs passport "${pn}"`);
   }
   if (campaignEnd && r.validUntil && new Date(r.validUntil) < new Date(campaignEnd)) notes.push(`Expires before project end ${campaignEnd}`);
-  const { data: v } = await sb.from('verifications').insert({ document_id: doc.id, method: 'browser_lookup', checked_where: r.checkedWhere, checked_at: r.checkedAt, result: r.result, valid_until: r.validUntil ?? ext.expiry, holder_on_source: r.holderOnSource, screenshot_path: shot, notes: [r.notes, ...notes].filter(Boolean).join(' · ') }).select().single();
+  // Holder name as the register printed it vs the name on the certificate.
+  if (r.holderOnSource && ext.holder && r.holderOnSource.toLowerCase().replace(/\s+/g, ' ') !== ext.holder.toLowerCase().replace(/\s+/g, ' ')) {
+    notes.push(`Holder on register "${r.holderOnSource}" differs from certificate "${ext.holder}"`);
+  }
+  // Level printed on the certificate vs the level the register holds for that method.
+  const matched = r.certificates?.find((c) => (c.number ?? '').toLowerCase().replace(/\s+/g, '') === (ext.number ?? '').toLowerCase().replace(/\s+/g, ''));
+  if (matched?.level && ext.level && !ext.level.toLowerCase().includes(matched.level.toLowerCase())) {
+    notes.push(`Level on register "${matched.level}" differs from certificate "${ext.level}"`);
+  }
+  const { data: v } = await sb.from('verifications').insert({ document_id: doc.id, method: 'browser_lookup', checked_where: r.checkedWhere, checked_at: r.checkedAt, result: r.result, valid_until: r.validUntil ?? ext.expiry, holder_on_source: r.holderOnSource, screenshot_path: shot, source_rows: r.certificates ?? [], notes: [r.notes, ...notes].filter(Boolean).join(' · ') }).select().single();
   await sb.from('documents').update({ status: r.result === 'valid' ? 'verified' : r.result === 'invalid' ? 'expired' : 'received' }).eq('id', doc.id);
   return NextResponse.json({ document: doc, extracted: ext, verification: v, warnings: notes });
 }

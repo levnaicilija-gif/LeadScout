@@ -6,6 +6,9 @@ export const CertSchema = z.object({
   cert_body: z.string().optional(), // frosio|pcn|cswip|ampp|irata|winda|cisrs|iso9606|electrical_dk|other
   issuer: z.string().optional(), number: z.string().optional(), holder: z.string().optional(),
   level: z.string().optional(), process: z.string().optional(), position: z.string().optional(),
+  method: z.string().optional(), scope: z.string().optional(),
+  /** Verification URL or QR-code target printed on the certificate — the only way to check a FROSIO/Accredible credential. */
+  credential_url: z.string().optional(),
   issued: z.string().optional(), expiry: z.string().optional(), unreadable: z.array(z.string()).default([]),
 });
 export type CertExtraction = z.output<typeof CertSchema>;
@@ -14,7 +17,7 @@ export type CertExtraction = z.output<typeof CertSchema>;
 export async function extractDocument(base64: string, mediaType: string): Promise<CertExtraction> {
   const r = await claude.messages.create({
     model: MODEL_EXTRACT, max_tokens: 800,
-    system: 'Read this document for a recruitment agency. Classify it and copy the fields exactly as printed. If a field is unreadable, list it in unreadable. cert_body: frosio, pcn, cswip, ampp, irata, winda, cisrs, iso9606 (any welder qualification), electrical_dk, or other. Return JSON only.',
+    system: 'Read this document for a recruitment agency. Classify it and copy the fields exactly as printed. If a field is unreadable, list it in unreadable. cert_body: frosio, pcn, cswip, ampp, irata, winda, cisrs, iso9606 (any welder qualification), electrical_dk, or other. number: the registry/certificate number as printed (for PCN copy the PCN number as well if both are shown). method: the NDT/inspection method or discipline. scope: the scope line. credential_url: any verification URL printed on the certificate or encoded in a QR code (e.g. credential.net/...), copied exactly; omit if none. Return JSON only.',
     messages: [{ role: 'user', content: [{ type: mediaType === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: mediaType as any, data: base64 } } as any, { type: 'text', text: 'Extract.' }] }],
   });
   const text = r.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
