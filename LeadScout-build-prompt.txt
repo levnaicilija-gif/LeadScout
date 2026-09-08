@@ -1,0 +1,341 @@
+LEADSCOUT — BUILD PROMPT FOR CLAUDE CODE (v3, final scope)
+=========================================================
+Commit directly to main. Build the complete app in one pass, then run it.
+
+SCOPE — FIVE THINGS, NOTHING ELSE
+---------------------------------
+1. Radar     — reads the news and job boards at 06:00 daily, builds leads with sourced decision-makers
+2. Today     — the recruiter's ordered list for the day, drafts ready
+3. Verify    — drag a certificate in, get valid/not, valid-until, where it was checked
+4. Anonymize — drag a CV in, get the RFBT-format anonymized client version
+5. Pitch     — start from a scarce candidate, find who should hear about them, draft the teaser
+
+Out of scope (do not build): inbound WhatsApp/Viber/email, readiness checklists, automated
+candidate messaging, ATS connectors, kanban/CRM, analytics dashboards.
+
+THE ONE RULE ABOVE ALL OTHERS
+-----------------------------
+Never fabricate. No invented contacts, emails, phones, job openings, registry data, dates,
+or "verified" labels. Every field is one of:
+  FOUND    value + source URL + fetched_at (+ screenshot where a page was visited)
+  PATTERN  inferred, shown as "unverified pattern" (email pattern only)
+  UNKNOWN  empty, with a search action (LinkedIn / Google)
+"Verified" is set only by a fetcher that retrieved the value from the named source.
+No confidence tiers. No Math.random() in data paths. LLM output is validated against the
+fetched source text; names, numbers and dates not present in it are discarded.
+
+STACK
+-----
+Next.js 14 (app router, TS), Supabase (Postgres, storage, auth, RLS) — extend the existing
+RFBT Interviews project (ffxbftteqrqvmbhlsuzy), Claude API (claude-sonnet-4-6 for
+extraction/drafting, claude-haiku-4-5 for classification), Playwright worker (separate
+Node service + Dockerfile, runs on a small VPS or Browserbase), Resend (outbound email +
+inbound for client replies), Vercel (web + cron). Tailwind, no UI libraries.
+
+DESIGN — follow leadscout.html exactly
+---------------------------------------
+Palette: bg #F4F6F8, panel #FFF, ink #1B2230, accent #0F4C81 (the only accent), status
+green #1E7F4F / amber #B7791F / red #B23A3A used only for verification and lead timing.
+One typeface (IBM Plex Sans, fallback system). Left nav 216px. Tables first, drawers for
+detail (right side, 480px), no cards-with-shadows, no gradients, no decorative icons,
+sentence case, no all-caps labels. Verification log is the only animated moment.
+Screens: Today, Radar, Verify, Pitch, Candidates, Sources (settings-style list).
+
+SALVAGED CODE — /lib/salvage (in ./salvage/, use as-is, adapt imports)
+---------------------------------------------------------------------
+agencyDetector.ts + recruitmentAgencies.ts  → employer_type on every lead
+searchUrlBuilders.ts                        → LinkedIn / Google search links for people
+insightSources.ts, tenderPortals.ts         → seed sources (merge with seeds/sources.csv)
+energyProjects.ts                           → reference projects (source=seed, unverified)
+industryTaxonomy.ts                         → trade/sector tags
+
+SEEDS — /seeds
+--------------
+sources.csv (604: news 263, job boards 41, tender portals 300) → `sources`
+people_windeurope.csv (12,582; 1,096 ops_relevant) → `people` (source="WindEurope attendee
+  list"; name, company, title, country only; never add email/phone to these rows)
+agencies.csv (100) → agencyDetector list + `companies` with type=staffing_agency
+positions.csv (77) → white-collar branch of taxonomy
+The first rows of sources.csv carry Eli's extraction brief in the `prompt` column — fold it
+into the Radar extraction prompt (map every company's role and start date; for finished
+projects capture people/companies as warm contacts).
+
+DATA MODEL
+----------
+candidates      (exists) + reference_code RFBT-<T>-<NNNN> (T: P painter/blaster, W welder,
+                F fitter, N NDT, R rope access, E electrician, O other), trade, languages[],
+                availability_from, rotation_prefs[], eu_passport, rate_all_in, rate_margin,
+                profile jsonb (structured from CV), internal only.
+documents       id, candidate_id, type (passport|cv|certificate|medical|a1|other),
+                cert_body, file_url, extracted jsonb, uploaded_by, uploaded_at, status
+verifications   id, document_id, method (browser_lookup|issuer_email|manual),
+                checked_where (url), checked_at, result (valid|invalid|not_found|pending|
+                not_supported), valid_until, holder_on_source, screenshot_url, notes,
+                issuer_email_sent_at, issuer_reply_url
+anonymized_cvs  id, candidate_id, version, pdf_url, public_summary_slug, generated_at,
+                certs_cross_check jsonb
+sources         id, name, url, type (news|tender|job_board|company_press), region,
+                paywalled, enabled, last_crawled_at
+articles        id, source_id, url unique, title, published_at, fetched_at, text, screenshot_url
+companies       id, name, domain, employer_type, switchboard, switchboard_source_url,
+                general_email, general_email_source_url, email_pattern, pattern_source_url,
+                rfbt_history text
+leads           id, company_id, project_name, project_location, project_value, phase,
+                phase_dates, trades_inferred[], fit_score, status (new|pursue|contacted|
+                replied|call|trial|framework|not_for_us|stale), created_at, updated_at
+lead_articles   lead_id, article_id
+contacts        id, lead_id, company_id, name, title, quote, quote_article_id (REQUIRED),
+                email, email_status (found|pattern|unknown), email_source_url,
+                phone, phone_source_url, linkedin_search_url, google_search_url
+people          id, company_name, name, title, country, source (seed list name)
+lead_people     lead_id, person_id (fuzzy company match, attached at lead creation)
+outreach        id, lead_id, contact_id, channel (email|linkedin_copy), subject, body,
+                attachments[] (anonymized_cv ids), sent_at, reply_at, status
+sends           id, candidate_id, company_id, anonymized_cv_id, sent_at, revealed_at, revealed_by
+users           id, name, role (senior|recruiter), onboarding_week
+
+MODULE 1 — RADAR (cron 06:00 CET, /api/jobs/radar, secret header)
+------------------------------------------------------------------
+Crawl: for each enabled source, fetch index (RSS if present, else Playwright), collect
+unseen article URLs, fetch article text, store with screenshot + dates. Paywalled →
+headline + lede only, flagged.
+Extract (Claude, JSON only), Stage 1 rules — qualifies only if ALL true:
+  - article is about a company winning / being awarded a contract or project
+  - a person FROM THAT COMPANY is quoted by name with a job title
+  - that person is realistically contactable (not journalist/analyst/official/other company)
+Per qualifying person: company, name, title, exact quote, article url + date. One row each.
+Per article also: project name, location, value, phase + dates, all companies mentioned with
+role and expected start, trades_inferred, warm contacts on finished projects.
+Validate: every name/title/number must appear verbatim in article text, else drop.
+Company: agencyDetector → employer_type; fetch company contact page → switchboard, general
+email, email pattern (each with source URL). Attach `people` rows by fuzzy company match.
+Dedup: same company + project (fuzzy) within 30 days → append article to existing lead.
+Fit 0–100: trades match RFBT (painters/blasters, welders, pipefitters, NDT, rope access,
+wind techs, electricians) ×0.4; geography (DK NL NO SE DE BE UK ES) ×0.2; work within 12
+months ×0.25; employer_type end_client/epc ×0.15.
+Stale: no status change in 60 days → stale.
+Digest: one sentence for the day, stored for Today.
+Drafts prepared at lead creation: outreach email (opens with the quote; project + timing;
+what RFBT has; attachments slot) and LinkedIn message (<300 chars, same hook). Stored as
+drafts, never sent automatically.
+
+MODULE 1b — JOB POSTS (part of Radar; second tab "Hiring now")
+---------------------------------------------------------------
+Sources: the 41 job boards in seeds/sources.csv (type=job_board) + every company's careers
+page (companies.careers_url, found from the company site; add EURES, Jobindex, Jobnet DK,
+Finn.no, Indeed per country, Arbetsförmedlingen, NAV, Werk.nl). Crawl daily with Radar.
+Extract per posting (Claude, validated against page text): company, role, trades (mapped to
+RFBT taxonomy), location, country, start date, rotation, contract type, certs required,
+posted date, source URL, the named contact on the post if any (name, title, email, phone —
+only if printed on the page), posting_company_type via agencyDetector (end client vs agency
+posting on behalf).
+Table `job_posts`: id, company_id, role, trades[], location, country, posted_at, closes_at,
+certs_required[], rotation, contract_type, source_url, screenshot_url, poster_type,
+post_contact_id (→ contacts, source = the posting page), status (open|expired|filled_guess),
+fit_score. Dedup on company + role + location within 30 days. Expire when the page 404s or
+after 45 days without re-detection.
+Company size: from the company site / registry page when stated (employees, revenue) or from
+the seed lists; store companies.size_band (small <50 | medium 50–500 | large >500) with
+source URL; unknown stays unknown.
+Volume signal: if one company has ≥5 open trade postings, or the same posting reappears
+within 30 days, mark `hiring_pressure = high` — this is the strongest job-post signal for
+an agency pitch.
+Decision-makers for a hiring company (all honest sources, in this order):
+  1. contact printed on the posting (hiring manager / HR / recruiter) → `contacts`
+  2. existing `contacts` for that company from press quotes
+  3. `people` rows (WindEurope list) with ops/HR/production titles
+  4. company site team/management page → names + titles with source URL
+  5. otherwise: LinkedIn search links built for "<company> operations manager",
+     "<company> HR manager", "<company> production manager" — shown as searches, not people.
+UI: "Hiring now" tab in Radar — filters by trade, country, company size, end client vs
+agency, hiring pressure; row shows company, role(s), location, certs required, posted,
+who to contact (with source) and the two search icons. Row → same lead drawer, with the
+posting text and drafted outreach ("saw you're hiring 12 welders for Esbjerg from October —
+we have 6 verified…"). Job-post leads use fit weights: trade ×0.4, geography ×0.2,
+hiring_pressure ×0.25, end_client ×0.15. They feed Today under "new leads" only when
+hiring_pressure = high or fit ≥ 80; otherwise they stay in the tab.
+
+MODULE 2 — TODAY (home)
+-----------------------
+Ordered list, built from queries only:
+  1. calls scheduled today / flights this week
+  2. verifications pending that block a send (result=pending, with day count)
+  3. outreach with no reply after 3 and 7 days (follow-up draft ready)
+  4. new leads (status=new, last 7 days) by fit then timing
+  5. certificates expiring ≤60 days (renewal message draft ready)
+  6. candidates on active campaigns missing document types (shown, not chased)
+Each line: one sentence (action + reason) + button that opens the screen with the record and
+draft loaded. Side panel, this week: certs verified, bad certs caught (invalid/not_found/
+mismatch), leads with a sourced contact, CVs sent with a name (must be 0), estimated time
+saved (editable multipliers). Filter by users.onboarding_week: hide items whose screen is
+locked; seniors also see "needs your review". Today never sends anything.
+
+MODULE 3 — VERIFY (recruiter-initiated; the only way files enter)
+-----------------------------------------------------------------
+Drop zone (multi-file; PDF/JPG/PNG/DOCX). Per certificate:
+  Extract: type, cert_body, number, holder, level/process/scope, issue, expiry. Unreadable →
+  "retake needed" naming what was unreadable.
+  Lookup adapters (Playwright; URL, fill, read, screenshot, parse valid_until):
+    frosio (Accredible / frosio.no), pcn (bindt.org), cswip (cswip.com), ampp (ampp.org),
+    irata (irata.org), winda (winda.globalwindorganisation.org), cisrs (cisrs.org.uk),
+    electrical_dk (sikkerhedsstyrelsen.dk). Unknown body → not_supported + issuer link.
+  Welder ISO 9606 (DNV/BV/TÜV/LRQA): no public register → find issuer office email on the
+  issuer site, draft the verification email (number, holder, process, request confirmation);
+  recruiter sends; status "Checking with <issuer>, day N" until reply attached.
+  Cross-checks: holder vs passport name on file; expiry vs selected campaign end; scope vs
+  role (inspector-level vs applicator; welder process/position vs role) → warning; cert
+  number reused across candidates → duplicate flag.
+  Result card: verdict line ("Valid until 14 March 2028" / "Expired" / "Not found on issuer
+  site" / "Checking with DNV, day 2"), file, holder match, checked where (URL + time),
+  result, project fit, screenshot thumbnail. Buttons: Open source page, Save to candidate
+  (pick existing or create from extracted name — recruiter confirms).
+Nightly 02:00: re-check certs with valid_until ≤ 90 days; alerts at 60/30/7 into Today;
+expired → candidate marked unavailable for roles requiring it.
+
+MODULE 4 — ANONYMIZE (same drop zone, CV files)
+-----------------------------------------------
+Claude reads the CV (any language) → profile: trade, certificates claimed, projects (type,
+country, year, employer), rotations, languages, availability. Cross-check claimed certs
+against verifications ("3 of 3 verified" / "FROSIO claimed, no certificate on file").
+Generate (React-PDF):
+  internal CV — full details, English, RFBT format
+  client CV  — reference code; NO name, phone, email, address, photo, DOB, social links,
+               employer names (→ type + country); certificates with status + checked date;
+               experience; skills; languages; availability; footer with public summary link
+               (/v/<slug>: cert statuses and checked-where only, no personal data).
+Client bullets: generate three bullets that best sell this candidate to the target client
+(from profile + verified certs + the job/lead context if given). Each bullet must cite a
+verifiable fact (cert + date, project type + year, availability). Recruiter can regenerate
+or edit; bullets appear at the top of the client PDF and in the outreach draft.
+Job match (optional input): paste text, drop a PDF/posting, or pick a lead/job_post from
+Radar. Claude scores 0–100 and returns three lists — Fits (with evidence from the CV),
+Missing (with what would close it, e.g. "ICATS card — FROSIO accepted by most UK yards,
+confirm"), Blockers (hard requirements not met: passport, cert level, language). Score
+stored on the send so outcomes can be compared to scores later.
+Multi-CV ranking: when several CVs are dropped with a job given, score each, rank, and
+show a table (score, fits, missing, blocker, availability, action Send/Hold/Not eligible)
+plus a written recommendation: which ones to send as a pack and why, what to ask the client
+before sending (e.g. cert equivalence), who to hold and for what. Blockers (passport, expired
+or missing required cert, language) always rank below any non-blocked candidate regardless
+of score. Buttons: Prepare pack of N, Draft the client question, Save scores to candidates.
+Result card: "Anonymized CV ready", removed list, kept list, cross-check line, three
+bullets, job match block, preview, buttons Preview client PDF, Save to candidate, Copy bullets. A client PDF that fails the PII check
+(regex + Claude review) cannot be saved.
+
+MODULE 5 — PITCH (reverse placement)
+------------------------------------
+Left: pick candidate (shows verified certs, projects, languages, rates, availability);
+send-to: best matches | one company; tone: hiring manager | procurement.
+Match: score every lead/company on trade ×0.4, geography ×0.2, timing ×0.25, prior site
+history (candidate project vs company/location) ×0.15. Show top 5 with who to send to
+(contact or people row) and contactability (found / pattern / unknown + search links).
+Draft per company: blind teaser — reference code only, verified cert + checked date,
+projects by type, rate both ways, availability, "full profile on confirmation"; and a
+LinkedIn message version. Buttons: Send (email via Resend), Copy LinkedIn message, Edit,
+Draft all. Sends logged to `sends` and `outreach`.
+
+CANDIDATES (supporting screen)
+------------------------------
+Search (name, reference, cert number, phone); trade filters; quick filters: available now,
+cert expiring 90 days, docs incomplete. Table: reference + internal name, trade, certs with
+status + expiry, documents count, availability, last project, sent to, languages.
+Row → drawer: verification log, documents, anonymized CV versions, sends/reveals, actions.
+Origin: candidates are created ONLY by (a) Verify → Save to candidate, (b) Add candidate
+button, (c) existing RFBT Interviews rows. Store created_via + created_by + created_at and
+show it on the record. Radar/people never create candidates.
+Reveal full profile to a client = explicit action, logged (who, when, which company).
+
+OUTREACH (inside Radar/Pitch, not a separate screen)
+----------------------------------------------------
+Email sent from the recruiter's address via Resend; LinkedIn message is copy-to-clipboard.
+Replies via Resend inbound land on the lead; status → replied. Follow-up drafts at +3/+7.
+Show one line of reasoning under every draft ("opening with their quote — named-person
+outreach gets more replies") so new recruiters learn the method.
+
+GUARDRAILS (enforced in code)
+-----------------------------
+- A send cannot include a cert that is unverified, expired, pending, or scope-mismatched
+  without an acknowledged warning.
+- A client PDF cannot contain name/phone/email/photo/employer name.
+- No outbound email to an address not attached to a contact or company record.
+- `contacts` requires quote_article_id; `verified` cannot be set by hand.
+- Every automated conclusion links to its source (URL, screenshot, timestamp).
+
+NEW-HIRE PATH
+-------------
+users.onboarding_week 1–4 unlocks: 1 Verify + Anonymize + Candidates; 2 + candidate
+screening scripts (per-trade questions with model answers, stored as content);
+3 + Pitch/sends with senior review on first 3; 4 + Radar/outreach with senior review on
+first 5. Trade cards (per trade: what it is, cert bodies and levels, what clients require,
+CV red flags, rate bands, rotations) and a glossary (SR/EN) are content tables rendered
+inline on hover/click wherever the term appears. Today shows weekly goals and counts.
+
+COST / OPS
+----------
+Haiku for classification, Sonnet for extraction/drafting; cache per article; Playwright
+sessions ≤ 90 s, 2 retries; expected ≤ €100/month at RFBT volume. RLS: authenticated RFBT
+users only; /v/<slug> public but PII-free. Every outbound message logged with body.
+
+DELIVERABLES
+------------
+Working app on Vercel + worker Dockerfile; .env.example; seed script; README (setup,
+cron, adapter list and how to add one, 20-certificate test plan).
+Build order: 4 Anonymize → 3 Verify → Candidates → 1 Radar → 1b Job posts → 2 Today → 5 Pitch → Sources.
+Ship each as it works; commit to main.
+
+CORE LOOP — LEAD → NEED → CANDIDATES → OUTREACH (binds the modules together)
+---------------------------------------------------------------------------
+On every lead (won-work or hiring-now) the drawer has four tools, in this order:
+
+A. "Need as a job description" — Claude writes a working JD from the article/posting text,
+   trades inferred, company type, and RFBT's standard requirements: role(s), headcount if
+   stated, location, start, rotation, certs required (from the posting; else what this
+   company type usually requires — marked "assumed"), experience, language, passport.
+   Recruiter edits; saved as leads.job_description (versioned). Every downstream score
+   uses this JD.
+
+B. "Score the pool" — score all candidates against the JD (same scorer as Verify → job
+   match). Show top 10 with fits / missing / blockers / availability; select → prepare packs.
+   If fewer than 3 non-blocked candidates score ≥ 70, show the LinkedIn search below.
+
+C. "Find candidates on LinkedIn" — build an X-ray search from the JD in English (trade and
+   process synonyms, cert names, sector keywords, target countries) using buildCleanGoogleXrayUrl; open in a tab.
+   No scraping. Recruiter drops chosen CVs into Verify; they are scored against this JD
+   automatically because the lead is selected.
+
+D. "Screening questions" — per role, generated from the JD + the trade card: 6–8
+   questions (technical for the trade, certs and expiry, availability and rotation, passport
+   /A1, rate expectation, language) each with "good answer sounds like". Recruiter runs the
+   call (via RFBT Interviews if needed), ticks/notes answers on the candidate; answers feed
+   the score (e.g. confirmed 6G experience raises fit; no EU passport = blocker).
+
+Then the existing pieces: three bullets + anonymized CV per selected candidate (with this
+JD as context), outreach email + LinkedIn message to the decision-maker with packs attached,
+sent by the recruiter, reply tracked. Store on the lead: jd_version used, candidates scored,
+packs sent, so outcomes can be compared to scores.
+
+WELDER CERTIFICATES — decision
+------------------------------
+Option C: when both the ISO 9606 certificate and the welder test report are on file and
+consistent (number, holder, process, position, date, issuer), mark "consistent with test
+report" immediately — this status is allowed in client packs, labelled as such. The issuer
+verification email still goes out; on reply the status upgrades to "verified by issuer".
+Certificate alone (no test report) stays "checking with issuer" and cannot go in a pack.
+
+CAMPAIGNS — decision
+--------------------
+Keep. Creating a campaign (name, client, dates, required document types) takes 2 minutes
+and is what makes "ready / missing" and "send N packs" possible. Today's missing-documents
+item exists only for candidates on an active campaign.
+
+SOURCE VERIFICATION — every lead and job post
+---------------------------------------------
+Two layers, both visible in a "Verified" column on Won work and Hiring now:
+1. Automatic: the source page (article or posting) is re-fetched every morning. Status:
+   Live (HTTP 200, posting/article present, time shown), Stale (live but posting date
+   > 30 days), Not found (404/removed → lead auto-archived after 2 consecutive misses).
+   Screenshot and fetched_at stored each time.
+2. Recruiter confirmation: "Open source" opens the real page in a tab; "Confirm" records
+   confirmed_by + confirmed_at on the lead/job_post. Outreach and Pitch can only use a
+   lead whose source is Live AND confirmed by a recruiter. Unconfirmed leads show but
+   cannot be pitched from. "Re-check" forces a fetch now; "Archive" hides.

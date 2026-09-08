@@ -1,0 +1,48 @@
+import { NextResponse } from 'next/server';
+import { supabaseServer, currentUser } from '@/lib/supabase/server';
+import { parseCv, anonymize, clientBullets, scoreAgainstJob, piiRegexHits } from '@/lib/ai/documents';
+import { claude, MODEL_EXTRACT } from '@/lib/ai/claude';
+export const maxDuration = 120;
+
+/** POST multipart: files[] (CVs), job? (text), lead_id?, campaign_id? → per CV: profile, anonymized, bullets, score; if >1 CV and job: ranking + recommendation. */
+export async function POST(req: Request) {
+  const me = await currentUser(); if (!me) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
+  const sb = supabaseServer(); const form = await req.formData();
+  const files = form.getAll('files') as File[]; const job = (form.get('job') as string | null) ?? undefined;
+  const results: any[] = [];
+  for (const f of files) {
+    const bytes = Buffer.from(await f.arrayBuffer());
+    const text = await cvText(bytes, f.type);
+    const profile = await parseCv(text);
+    const anon = anonymize(profile);
+    const code = (await sb.rpc('next_reference_code', { tc: profile.trade_code })).data as string;
+    const { data: cand } = await sb.from('candidates').insert({ workspace_id: me.workspace_id, reference_code: code, trade_code: profile.trade_code, full_name: profile.full_name, phone: profile.pii.phone, email: profile.pii.email, trade: profile.trade, languages: profile.languages, profile, created_via: 'verify', created_by: me.id }).select().single();
+    const path = `${me.workspace_id}/cv/${cand.id}-${f.name}`;
+    await sb.storage.from('documents').upload(path, bytes, { contentType: f.type });
+    await sb.from('documents').insert({ candidate_id: cand.id, type: 'cv', storage_path: path, extracted: { text: text.slice(0, 5000) }, uploaded_by: me.id });
+    const { data: verified } = await sb.from('verifications').select('result, valid_until, checked_where, checked_at, documents!inner(candidate_id, cert_body)').eq('documents.candidate_id', cand.id);
+    const crossCheck = { claimed: profile.certificates_claimed, verified: (verified ?? []).length };
+    const { bullets } = await clientBullets(anon, verified ?? [], job);
+    const clientText = [bullets.join(' '), JSON.stringify(anon)].join('\n');
+    const pii = piiRegexHits(clientText, profile.full_name, profile.projects.map((p) => p.employer ?? '').filter(Boolean));
+    const score = job ? await scoreAgainstJob(anon, verified ?? [], job) : null;
+    if (score) await sb.from('scores').insert({ candidate_id: cand.id, ...score });
+    const slug = code.toLowerCase();
+    await sb.from('anonymized_cvs').insert({ candidate_id: cand.id, public_slug: slug, bullets, certs_cross_check: crossCheck, pii_check_passed: pii.length === 0 });
+    results.push({ candidate: { id: cand.id, reference_code: code }, profile: anon, removed: ['name', 'phone', 'email', 'address', 'photo', 'date of birth', 'employer names'], bullets, crossCheck, piiHits: pii, score });
+  }
+  let recommendation: string | null = null;
+  if (job && results.length > 1) {
+    const ranked = [...results].sort((a, b) => (a.score?.blockers.length ? 1 : 0) - (b.score?.blockers.length ? 1 : 0) || (b.score?.score ?? 0) - (a.score?.score ?? 0));
+    const r = await claude.messages.create({ model: MODEL_EXTRACT, max_tokens: 400, messages: [{ role: 'user', content: `Job:\n${job}\n\nRanked candidates (reference, score, fits, missing, blockers):\n${ranked.map((x) => `${x.candidate.reference_code}: ${x.score?.score} | fits ${x.score?.fits.join('; ')} | missing ${x.score?.missing.join('; ')} | blockers ${x.score?.blockers.join('; ') || 'none'}`).join('\n')}\n\nWrite a 3-5 sentence recommendation: which to send as a pack and why, what to ask the client before sending, who to hold and for what, who is not eligible. Use reference codes only.` }] });
+    recommendation = r.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
+    return NextResponse.json({ results: ranked, recommendation });
+  }
+  return NextResponse.json({ results, recommendation });
+}
+async function cvText(bytes: Buffer, type: string) {
+  if (type === 'text/plain') return bytes.toString('utf8');
+  // PDF/DOCX/image → let Claude read it directly (vision/document). Simpler than a parser zoo; swap for pdf-parse/mammoth if volume grows.
+  const r = await claude.messages.create({ model: MODEL_EXTRACT, max_tokens: 4000, messages: [{ role: 'user', content: [{ type: type === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: type as any, data: bytes.toString('base64') } } as any, { type: 'text', text: 'Transcribe this CV as plain text, preserving structure. Output text only.' }] }] });
+  return r.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
+}

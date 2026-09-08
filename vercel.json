@@ -1,0 +1,1 @@
+{ "crons": [ { "path": "/api/jobs/radar", "schedule": "0 4 * * *" }, { "path": "/api/jobs/recheck", "schedule": "0 0 * * *" } ] }

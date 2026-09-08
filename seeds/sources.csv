@@ -1,0 +1,729 @@
+url,industries,regions,keywords,prompt,notes,period,type,paywalled
+https://renewablesnow.com/regions/europe/,Renewables,Europe,"https://renews.biz/       (this is the leading website, I have not seen it on the list soni have added it here)","Find all news related to new projects, new tenders, aquistions, project announcements and project plans.",also find names of actual people in the organisations that have been mentioned in the article. Find all companies involved and map out their involvement in the specific project with projected time line of when will they start activities. For projects thay have finished identify names and companies fromt he article which we can use to tap in.,Last 30 days,news,
+https://www.rechargenews.com,,Global / EU,,,payable subscription needed to read articles,,news,yes
+https://www.renewableenergyworld.com,,Global,"Entity Identification: Company, Organisation, Consortium, Developer, Operator, Supplier, Contractor, Partner, Investor, Agency, Consultancy
+
+People & Decision Makers: CEO, COO, CFO, Managing Director, President, Vice President, Chairman, Board Member, Country Manager, Regional Head, Project Director, Project Manager, Operations Manager, Technical Director, Construction Director, Commissioning Manager, HR Director, HR Manager, Talent Acquisition Lead, Recruitment Manager, Workforce Planning Manager, Head of People
+
+Project Involvement: Project, Initiative, Development, Construction, Installation, Commissioning, Operation, Expansion, Completion, Contract, Agreement, Partnership, Tender, Procurement, Supply, Manufacture, Deliver, Install, Operate, Maintain, Finance, Design, Consult
+
+Timeline & Status: Start, Begin, Launch, Commence, Initiate, Kick-off, Groundbreaking, Phase, Stage, Milestone, Schedule, Deadline, Target, Expected, Projected, Planned, Completed, Finished, Delivered, Operational, Commissioned, Wrapped up, Handed over
+
+Outreach Opportunities: Completed project, Finished work, Past involvement, Legacy, Experience, Track record, Reference project, Potential partner, Future collaboration, Outreach, Leverage, Tap into, Follow-up, Re-engage","Tasks: 1. Identify all companies and organizations mentioned. 2. Extract names of actual people associated with those companies or organizations, with emphasis on: - Strategic decision makers (CEO, COO, CFO, president, vice president, managing director, chairman). - Project decision makers (project director, project manager, operations manager, technical director). - Hiring decision makers (HR director, HR manager, talent acquisition lead, recruitment manager). 3. Map each company’s role and involvement in the specific project described. 4. Build a projected timeline of when each company will begin activities, based on the article. 5. For projects that have already finished, list the companies and people involved that can be leveraged for future outreach. 6. Present the output in a structured table format with columns: - Company - Person(s) - Role in Project - Decision Maker Type (Strategic / Project / Hiring) - Timeline/Status - Outreach Notes",,Last 6 months but prioritise last 30 days,news,
+https://www.renewableenergymagazine.com,,Global / EU,,,Same as https://www.rechargenews.com,,news,
+https://renewablesnow.com,,EU / Global,,,,,news,
+https://www.canarymedia.com,,US / Global,groundbreaking + construction start + EPC contract awarded + engineering procurement construction + civil works begin + foundation installation + turbine delivery + grid connection + site preparation + construction milestone + installation phase + commissioning begins + commissioning completed + operations and maintenance contract + expansion + new office + staffing up + talent acquisition + recruitment drive + job openings + workforce growth + HR initiative + training program + local workforce + job fair + union agreement + skilled trades + technician training + apprenticeship program + workforce development + labor demand + contractor hiring + seasonal workforce + staff augmentation + subcontract awarded + supplier selected + vendor partnership + OEM partnership + component supplier + technology licensing + joint venture agreement + manufacturing expansion + fabrication contract + logistics provider + shipping schedule + supply chain secured + investment round + funding secured + capital investment + project financing closed + loan agreement signed + government grant awarded + tax credit secured + equity partner + funding milestone + budget allocation + merger + acquisition + board appointment + executive leadership change + government approval + environmental permit + planning consent + regulatory clearance + license granted + compliance requirement + policy change + pilot project + demonstration site + prototype installation + technology trial + innovation hub + R&D expansion + digital twin deployment + O&M contract signed + service agreement + maintenance schedule + asset management + lifecycle extension + retrofit program + regional expansion + local hiring + community engagement + training center + delayed project + rescheduled milestone + budget overrun + supply chain disruption + contract renegotiation + port upgrade + marshalling yard + installation hub + grid interconnection + turbine installation vessel + jack-up rig + floating foundation + cable laying contract + electrolyser delivery + hydrogen hub + battery storage commissioning + gigafactory expansion + offshore wind auction + contract for difference + government tender + capacity allocation,"You are tasked with analyzing all articles in the categories: Solar, Wind, Batteries, Electrification, and Newsletter from CanaryMedia.com. For each article:
+
+1. Identify all companies and organizations mentioned.
+2. Extract names of actual people associated with those companies or organizations, focusing on:
+   - Strategic decision makers (CEO, COO, CFO, president, vice president, managing director, chairman).
+   - Project decision makers (project director, project manager, operations manager, technical director).
+   - Hiring decision makers (HR director, HR manager, talent acquisition lead, recruitment manager).
+3. Map each company’s role and involvement in the specific project described.
+4. Build a projected timeline of when each company will begin activities, based on the article.
+5. For projects already finished, list the companies and people involved that can be leveraged for future outreach.
+6. Present the output in a structured table format with columns:
+   - Company
+   - Person(s)
+   - Role in Project
+   - Decision Maker Type (Strategic / Project / Hiring)
+   - Timeline/Status
+   - Outreach Notes
+7. Highlight hiring signals, subcontractor mentions, and operational expansions.
+
+Search Query:
+site:canarymedia.com (solar OR wind OR batteries OR electrification OR energy storage OR power grid) 
+(project OR initiative OR development OR construction OR installation OR commissioning OR operation OR expansion OR completion OR contract OR agreement OR partnership OR tender OR procurement OR supply OR manufacture OR deliver OR install OR operate OR maintain OR finance OR design OR consult) 
+(company OR organisation OR consortium OR developer OR operator OR supplier OR contractor OR partner OR investor OR agency OR consultancy) 
+(CEO OR COO OR CFO OR Managing Director OR President OR Vice President OR Chairman OR Board Member OR Country Manager OR Regional Head OR Project Director OR Project Manager OR Operations Manager OR Technical Director OR Construction Director OR Commissioning Manager OR HR Director OR HR Manager OR Talent Acquisition Lead OR Recruitment Manager OR Workforce Planning Manager OR Head of People) 
+(groundbreaking OR construction start OR EPC contract awarded OR engineering procurement construction OR civil works begin OR foundation installation OR turbine delivery OR grid connection OR site preparation OR construction milestone OR installation phase OR commissioning begins OR commissioning completed OR operations and maintenance contract OR expansion OR new office OR staffing up OR talent acquisition OR recruitment drive OR job openings OR workforce growth OR HR initiative OR training program OR local workforce OR job fair OR union agreement OR skilled trades OR technician training OR apprenticeship program OR workforce development OR labor demand OR contractor hiring OR seasonal workforce OR staff augmentation OR subcontract awarded OR supplier selected OR vendor partnership OR OEM partnership OR component supplier OR technology licensing OR joint venture agreement OR manufacturing expansion OR fabrication contract OR logistics provider OR shipping schedule OR supply chain secured OR investment round OR funding secured OR capital investment OR project financing closed OR loan agreement signed OR government grant awarded OR tax credit secured OR equity partner OR funding milestone OR budget allocation OR merger OR acquisition OR board appointment OR executive leadership change OR government approval OR environmental permit OR planning consent OR regulatory clearance OR license granted OR compliance requirement OR policy change OR pilot project OR demonstration site OR prototype installation OR technology trial OR innovation hub OR R&D expansion OR digital twin deployment OR O&M contract signed OR service agreement OR maintenance schedule OR asset management OR lifecycle extension OR retrofit program OR regional expansion OR local hiring OR community engagement OR training center OR delayed project OR rescheduled milestone OR budget overrun OR supply chain disruption OR contract renegotiation OR port upgrade OR marshalling yard OR installation hub OR grid interconnection OR turbine installation vessel OR jack-up rig OR floating foundation OR cable laying contract OR electrolyser delivery OR hydrogen hub OR battery storage commissioning OR gigafactory expansion OR offshore wind auction OR contract for difference OR government tender OR capacity allocation)",,Last 6 months but prioritise last 30 days,news,
+https://www.utilitydive.com,,US,,"Master string:
+(site:utilitydive.com) AND ((""Awarded"" OR ""Contract"" OR ""Agreement"" OR ""Selected"" OR ""PPA"") AROUND(15) (""Project"" OR ""MW"" OR ""GWh"" OR ""EPC"" OR ""Developer"")) AND ((""Solar"" OR ""Wind"" OR ""Offshore"" OR ""Storage"" OR ""Hydrogen"" OR ""Transmission"" OR ""Grid"") AROUND(10) (""Construction"" OR ""Installation"" OR ""Operations"" OR ""Commissioning"")) AND (""Hiring"" OR ""Jobs"" OR ""Workforce"" OR ""Recruitment"" OR ""Expansion"" OR ""Growth"" OR ""Team"") -webinar -podcast -whitepaper -event -conference -forecast -stock ""www.utilitydive.com""
+
+Prime Contract Intelligence:
+site:utilitydive.com (""awarded"" OR ""signed"" OR ""contract"") AND (""EPC"" OR ""PPA"" OR ""construction"") AND (""Wind"" OR ""Solar"" OR ""Storage"") ""www.utilitydive.com""
+
+
+Grid & Infrastructure:
+site:utilitydive.com (""transmission"" OR ""interconnection"" OR ""grid"") AND (""investment"" OR ""upgrade"" OR ""project"") AND ""hiring"" ""www.utilitydive.com""
+
+Offshore Wind Mobilization:
+site:utilitydive.com ""offshore wind"" AND (""BOEM"" OR ""lease"" OR ""port"") AND (""development"" OR ""supply chain"") ""www.utilitydive.com""",,,news,
+https://www.power-technology.com,,Global,"Prime Contract Sourcing:
+- contract awarded, contract signed, contract secured, procurement deal
+- EPC, EPCI, turnkey, design-build, engineering procurement construction
+- project, plant, farm, facility, installation, site development
+- construction, civil works, commissioning, engineering, project execution
+
+Leadership Signals:
+- appointed, named, elected, promoted, designated, hired, recruited
+- CEO, Chief Executive Officer, Managing Director
+- Director, Board Director, Non-Executive Director
+- VP, Vice President, Senior VP, Executive VP
+- Head of, Global Head, Regional Head, Department Head, Division Head
+
+Component & Logistics:
+- supply agreement, supply contract, procurement deal, purchase order, framework agreement
+- order, bulk order, delivery order, shipment, logistics contract
+- partnership, collaboration, joint venture, supplier alliance
+- turbines, wind turbines, gas turbines, turbine blades, nacelles
+- cables, subsea cables, transmission cables, HVDC cables
+- electrolysers, hydrogen electrolysers, PEM electrolysers, alkaline electrolysers
+- modules, solar modules, battery modules, power modules, grid modules
+
+Hiring & Recruitment Signals:
+- hiring manager, recruitment manager, talent acquisition manager
+- HR Director, HR Manager, Head of HR, People Director
+- staffing coordinator, workforce planner, resourcing manager
+- recruiter, senior recruiter, recruitment consultant
+- talent partner, talent lead, global talent head
+- job posting, vacancy, open position, career opportunity
+- candidate search, candidate pipeline, talent sourcing, onboarding","Prime Contract Sourcing:                                                                                                                                                                                                                                                                                          site:power-technology.com ((""contract awarded"" OR ""EPC"" OR ""EPCI"" OR ""turnkey"") AROUND(10) (""project"" OR ""plant"" OR ""farm"")) AND (""construction"" OR ""engineering"") ""www.power-technology.com""
+
+Leadership Signals:
+site:power-technology.com (""appointed"" OR ""named"" OR ""elected"") AROUND(5) (""CEO"" OR ""Director"" OR ""VP"" OR ""Head of"") ""www.power-technology.com""
+
+Component & Logistics:
+site:power-technology.com (""supply agreement"" OR ""order"" OR ""partnership"") AND (""turbines"" OR ""cables"" OR ""electrolysers"" OR ""modules"") ""www.power-technology.com""",,,news,
+https://www.powerengineeringint.com,,Global,,"Master string:
+site:powerengineeringint.com ((""Siemens"" OR ""GE"" OR ""Hitachi"" OR ""Vestas"" OR ""Orsted"" OR ""RWE"" OR ""Iberdrola"" OR ""TotalEnergies"" OR ""Consortium"" OR ""JV"") AROUND(15) (""Project"" OR ""Farm"" OR ""Plant"" OR ""Facility"" OR ""Interconnector"") AND (""EPC"" OR ""Awarded"" OR ""Signed"" OR ""Front End Engineering"" OR ""FID"")) OR ((""Turbine"" OR ""Generator"" OR ""Electrolyzer"" OR ""Module"" OR ""Switchgear"" OR ""Inverter"" OR ""BESS"") AROUND(10) (""Supply"" OR ""Order"" OR ""Manufacturing"" OR ""Gigafactory"")) OR ((""Vessel"" OR ""Transport"" OR ""Logistics"" OR ""Grid"") AROUND(8) (""Installation"" OR ""Construction"" OR ""Commissioning"" OR ""Deployment"")) -webinar -podcast -whitepaper -event -conference -forecast -stock",,,news,
+https://www.energyvoice.com,,EU / UK,,"Master string:
+site:energyvoice.com ((""Awarded"" OR ""Signed"" OR ""Won"" OR ""Secured"") AROUND(7) (""EPCI"" OR ""Contract"" OR ""Tender"" OR ""FEED"") AND (""Project"" OR ""Development"" OR ""Wind Farm"" OR ""Field"" OR ""Hydrogen"" OR ""CCUS"")) OR ((""Turbines"" OR ""Cables"" OR ""Subsea"" OR ""Electrolyser"" OR ""Drilling"") AROUND(10) (""Supply"" OR ""Manufacturing"" OR ""Provider"" OR ""Deal"")) OR ((""Vessel"" OR ""FPSO"" OR ""Installation"" OR ""Decommissioning"") AROUND(8) (""Campaign"" OR ""Mobilisation"" OR ""Logistics"" OR ""Charter"")) -webinar -podcast -whitepaper -event -conference -forecast -stock ""www.energyvoice.com""
+
+Prime Contracts X-Ray:
+site:energyvoice.com (""Awarded"" OR ""Signed"" OR ""Secured"") AROUND(5) (""Contract"" OR ""EPCI"" OR ""FEED"") AND (""Offshore Wind"" OR ""Hydrogen"" OR ""Oil and Gas"") ""www.energyvoice.com""
+
+Supply Chain Trigger:
+site:energyvoice.com (""Fabrication"" OR ""Manufacturing"" OR ""Supply Chain"") AROUND(10) (""Turbines"" OR ""Cables"" OR ""Substructures"" OR ""Jackets"") ""www.energyvoice.com""
+
+Mobilization Signal:
+site:energyvoice.com (""Vessel"" OR ""Fleet"" OR ""Charter"") AROUND(8) (""Mobilisation"" OR ""Installation"" OR ""Campaign"") ""www.energyvoice.com""
+
+Hiring Signal:
+site:energyvoice.com (""Hiring"" OR ""Recruitment"" OR ""Appoints"" OR ""New Role"" OR ""Head of"" OR ""Expansion"" OR ""Create Jobs"") ""www.energyvoice.com""",,,news,
+https://www.offshore-energy.biz,,Global,,"Master string:
+site:www.offshore-energy.biz ((""contract"" OR ""awarded"" OR ""signed"" OR ""deal"" OR ""agreement"") AROUND(7) (""EPC"" OR ""EPCI"" OR ""FEED"" OR ""development"")) AND (""offshore wind"" OR ""floating wind"" OR ""hydrogen"" OR ""oil and gas"" OR ""subsea"" OR ""CCS"") AND (""vessel"" OR ""turbine"" OR ""foundation"" OR ""fabrication"" OR ""installation"") -webinar -podcast -whitepaper -event -stock
+
+Major EPCI Awards:
+site:www.offshore-energy.biz (""contract awarded"" OR ""selected as"" OR ""preferred supplier"") AND (""EPCI"" OR ""FEED"" OR ""T&I"") AND (""offshore wind"" OR ""FPSO"" OR ""hydrogen"")
+
+
+Vessel & Fleet Signals:
+site:www.offshore-energy.biz (""charter"" OR ""vessel"" OR ""fleet"" OR ""mobilization"") AND (""installation"" OR ""construction"" OR ""commissioning"")
+
+FID & Development:
+site:www.offshore-energy.biz (""FID"" OR ""Final Investment Decision"" OR ""greenlit"" OR ""approved"") AND (""project"" OR ""farm"" OR ""development"")",,,news,
+https://cleantechnica.com,,Global,,"Master string:
+site:cleantechnica.com ((""awarded"" OR ""signed"" OR ""won"") AROUND(7) (""contract"" OR ""agreement"" OR ""tender"" OR ""project"") AND (""EPC"" OR ""EPCI"" OR ""developer"")) OR ((""supply"" OR ""partnership"" OR ""order"") AROUND(10) (""batteries"" OR ""turbines"" OR ""modules"" OR ""components"")) OR ((""groundbreaking"" OR ""construction"" OR ""site"") AROUND(8) (""begins"" OR ""starts"" OR ""underway"" OR ""mobilization"")) (""Renewable"" OR ""Wind"" OR ""Solar"" OR ""Hydrogen"" OR ""Grid"" OR ""Storage"") -webinar -podcast -whitepaper -event -conference -forecast -stock
+
+Prime Contracts:
+site:cleantechnica.com (""awarded"" OR ""signed"" OR ""secured"") AROUND(7) (""contract"" OR ""agreement"" OR ""tender"") (""EPC"" OR ""EPCI"" OR ""development"")
+
+Supply Chain:
+site:cleantechnica.com (""supply"" OR ""partnership"" OR ""order"") AROUND(10) (""batteries"" OR ""turbines"" OR ""modules"" OR ""electrolyzers"")
+
+Mobilization:
+site:cleantechnica.com (""groundbreaking"" OR ""construction"" OR ""commissioning"") AROUND(8) (""begins"" OR ""starts"" OR ""underway"" OR ""site"")",,,news,
+https://www.greenbiz.com,,US / Global,,"Master string:
+site:trellis.net ((""Lead Companies"" OR ""MN8 Energy"" OR ""Clearloop"" OR ""Climate Impact Partners"" OR ""Microsoft"" OR ""Rivian"" OR ""Intuit"") AROUND(15) (""Project"" OR ""Agreement"" OR ""PPA"" OR ""Offtake"" OR ""100MW"" OR ""Gigawatt"" OR ""Expansion"")) OR ((""Solar"" OR ""Wind"" OR ""Bioenergy"" OR ""SAF"" OR ""Green Hydrogen"" OR ""Carbon Removal"" OR ""Lithium-ion"") AROUND(10) (""Supply Chain"" OR ""Procurement"" OR ""Scope 3"" OR ""Embodied Carbon"" OR ""Net Zero"")) OR ((""Hiring"" OR ""Careers"" OR ""Job"" OR ""Vacancy"" OR ""Talent"" OR ""Workforce"") AROUND(8) (""Sustainability"" OR ""Energy"" OR ""Policy"" OR ""Engineering"" OR ""ESG"")) -webinar -podcast -whitepaper -event -conference -forecast -stock
+
+Project Leads:
+site:trellis.net (""announced"" OR ""awarded"" OR ""launch"") AROUND(10) (""Project"" OR ""Facility"" OR ""Plant"") (""Hydrogen"" OR ""Offshore Wind"" OR ""Grid"" OR ""Storage"")
+
+Procurement Intelligence:
+site:trellis.net (""Scope 3"" OR ""Supply Chain"" OR ""Procurement"") AROUND(5) (""Director"" OR ""VP"" OR ""Head of"") (""Decarbonization"" OR ""Sourcing"")
+
+
+Contract Signals:
+site:trellis.net (""signed"" OR ""agreement"" OR ""partnership"") AND (""PPA"" OR ""EPC"" OR ""Offtake"") -webinar -report",,,news,
+https://www.climatechangenews.com,,Global,,,,,news,
+https://www.carbonbrief.org,,UK / Global,,,,,news,
+https://energycentral.com,,Global,,,,,news,
+https://www.energyintel.com,,Global,,,,,news,
+https://www.reuters.com/business/energy,,Global,,,,,news,
+https://www.bloomberg.com/energy,,Global,,,,,news,
+https://www.ft.com/climate-capital,,Global,,,,,news,
+https://www.wsj.com/news/business/energy-oil-gas,,Global,,,,,news,
+https://energydigital.com,,Global,,,,,news,
+https://www.altenergymag.com,,Global,,,,,news,
+https://energyindustryreview.com,,EU / Global,,,,,news,
+https://www.energytech.com,,US / Global,,,,,news,
+https://www.worldenergy.org/news,,Global,,,,,news,
+https://energytransition.org,,Global,,,,,news,
+https://www.energynewsbulletin.net,,Global,,,,,news,
+https://oilprice.com/Energy/Energy-General,,Global,,,,,news,
+https://www.hartenergy.com,,US / Global,,,,,news,
+https://www.spglobal.com/commodityinsights,,Global,,,,,news,
+https://www.argusmedia.com,,Global,,,,,news,
+https://www.fastmarkets.com,,Global,,,,,news,
+https://www.spglobal.com/platts,,Global,,,,,news,
+https://asia.nikkei.com/Business/Energy,,APAC,,,,,news,
+https://www.energy-reporters.com,,Global,,,,,news,
+https://energybusinessreview.com,,Global,,,,,news,
+https://www.energymanagermagazine.co.uk,,UK,,,,,news,
+https://www.powerinfotoday.com,,Global,,,,,news,
+https://www.energyglobal.com,,Global,,,,,news,
+https://www.worldpipelines.com,,Global,,,,,news,
+https://www.pipeline-journal.net,,Global,,,,,news,
+https://www.lngindustry.com,,Global,,,,,news,
+https://www.gasworld.com,,Global,,,,,news,
+https://www.energytodaymag.com,,Global,,,,,news,
+https://www.environmentenergyleader.com,,US / Global,,,,,news,
+https://www.smartenergydecisions.com,,US,,,,,news,
+https://renews.biz,,Global,,,,,news,
+https://www.offshorewind.biz,,Global,,,,,news,
+https://www.windpowermonthly.com,,Global,,,,,news,
+https://www.windtech-international.com,,Global,,,,,news,
+https://www.4coffshore.com,,Global,,,,,news,
+https://balticwind.eu,,EU,,,,,news,
+https://www.windfair.net,,EU,,,,,news,
+https://www.offshorewindindustry.com,,Global,,,,,news,
+https://wab.net,,EU,,,,,news,
+https://www.windenergyhamburg.com,,EU,,,,,news,
+https://www.scottishrenewables.com,,UK,,,,,news,
+https://www.windsystemsmag.com,,Global,,,,,news,
+https://www.windpowerengineering.com,,US,,,,,news,
+https://windeurope.org/news/,,EU,,,,,news,
+https://gwec.net/news,,Global,,,,,news,
+https://cleanpower.org/news,,US,,,,,news,
+https://www.oedigital.com/wind,,Global,,,,,news,
+https://www.marinelink.com/,,Global,,,,,news,
+https://www.gwec.net/news,,Global,,,,,news,
+https://www.winddaily.com,,Global,,,,,news,
+https://www.offshorewindasia.com,,APAC,,,,,news,
+https://jwpa.jp/en/information/,,Japan,,,,,news,
+https://www.kweia.or.kr,,Korea,,,,,news,
+https://www.iberdrola.com/press-room,,EU / Global,,,,,news,
+https://group.vattenfall.com/press-and-media,,EU,,,,,news,
+https://orsted.com/en/media/news,,Global,,,,,news,
+https://www.rwe.com/en/press,,Global,,,,,news,
+https://www.equinor.com/news,,Global,,,,,news,
+https://www.sserenewables.com/news-and-views/,,EU,,,,,news,
+https://www.oceanwinds.com/news-articles/,,Global,,,,,news,
+https://parkwind.eu/news,,EU,,,,,news,
+https://www.skybornrenewables.com/newsroom,,Global,,,,,news,
+https://www.northlandpower.com/en/news/press-release/northland-power-announces-its-fourth-quarter-2025-financial-results-release-date-and-provides-earnin.aspx,,Global,,,,,news,
+https://www.pv-tech.org,,Global,,,,,news,
+https://www.pv-magazine.com,,Global,,,,,news,
+https://www.solarpowerportal.co.uk,,UK,,,,,news,
+https://www.solarthermalworld.org,,Global,,,,,news,
+https://www.solarplaza.com,,Global,,,,,news,
+https://solarquarter.com,,Global,,,,,news,
+https://solarenergyuk.org/news,,UK,,,,,news,
+https://www.pv-magazine.de,,EU,,,,,news,
+https://www.photovoltaik.eu,,EU,,,,,news,
+https://www.solarify.eu,,EU,,,,,news,
+https://www.solarpowereurope.org/news,,EU,,,,,news,
+https://www.seia.org/news,,US,,,,,news,
+https://pv-magazine-usa.com,,US,,,,,news,
+https://www.solarpowerworldonline.com,,US,,,,,news,
+https://solarbuildermag.com,,US,,,,,news,
+https://www.solarreviews.com/blog,,US,,,,,news,
+https://solarindustrymag.com,,US,,,,,news,
+https://www.solardaily.com,,Global,,,,,news,
+https://seia.org/news/,,US,,,,,news,
+https://www.energy-storage.news,,Global,,,,,news,
+https://www.ess-news.com,,Global,,,,,news,
+https://www.batterypoweronline.com,,Global,,,,,news,
+https://www.energystoragecanada.org/news-1/,,Canada,,,,,news,
+https://www.energystoragereport.info,,Global,,,,,news,
+https://batterytechonline.com,,Global,,,,,news,
+https://www.liionbatterynews.com,,Global,,,,,news,
+https://www.thebatterymagazine.com/tag/gridscalestorage/,,Global,,,,,news,
+https://energystorageeurope.eu/,,EU,,,,,news,
+https://energystoragecoalition.eu/news/,,Global,,,,,news,
+https://www.ldescouncil.com/news,,Global,,,,,news,
+https://www.catl.com/en/news,,Global,,,,,news,
+https://northvolt.com/news,,EU,,,,,news,
+https://www.panasonic.com/global/energy/news,,Global,,,,,news,
+https://www.wartsila.com/media/news,,Global,,,,,news,
+https://www.hydrogeninsight.com,,Global,,,,,news,
+https://www.h2-view.com,,Global,,,,,news,
+https://www.hydrogenfuelnews.com,,Global,,,,,news,
+https://hydrogeneurope.eu/news,,EU,,,,,news,
+https://www.clean-hydrogen.europa.eu/news,,EU,,,,,news,
+https://www.h2bulletin.com,,Global,,,,,news,
+https://www.hydrogenwire.com,,Global,,,,,news,
+https://fuelcellsworks.com,,Global,,,,,news,
+https://www.hydrogentechworld.com,,Global,,,,,news,
+https://www.ammoniaenergy.org/news,,Global,,,,,news,
+https://hydrogencouncil.com/news,,Global,,,,,news,
+https://www.airproducts.com/news,,Global,,,,,news,
+https://nelhydrogen.com/news,,Global,,,,,news,
+https://www.itm-power.com/news,,Global,,,,,news,
+https://utilityweek.co.uk,,,,,,,news,
+https://www.energylivenews.com,,,,,,,news,
+https://www.energymonitor.ai,,,,,,,news,
+https://www.eurelectric.org/news,,,,,,,news,
+https://www.tennet.eu/news,,,,,,,news,
+https://www.statnett.no/en/,,,,,,,news,
+https://www.nationalgrid.com/stories,,,,,,,news,
+https://eepower.com/news/category/smart-grid/#,,,,,,,news,
+https://www.tdworld.com,,,,,,,news,
+https://www.rtoinsider.com,,,,,,,news,
+https://www.transmissionhub.com,,,,,,,news,
+https://www.power-grid.com,,,,,,,news,
+https://www.entsoe.eu/news,,,,,,,news,
+https://www.entsog.eu/announcements,,,,,,,news,
+https://www.acer.europa.eu/news-and-events/news,,,,,,,news,
+https://www.ceer.eu/news,,,,,,,news,
+https://www.eurogas.org/news,,,,,,,news,
+https://www.eei.org/resources-and-media/Newsroom,,,,,,,news,
+https://www.caiso.com/news,,,,,,,news,
+https://www.elia.be/en/news,,,,,,,news,
+https://www.terna.it/en/media/news,,,,,,,news,
+https://www.ree.es/en/press-office,,,,,,,news,
+https://www.amprion.net/Presse/Pressemitteilungen/Presse%C3%BCbersicht_aktuell.html,,,,,,,news,
+https://www.50hertz.com/en/News,,,,,,,news,
+https://www.fingrid.fi/en/news/news/?pageSize=5&page=1&language=en,,,,,,,news,
+https://www.hydroreview.com,,,,,,,news,
+https://www.waterpowermagazine.com,,,,,,,news,
+https://www.hydropower-dams.com,,,,,,,news,
+https://www.oceanenergy-europe.eu/,,,,,,,news,
+https://orbitalmarine.com/news,,,,,,,news,
+https://minesto.com/news,,,,,,,news,
+https://verdantpower.com/news,,,,,,,news,
+https://www.hydropower.org/news,,,,,,,news,
+https://www.andritz.com/newsroom-en/newsletters,,,,,,,news,
+https://www.voith.com/corp-en/news-room.html,,,,,,,news,
+https://www.ge.com/news/hydropower,,,,,,,news,
+https://www.statkraft.com/newsroom,,,,,,,news,
+https://www.bchydro.com/news,,,,,,,news,
+https://edp.com/en/media/news,,,,,,,news,
+https://www.enel.com/media,,,,,,,news,
+https://bioenergyinternational.com,,,,,,,news,
+https://www.bioenergy-news.com,,,,,,,news,
+https://www.biogasworld.com/news,,,,,,,news,
+https://www.worldbiogasassociation.org/news,,,,,,,news,
+https://biomassmagazine.com,,,,,,,news,
+https://biofuelsdigest.com,,,,,,,news,
+https://advancedbiofuelsusa.info,,,,,,,news,
+https://ethanolproducer.com,,,,,,,news,
+https://biodieselmagazine.com,,,,,,,news,
+https://www.waste-to-energy.com/news,,,,,,,news,
+https://ethanolrfa.org/news,,,,,,,news,
+https://www.europeanbiogas.eu/news,,,,,,,news,
+https://www.drax.com/news,,,,,,,news,
+https://www.envivabiomass.com/news,,,,,,,news,
+https://www.neste.com/news,,,,,,,news,
+https://totalenergies.com/media/news,,,,,,,news,
+https://www.shell.com/media/news,,,,,,,news,
+https://www.bp.com/en/global/corporate/news,,,,,,,news,
+https://chevron.com/newsroom,,,,,,,news,
+https://www.repsol.com/en/press-room,,,,,,,news,
+https://www.thinkgeoenergy.com,,,,,,,news,
+https://www.egec.org/news,,,,,,,news,
+https://www.geothermal.org/news,,,,,,,news,
+https://www.geoexpro.com,,,,,,,news,
+https://geothermalrising.org/news,,,,,,,news,
+https://www.geothermal-energy.org/news,,,,,,,news,
+https://thinkgeoenergy.com/reports,,,,,,,news,
+https://www.isor.is/en/news,,,,,,,news,
+https://ormat.com/news,,,,,,,news,
+https://www.calpine.com/news,,,,,,,news,
+https://www.enelgreenpower.com/media,,,,,,,news,
+https://www.kengen.co.ke/news,,,,,,,news,
+https://pertamina.com/en/news,,,,,,,news,
+https://www.geopower-europe.com,,,,,,,news,
+https://www.geoheat.org/news,,,,,,,news,
+https://www.geodrillinginternational.com,,,,,,,news,
+https://www.geoenergyinsights.com,,,,,,,news,
+https://www.geoexchange.org/news,,,,,,,news,
+https://www.hotrockenergy.com/news,,,,,,,news,
+https://www.superhotrockenergy.com/news,,,,,,,news,
+https://www.iea.org/news,,,,,,,news,
+https://www.irena.org/newsroom,,,,,,,news,
+https://www.ren21.net/news,,,,,,,news,
+https://energy.ec.europa.eu/news,,,,,,,news,
+https://climate.ec.europa.eu/news,,,,,,,news,
+https://joint-research-centre.ec.europa.eu/news,,,,,,,news,
+https://www.eea.europa.eu/highlights,,,,,,,news,
+https://ember-climate.org/insights,,,,,,,news,
+https://www.bruegel.org/topic/energy,,,,,,,news,
+https://www.oxfordenergy.org/news,,,,,,,news,
+https://www.e3g.org/news,,,,,,,news,
+https://www.euractiv.com/energy,,,,,,,news,
+https://www.montelnews.com,,,,,,,news,
+https://www.endseurope.com,,,,,,,news,
+https://www.atlanticcouncil.org/energy,,,,,,,news,
+https://www.csis.org/programs/energy-security,,,,,,,news,
+https://www.brookings.edu/topic/energy,,,,,,,news,
+https://www.chathamhouse.org/topics/energy,,,,,,,news,
+https://www.iiss.org/topics/energy-security,,,,,,,news,
+https://energypolicytracker.org,,,,,,,news,
+https://www.climatepolicyinitiative.org/news,,,,,,,news,
+https://rmi.org/news,,,,,,,news,
+https://www.wri.org/news,,,,,,,news,
+https://www.globalccsinstitute.com/news,,,,,,,news,
+https://www.cleanenergycouncil.org.au/news,,,,,,,news,
+https://orsted.com/en/media/newsroom,,,,,,,news,
+https://www.vestas.com/en/media,,,,,,,news,
+https://www.siemensgamesa.com/en-int/newsroom,,,,,,,news,
+https://www.rwe.com/en/press,,,,,,,news,
+https://www.equinor.com/news,,,,,,,news,
+https://totalenergies.com/media,,,,,,,news,
+https://www.shell.com/media,,,,,,,news,
+https://www.bp.com/en/global/corporate/news,,,,,,,news,
+https://www.enel.com/media,,,,,,,news,
+https://www.edf.fr/en/newsroom,,,,,,,news,
+https://www.statkraft.com/media,,,,,,,news,
+https://www.hitachienergy.com/news,,,,,,,news,
+https://www.siemens-energy.com/news,,,,,,,news,
+https://www.ge.com/news/energy,,,,,,,news,
+https://www.subsea7.com/en/media/news,,,,,,,news,
+https://www.mcdermott.com/Newsroom,,,,,,,news,
+https://www.saipem.com/en/media/news,,,,,,,news,
+https://www.technipenergies.com/media,,,,,,,news,
+https://www.akersolutions.com/news,,,,,,,news,
+https://www.kbr.com/en/insights-news,,,,,,,news,
+https://www.petrofac.com/media/news,,,,,,,news,
+https://www.woodplc.com/news,,,,,,,news,
+https://www.worley.com/news,,,,,,,news,
+https://www.bechtel.com/newsroom,,,,,,,news,
+https://www.fluor.com/newsroom,,,,,,,news,
+https://www.jacobs.com/newsroom,,,,,,,news,
+https://www.samsungena.com/en/media,,,,,,,news,
+https://www.larsentoubro.com/media,,,,,,,news,
+https://boskalis.com/press,,,,,,,news,
+https://deme-group.com/news,,,,,,,news,
+https://www.rigzone.com,"Oil & Gas, Offshore Drilling, Subsea",Global,,,,,job_board,
+https://www.oilandgasjobsearch.com,"Oil & Gas, LNG, EPC",Global,,,,,job_board,
+https://www.energyjobline.com,"Energy, Renewables, Engineering",Global / EU,,,,,job_board,
+https://www.oilandgaspeople.com,"Oil & Gas, Offshore, Fabrication",Global,,,,,job_board,
+https://www.petroleumjobs.com,Oil & Gas Upstream / Downstream,Global,,,,,job_board,
+https://offshorejobvacancy.com/,"Offshore Oil & Gas, Marine",Global,,,,,job_board,
+https://www.subsea.org/jobs,"Subsea Engineering, ROV, SURF",Global,,,,,job_board,
+https://www.oiljobfinder.com/,"Pipelines, Midstream, LNG",Global,,,,,job_board,
+https://www.greenjobs.net,"Renewables, Environment, Sustainability",Global,,,,,job_board,
+https://www.offshorewindjobs.com,Offshore Wind Installation,Global,,,,,job_board,
+https://www.solarjobsuk.com/,"Solar PV, EPC, O&M",Global,,,,,job_board,
+https://h2-jobs.com/jobs/,"Hydrogen Production, Electrolyzers",Global,,,,,job_board,
+https://www.constructionjobs.com,"Construction, EPC, Infrastructure",Global,,,,,job_board,
+https://www.constructionjobboard.co.uk,"Construction, Civil, Energy",UK / EU,,,,,job_board,
+https://www.roadtechs.com,"Power Plants, Nuclear, Industrial",USA / Global,,,,,job_board,
+https://www.oilgasvacancy.com/jobs/,Oil & Gas EPC,Global,,,,,job_board,
+https://www.maritimejobs.com,"Maritime, Offshore",Global,,,,,job_board,
+https://www.seajobs.ru,"Maritime, Offshore",Global,,,,,job_board,
+https://www.totaljobs.com,"Energy, Construction",UK / EU,,,,,job_board,
+https://www.cv-library.co.uk,"Engineering, Industrial",UK / EU,,,,,job_board,
+https://www.jobsite.co.uk,"Engineering, Offshore",UK,,,,,job_board,
+https://www.eurojobs.com,Multi-sector incl. Energy,Europe,,,,,job_board,
+https://www.learn4good.com/jobs,"Engineering, Energy",Europe,,,,,job_board,
+https://www.finn.no/job,"Oil & Gas, Offshore Wind",Norway,,,,,job_board,
+https://www.nav.no,"Energy, Industrial",Norway,,,,,job_board,
+https://www.offshore.no/jobs,Offshore Energy,Norway,,,,,job_board,
+https://www.workindenmark.dk,"Wind, Manufacturing",Denmark,,,,,job_board,
+https://www.jobindex.dk,"Engineering, Energy",Denmark,,,,,job_board,
+https://www.teknikjobb.se,"Engineering, Renewables",Sweden,,,,,job_board,
+https://www.arbetsformedlingen.se,"Industrial, Energy",Sweden,,,,,job_board,
+https://www.duunitori.fi,"Energy, Engineering",Finland,,,,,job_board,
+https://www.mol.fi,"Industrial, Energy",Finland,,,,,job_board,
+https://www.fieldengineer.com,"Field Service, Energy Tech",Global,,,,,job_board,
+https://www.peopleperhour.com,Freelance Engineering,Global,,,,,job_board,
+https://www.resume-library.com,Engineering CVs,Global,,,,,job_board,
+https://www.postjobfree.com,Industrial CVs,Global,,,,,job_board,
+https://www.jobvertise.com,Engineering Resumes,Global,,,,,job_board,
+https://www.climatebase.org,"Climate Tech, Carbon",Global,,,,,job_board,
+https://terra.do/climate-jobs,"Climate, Transition",Global,,,,,job_board,
+https://www.environmentjob.co.uk,"Environment, Renewables",UK / EU,,,,,job_board,
+https://www.sustainabilityjobs.co.uk,"ESG, Net Zero",UK,,,,,job_board,
+https://ec.europa.eu/info/funding-tenders/opportunities/portal/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,EU Funding & Tenders Portal,,World Bank procurement notices portal,,tender,
+https://ted.europa.eu/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Tenders Electronic Daily (TED),,UN common procurement portal,,tender,
+https://simap.ted.europa.eu/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,SIMAP (EU public procurement info),,UNDP procurement notices,,tender,
+https://data.europa.eu/data/datasets/ted-csv,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,EU Open Data (TED CSV dataset),,UNOPS opportunities,,tender,
+https://cordis.europa.eu/,Renewable Energy;Hydrogen;Grid / Transmission;Solar (Utility-scale);Offshore Wind;Onshore Wind,Europe,CORDIS (EU R&I projects),,ADB opportunities,,tender,
+https://www.eib.org/en/projects/procurement/index.htm,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,European Investment Bank Procurement,,AfDB procurement,,tender,
+https://www.bbg.gv.at/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Austria Federal Procurement Agency,,EBRD procurement,,tender,
+https://www.publicprocurement.be/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Belgium Federal Public Procurement Portal,,IDB procurement,,tender,
+https://pouvoirs-locaux.brussels/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Belgium Brussels Region Procurement,,OECD procurement,,tender,
+https://overheid.vlaanderen.be/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Belgium Flanders Procurement Guidance,,EU official tender notices (OJEU supplement),,tender,
+https://marchespublics.wallonie.be/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Belgium Wallonia Public Procurement,,EU calls / grants / procurement,,tender,
+https://www2.aop.bg/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Bulgaria Public Procurement Portal,,Scottish public contracts,,tender,
+https://www.javnanabava.hr/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Croatia Public Procurement Portal,,Welsh public sector opportunities,,tender,
+https://www.eprocurement.gov.cy/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Cyprus eProcurement,,NI public sector tenders,,tender,
+https://portal-vz.cz/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Czechia Public Procurement Portal,,Irish public procurement,,tender,
+https://www.rahandusministeerium.ee/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Estonia Public Procurement (Ministry of Finance),,Danish public procurement,,tender,
+https://www.hankinnat.fi/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Finland Procurement Advisory (Hankinnat),,Norwegian public procurement,,tender,
+https://www.marches-publics.gouv.fr/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,France MarchÃ©s Publics,,Commercial portal commonly used for Swedish tenders,,tender,
+https://www.boamp.fr/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,France BOAMP,,Finnish procurement notices,,tender,
+https://www.evergabe-online.de/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Germany eVergabe Online,,Dutch public procurement,,tender,
+https://www.promitheus.gov.gr/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Greece Promitheus (ESIDIS),,Belgian public procurement,,tender,
+https://www.kozbeszerzes.hu/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Hungary Public Procurement Authority,,French official bulletin,,tender,
+https://www.etenders.gov.ie/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Ireland eTenders,,Commercial tender portal for France,,tender,
+https://www.acquistinretepa.it/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Italy Acquisti in Rete (MePA),,Spanish public procurement platform,,tender,
+https://www.consip.it/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Italy Consip,,ANAC portal (procurement oversight; links to systems),,tender,
+https://www.serviziocontrattipubblici.it/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Italy Servizio Contratti Pubblici,,German federal announcements portal,,tender,
+https://www.iub.gov.lv/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Latvia Procurement Monitoring Bureau,,Commercial tender portal,,tender,
+https://vpt.lrv.lt/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Lithuania Public Procurement Office,,Austrian business service portal (tender search),,tender,
+https://cvpp.eviesiejipirkimai.lt/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Lithuania CVPP eProcurement,,Swiss public procurement,,tender,
+https://marches.public.lu/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Luxembourg Public Procurement,,Supplier and procurement info,,tender,
+https://contracts.gov.mt/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Malta Department of Contracts,,Supplier info / procurement,,tender,
+https://www.tenderned.nl/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Netherlands TenderNed,,Procurement info,,tender,
+https://www.pianoo.nl/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Netherlands PIANOo,,Procurement info,,tender,
+https://www.uzp.gov.pl/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Poland Public Procurement Office,,Supplier info,,tender,
+https://www.base.gov.pt/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Portugal BASE Public Contracts,,Supplier info,,tender,
+https://www.e-licitatie.ro/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Romania e-Licitatie (SICAP),,Supplier info,,tender,
+https://achizitiipublice.gov.ro/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Romania AchizitiiPublice Portal,,Supplier info,,tender,
+https://www.uvo.gov.sk/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Slovakia Office for Public Procurement,,Supplier info,,tender,
+https://www.enarocanje.si/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Slovenia eNaroÄ_x008d_anje,,Supplier info,,tender,
+https://ejn.gov.si/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Slovenia EJ NaroÄ_x008d_anje,,Supplier info,,tender,
+https://contrataciondelestado.es/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Spain Public Sector Contracting Platform,,Supplier / partner info,,tender,
+https://www.upphandlingsmyndigheten.se/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Sweden Public Procurement Agency,,Procurement info,,tender,
+https://www.udbud.dk/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Denmark Udbud.dk,,Supplier portal entry,,tender,
+https://www.doffin.no/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Norway DOFFIN,,Supplier info,,tender,
+https://www.anskaffelser.no/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Norway Anskaffelser guidance,,Supplier resources,,tender,
+https://www.simap.ch/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Switzerland SIMAP,,Supplier info,,tender,
+https://www.find-tender.service.gov.uk/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,United Kingdom Find a Tender,,Supplier info,,tender,
+https://www.contractsfinder.service.gov.uk/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,United Kingdom Contracts Finder,,Supplier / procurement portal,,tender,
+https://www.publiccontractsscotland.gov.uk/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Scotland Public Contracts Scotland,,Supplier info,,tender,
+https://www.sell2wales.gov.wales/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Wales Sell2Wales,,Supplier info,,tender,
+https://etendersni.gov.uk/epps/home.do,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Northern Ireland eTendersNI,,Supplier info,,tender,
+https://www.achilles.com/community/achilles-jqs/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Achilles JQS (Energy / Utilities vendor qualification),,Supplier info,,tender,private
+https://www.4coffshore.com/tenders/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,4C Offshore Tenders,,Vendor registration,,tender,mixed
+https://www.offshorewind.biz/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,OffshoreWind.biz,,Supplier info,,tender,mixed
+https://www.offshore-energy.biz/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Offshore Energy Biz,,Supplier info,,tender,mixed
+https://www.rigzone.com/tenders/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Rigzone Tenders,,Supplier info,,tender,mixed
+https://www.dgmarket.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,DGMarket,,Supplier info,,tender,mixed
+https://www.devbusiness.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,UN Development Business,,Supplier resources,,tender,mixed
+https://cinea.ec.europa.eu/life_en,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,EU LIFE Programme (CINEA),,Supplier resources,,tender,mixed
+https://cinea.ec.europa.eu/connecting-europe-facility_en,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,CEF Energy (CINEA),,Company portal (tenders via procurement area),,tender,mixed
+https://procurement.gov.ae/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,UAE Federal Procurement,,Company portal (tenders via procurement area),,tender,mixed
+https://www.moccae.gov.ae/en/tenders.aspx,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,MOCCAE Tenders,,Supplier portal entry,,tender,mixed
+https://www.dewa.gov.ae/en/supplier-registration,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,DEWA Supplier Registration,,Supplier info,,tender,mixed
+https://www.etihadwe.ae/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,EtihadWE (formerly FEWA) Procurement,,Company portal (supplier/procurement areas),,tender,mixed
+https://www.sewa.gov.ae/en/tenders,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,SEWA Tenders,,Supplier info,,tender,mixed
+https://www.ewec.ae/en/business/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,EWEC Procurement,,Company portal,,tender,mixed
+https://masdar.ae/en/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Masdar Suppliers,,Company portal,,tender,mixed
+https://www.adnoc.ae/en/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,ADNOC Suppliers,,Company portal,,tender,mixed
+https://supplier.adnoc.ae/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,ADNOC Supplier Portal,,Company portal,,tender,mixed
+https://www.enoc.com/en/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,ENOC Procurement,,Company portal,,tender,mixed
+https://www.dpworld.com/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,DP World Procurement (Suppliers),,Company portal,,tender,mixed
+https://sam.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,SAM.gov,,Company portal,,tender,
+https://www.grants.gov/,Renewable Energy;Hydrogen;Grid / Transmission;Infrastructure & Energy Services,Europe,Grants.gov,,Company portal,,tender,
+https://www.energy.gov/eere/funding,Renewable Energy;Hydrogen;Grid / Transmission;Solar (Utility-scale);Offshore Wind;Onshore Wind,Europe,DOE EERE Funding,,Supplier discovery / opportunities (Ariba Network),,tender,
+https://arpa-e.energy.gov/funding,Renewable Energy;Hydrogen;Grid / Transmission,Europe,ARPAâ€‘E Funding,,Coupa supplier portal entry,,tender,
+https://www.boem.gov/renewable-energy,Offshore Wind;Marine & Offshore Construction;Grid / Transmission,Europe,BOEM Renewable Energy,,Procurement platform vendor,,tender,
+https://purchasing.alabama.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Alabama State Procurement,,Procurement platform vendor,,tender,
+http://doa.alaska.gov/oppm/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Alaska State Procurement,,Procurement suite vendor,,tender,
+https://spo.az.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Arizona State Procurement,,Procurement suite vendor,,tender,
+https://www.transform.ar.gov/procurement/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Arkansas State Procurement,,Enterprise procurement tooling (landing),,tender,
+https://www.dgs.ca.gov/PD,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,California State Procurement,,Tender service provider,,tender,
+https://osc.colorado.gov/spco,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Colorado State Procurement,,Procurement / spend management,,tender,
+https://portal.ct.gov/DAS/Services/For-Agencies-and-Municipalities/Procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Connecticut State Procurement,,eProcurement / eInvoicing,,tender,
+https://www.bidcondocs.delaware.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Delaware State Procurement,,B2B procurement network,,tender,
+https://www.dms.myflorida.com/business_operations/state_purchasing,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Florida State Procurement,,Gov procurement suite (vendor),,tender,
+https://doas.ga.gov/state-purchasing,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Georgia State Procurement,,eProcurement platform,,tender,
+https://spo.hawaii.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Hawaii State Procurement,,Tender aggregation / notifications,,tender,
+https://purchasing.idaho.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Idaho State Procurement,,US federal contract opportunities,,tender,
+https://www2.illinois.gov/cms/business/procurement/Pages/default.aspx,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Illinois State Procurement,,Federal procurement portal,,tender,
+https://www.in.gov/idoa/procurement/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Indiana State Procurement,,Legacy procurement info portal,,tender,
+https://das.iowa.gov/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Iowa State Procurement,,Australian Government tender system,,tender,
+https://admin.ks.gov/offices/procurement-and-contracts,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Kansas State Procurement,,Government Electronic Tenders Service,,tender,
+https://finance.ky.gov/office-of-the-controller/office-of-procurement-services/Pages/default.aspx,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Kentucky State Procurement,,Government Electronic Business portal,,tender,
+https://www.doa.la.gov/doa/osp/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Louisiana State Procurement,,Supplier info,,tender,
+https://www.maine.gov/dafs/bbm/procurementservices/home,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Maine State Procurement,,Supplier info,,tender,
+https://procurement.maryland.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Maryland State Procurement,,Supplier info,,tender,
+https://www.mass.gov/orgs/operational-services-division,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Massachusetts State Procurement,,Company portal,,tender,
+"https://www.michigan.gov/dtmb/0,5552,7-358-82550_85746---,00.html",Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Michigan State Procurement,,Company portal,,tender,
+http://www.mmd.admin.state.mn.us/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Minnesota State Procurement,,Company portal,,tender,
+https://www.dfa.ms.gov/procurement-contracts,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Mississippi State Procurement,,Company portal,,tender,
+https://oa.mo.gov/purchasing,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Missouri State Procurement,,Company portal,,tender,
+https://spb.mt.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Montana State Procurement,,Company portal,,tender,
+https://das.nebraska.gov/materiel/purchasing.html,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Nebraska State Procurement,,Company portal,,tender,
+https://purchasing.nv.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Nevada State Procurement,,Company portal,,tender,
+https://das.nh.gov/purchasing/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,New Hampshire State Procurement,,Company portal,,tender,
+https://www.nj.gov/treasury/purchase/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,New Jersey State Procurement,,Company portal,,tender,
+https://www.generalservices.state.nm.us/statepurchasing/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,New Mexico State Procurement,,Company portal,,tender,
+https://ogs.ny.gov/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,New York State Procurement,,Company portal,,tender,
+https://ncadmin.nc.gov/government-agencies/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,North Carolina State Procurement,,Company portal,,tender,
+https://www.omb.nd.gov/doing-business-state/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,North Dakota State Procurement,,Company portal,,tender,
+https://procure.ohio.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Ohio State Procurement,,Company portal,,tender,
+https://oklahoma.gov/omes/services/purchasing.html,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Oklahoma State Procurement,,Company portal,,tender,
+https://www.oregon.gov/das/procurement/pages/index.aspx,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Oregon State Procurement,,Company portal,,tender,
+https://www.dgs.pa.gov/Materials-Services-Procurement/Pages/default.aspx,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Pennsylvania State Procurement,,Company portal,,tender,
+https://www.ridop.ri.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Rhode Island State Procurement,,Company portal,,tender,
+https://procurement.sc.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,South Carolina State Procurement,,Company portal,,tender,
+https://bureaufinanceadmin.sd.gov/procurement/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,South Dakota State Procurement,,Company portal,,tender,
+https://www.tn.gov/generalservices/procurement.html,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Tennessee State Procurement,,Company portal,,tender,
+https://comptroller.texas.gov/purchasing/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Texas State Procurement,,Company portal,,tender,
+https://purchasing.utah.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Utah State Procurement,,Company portal,,tender,
+https://bgs.vermont.gov/purchasing,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Vermont State Procurement,,Company portal,,tender,
+https://dgs.virginia.gov/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Virginia State Procurement,,Company portal,,tender,
+https://des.wa.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Washington State Procurement,,Company portal,,tender,
+https://www.state.wv.us/admin/purchase/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,West Virginia State Procurement,,Company portal,,tender,
+https://doa.wi.gov/Pages/StateEmployees/Procurement.aspx,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Wisconsin State Procurement,,Company portal,,tender,
+https://ai.wyo.gov/divisions/general-services/purchasing,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Wyoming State Procurement,,Company portal,,tender,
+https://www.nyc.gov/site/mocs/business/passport.page,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,NYC PASSPort,,Company portal,,tender,
+https://a856-citystore.nyc.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,NYC Procurement & Sourcing Solutions Portal,,Association site (standards/events),,tender,
+https://ramp.lacity.org/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,LA RAMP (Los Angeles),,,,tender,
+https://www.chicago.gov/city/en/depts/dps/provdrs/contracting.html,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Chicago iSupplier / Procurement,,,,tender,
+https://www.houstontx.gov/adminservices/procurement/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Houston Procurement,,,,tender,
+https://sfcitypartner.sfgov.org/pages/index.aspx,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,SF City Purchaser,,,,tender,
+https://www.seattle.gov/city-finance/purchasing-and-contracting,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Seattle Procurement,,,,tender,
+https://www.panynj.gov/procurement/en/index.html,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Port Authority of NY & NJ Procurement,,,,tender,
+https://new.mta.info/doing-business-with-us/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,MTA Procurement (NY),,,,tender,
+https://www.wmata.com/business/procurement/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,WMATA Procurement (DC),,,,tender,
+https://dot.ca.gov/programs/procurement-and-contracts,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Caltrans Procurement,,,,tender,
+https://www.usace.army.mil/Business-With-Us/Contracting/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,USACE Contracting,,,,tender,
+https://www.ebuy.gsa.gov/ebuy/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,GSA eBuy,,,,tender,
+https://www.fedconnect.net/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,FedConnect,,,,tender,
+https://canadabuys.canada.ca/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,CanadaBuys (federal procurement),,,,tender,
+https://buyandsell.gc.ca/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Buyandsell.gc.ca (legacy federal portal),,,,tender,
+https://www.merx.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,MERX (Canada bids),,,,tender,private
+https://purchasing.alberta.ca/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Alberta Purchasing Connection,,,,tender,
+https://www.bcbid.gov.bc.ca/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,BC Bid,,,,tender,
+https://www.sasktenders.ca/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,SaskTenders,,,,tender,
+https://www.gov.mb.ca/tenders/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Manitoba Tenders,,,,tender,
+https://ontariotenders.app.jaggaer.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Ontario Tenders Portal,,,,tender,
+https://www.seao.ca/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Quebec SEAO,,,,tender,
+https://procurement.novascotia.ca/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Nova Scotia Procurement,,,,tender,
+https://www.gnb.ca/0012/opportunities/index-e.asp,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,New Brunswick Opportunities Network,,,,tender,
+https://www.gov.nl.ca/fin/psb/procurement/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Newfoundland & Labrador Procurement,,,,tender,
+https://www.princeedwardisland.ca/en/topic/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,PEI Procurement,,,,tender,
+https://yukon.ca/en/tendering,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Yukon Tendering,,,,tender,
+https://www.contractregistry.nt.ca/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Northwest Territories Contracts,,,,tender,
+https://tenders.gov.nu.ca/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Nunavut Tenders,,,,tender,
+https://www.biddingo.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Biddingo,,,,tender,private
+https://projects.worldbank.org/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,World Bank Projects & Procurement,,,,tender,mixed
+https://www.ebrd.com/work-with-us/procurement.html,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,EBRD Procurement,,,,tender,mixed
+https://www.adb.org/work-with-us/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,ADB Procurement,,,,tender,mixed
+https://www.afdb.org/en/projects-and-operations/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,African Development Bank Procurement,,,,tender,mixed
+https://www.un.org/Depts/ptd/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,UN Procurement Division,,,,tender,mixed
+https://www.pjm.com/suppliers,Grid / Transmission;Infrastructure & Energy Services,Europe,PJM Suppliers,,,,tender,private
+https://www.nyiso.com/procurement,Grid / Transmission;Infrastructure & Energy Services,Europe,NYISO Procurement,,,,tender,private
+https://www.caiso.com/Pages/About/CorporateProcurement.aspx,Grid / Transmission;Infrastructure & Energy Services,Europe,CAISO Procurement,,,,tender,private
+https://www.ercot.com/about/governance/procurement,Grid / Transmission;Infrastructure & Energy Services,Europe,ERCOT Procurement,,,,tender,private
+https://www.iso-ne.com/company-information/iso-procurement/,Grid / Transmission;Infrastructure & Energy Services,Europe,ISO New England Procurement,,,,tender,private
+https://www.misoenergy.org/about-miso/suppliers/,Grid / Transmission;Infrastructure & Energy Services,Europe,MISO Suppliers,,,,tender,private
+https://www.spp.org/about-us/careers-procurement/,Grid / Transmission;Infrastructure & Energy Services,Europe,SPP Procurement,,,,tender,private
+https://gobonfire.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Bonfire eProcurement,,,,tender,private
+https://www.bidnetdirect.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,BidNet Direct,,,,tender,private
+https://www.deltek.com/en/products/government-contracting-solutions/govwin-iq,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,GovWin (Deltek),,,,tender,private
+https://service.ariba.com/Discovery.aw,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,SAP Ariba Discovery,,,,tender,private
+https://www.jaggaer.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Jaggaer Supplier Network,,,,tender,private
+https://www.coupa.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Coupa Supplier Portal,,,,tender,private
+https://www.mercell.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Mercell (Nordics/EU),,,,tender,private
+https://www.tendersontime.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,TendersOnTime,,,,tender,private
+https://www.tendersinfo.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,TendersInfo,,,,tender,private
+https://www.tendernews.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,TenderNews,,,,tender,private
+https://www.globaltenders.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,GlobalTenders,,,,tender,private
+https://www.proactis.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Proactis eSourcing,,,,tender,private
+https://in-tend.co.uk/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,In-Tend eProcurement,,,,tender,private
+https://www.due-north.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Due North eTenders,,,,tender,private
+https://atamis.co.uk/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Atamis Procurement,,,,tender,private
+https://www.jaggaer.com/bravosolution/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,BravoSolution (legacy),,,,tender,private
+https://www.mercell.com/en/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Mercell Tender Offers,,,,tender,private
+https://www.kommunen.dk/udbud,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,KommuneNyheder udbud (DK),,,,tender,private
+https://www.publicprocurement.be/publication-workspaces,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Belgium e-Notification,,,,tender,
+https://www.bund.de/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Germany Bund.de,,,,tender,
+https://www.place.gouv.fr/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,France PLACE,,,,tender,
+https://www.aanbestedingskalender.nl/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Netherlands Aanbestedingskalender,,,,tender,
+https://www.ski.dk/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Denmark SKI (State and Municipal Purchasing Service),,,,tender,
+https://www.hankintailmoitukset.fi/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Finland HILMA,,,,tender,
+https://www.e-avrop.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Sweden e-Avrop,,,,tender,
+https://www.mercell.com/no/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Norway Mercell eTendering (public sector),,,,tender,
+https://www.utbod.is/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Iceland Procurement,,,,tender,
+https://www.llv.li/#/search?category=publicProcurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Liechtenstein Public Procurement,,,,tender,
+https://portal.ujn.gov.rs/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Serbia Public Procurement Portal,,,,tender,
+https://www.ujn.gov.rs/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Serbia Public Procurement Office,,,,tender,
+https://www.ejn.gov.ba/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Bosnia and Herzegovina eProcurement,,,,tender,
+https://www.ujn.gov.me/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Montenegro Public Procurement,,,,tender,
+https://www.bjn.gov.mk/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,North Macedonia Public Procurement,,,,tender,
+https://www.app.gov.al/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Albania Public Procurement Agency,,,,tender,
+https://eojn.nn.hr/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Croatia EOJN (NN) Portal,,,,tender,
+https://nen.gov.cz/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Czech NEN,,,,tender,
+https://www.isepvo.sk/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Slovakia EVO,,,,tender,
+https://ezamowienia.gov.pl/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Poland eZamowienia,,,,tender,
+https://www.vortal.biz/en/vortalgov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Portugal VortalGov,,,,tender,
+https://contrataciondelestado.es/wps/portal/plataforma,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Spain PLACE,,,,tender,
+https://www.anticorruzione.it/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Italy ANAC,,,,tender,
+https://etenders.gov.ie/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Ireland eTenders (main),,,,tender,
+https://toronto.bonfirehub.ca/portal,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,City of Toronto SAP Ariba (Biddingo/Ariba),,,,tender,
+https://vancouver.bidsandtenders.ca/Module/Tenders/en,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,City of Vancouver Bid Opportunities,,,,tender,
+https://www.calgary.ca/business/purchasing.html,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,City of Calgary Purchasing,,,,tender,
+https://edmonton.bidsandtenders.ca/Module/Tenders/en,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,City of Edmonton Bids,,,,tender,
+https://montreal.ca/en/topics/calls-tenders,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,City of Montreal SEAO (notices),,,,tender,
+https://www.dubaifinance.gov.ae/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Dubai Government Procurement (Dubai Finance),,,,tender,mixed
+https://www.added.gov.ae/en,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Abu Dhabi Government Procurement,,,,tender,mixed
+https://www.dewa.gov.ae/en/about-us/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Dubai Electricity & Water Authority (DEWA) Tenders,,,,tender,mixed
+https://www.adports.ae/en/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Abu Dhabi Ports Suppliers,,,,tender,mixed
+https://www.nmdc-group.com/en/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,NMDC Suppliers,,,,tender,mixed
+https://www.boston.gov/departments/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,City of Boston Procurement,,,,tender,
+https://www.phila.gov/departments/procurement-department/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,City of Philadelphia Procurement,,,,tender,
+https://www.austintexas.gov/department/purchasing,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,City of Austin Purchasing,,,,tender,
+https://www.miamigov.com/Government/City-Departments/Procurement-Department,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,City of Miami Procurement,,,,tender,
+https://www.denvergov.org/Government/Agencies-Departments-Offices/Agencies-Departments-Offices-Directory/General-Services/Procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,City of Denver Procurement,,,,tender,
+https://www.phoenix.gov/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,City of Phoenix Procurement,,,,tender,
+https://www.sandiego.gov/purchasing,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,City of San Diego Purchasing,,,,tender,
+https://dallascityhall.com/departments/procurement-services/Pages/default.aspx,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,City of Dallas Procurement,,,,tender,
+https://www.atlantaga.gov/government/departments/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,City of Atlanta Procurement,,,,tender,
+https://www.portland.gov/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,City of Portland Procurement,,,,tender,
+https://www.ucop.edu/procurement-services/,Infrastructure & Energy Services;EPC Contractors;Renewable Energy,Europe,UCOP Procurement,,,,tender,
+https://www.utsystem.edu/offices/procurement,Infrastructure & Energy Services;EPC Contractors;Renewable Energy,Europe,University of Texas System Procurement,,,,tender,
+https://purchasing.psu.edu/,Infrastructure & Energy Services;EPC Contractors;Renewable Energy,Europe,Penn State Purchasing,,,,tender,
+https://procurement.umich.edu/,Infrastructure & Energy Services;EPC Contractors;Renewable Energy,Europe,University of Michigan Procurement,,,,tender,
+https://finance.uw.edu/ps/,Infrastructure & Energy Services;EPC Contractors;Renewable Energy,Europe,University of Washington Procurement,,,,tender,
+https://cfo.asu.edu/purchasing,Infrastructure & Energy Services;EPC Contractors;Renewable Energy,Europe,Arizona State University Purchasing,,,,tender,
+https://procurement.gatech.edu/,Infrastructure & Energy Services;EPC Contractors;Renewable Energy,Europe,Georgia Tech Procurement,,,,tender,
+https://www.finance.ucla.edu/purchasing,Infrastructure & Energy Services;EPC Contractors;Renewable Energy,Europe,UCLA Purchasing,,,,tender,
+https://fingate.stanford.edu/procurement,Infrastructure & Energy Services;EPC Contractors;Renewable Energy,Europe,Stanford Procurement,,,,tender,
+https://vpf.mit.edu/procurement,Infrastructure & Energy Services;EPC Contractors;Renewable Energy,Europe,MIT Procurement,,,,tender,
+https://www.hydroquebec.com/business/suppliers.html,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Hydro-QuÃ©bec Suppliers,,,,tender,mixed
+https://www.bchydro.com/suppliers.html,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,BC Hydro Suppliers,,,,tender,mixed
+https://www.hydroone.com/about/careers-and-suppliers/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Hydro One Procurement,,,,tender,mixed
+https://www.opg.com/suppliers/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Ontario Power Generation Suppliers,,,,tender,mixed
+https://www.saskpower.com/Procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,SaskPower Procurement,,,,tender,mixed
+https://www.hydro.mb.ca/suppliers/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Manitoba Hydro Suppliers,,,,tender,mixed
+https://www.nspower.ca/about-us/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Nova Scotia Power Procurement,,,,tender,mixed
+https://www.nbpower.com/en/about-us/suppliers/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,NB Power Suppliers,,,,tender,mixed
+https://www.nationalgridus.com/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,National Grid Suppliers (US),,,,tender,mixed
+https://www.duke-energy.com/our-company/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Duke Energy Suppliers,,,,tender,mixed
+https://www.nexteraenergy.com/company/suppliers.html,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,NextEra Energy Suppliers,,,,tender,mixed
+https://www.southerncompany.com/suppliers.html,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Southern Company Suppliers,,,,tender,mixed
+https://www.pge.com/en_US/about-pge/company-information/procurement/procurement.page,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,PG&E Supplier Diversity / Procurement,,,,tender,mixed
+https://www.sce.com/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,SCE Procurement,,,,tender,mixed
+https://www.sdge.com/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,SDG&E Suppliers,,,,tender,mixed
+https://www.nypa.gov/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,NYPA Procurement,,,,tender,mixed
+https://www.tva.com/business/doing-business-with-tva,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,TVA Procurement,,,,tender,mixed
+https://www.bpa.gov/about/who-we-are/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,BPA (Bonneville) Procurement,,,,tender,mixed
+https://www.ercot.com/about/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,ERCOT Market Participant / Procurement,,,,tender,mixed
+https://elibrary.ferc.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,FERC eLibrary (filings / projects),,,,tender,mixed
+https://www.etihadrail.ae/en/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Etihad Rail Tenders,,,,tender,mixed
+https://www.adac.ae/English/DoingBusinessWithUs/Pages/default.aspx,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Abu Dhabi Airports Procurement,,,,tender,mixed
+https://www.dubaiairports.ae/corporate/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Dubai Airports Procurement,,,,tender,mixed
+https://www.emiratessteelarkan.com/en/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Emirates Steel Arkan Suppliers,,,,tender,mixed
+https://www.ega.ae/en/suppliers/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Emirates Global Aluminium Suppliers,,,,tender,mixed
+https://www.dm.gov.ae/municipality-business/tenders/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Dubai Municipality Tenders,,,,tender,mixed
+https://www.tennet.eu/suppliers/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,TenneT Suppliers,,,,tender,mixed
+https://www.50hertz.com/en/Company/Suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,50Hertz Suppliers,,,,tender,mixed
+https://www.amprion.net/Suppliers/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Amprion Suppliers,,,,tender,mixed
+https://www.transnetbw.de/en/company/procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,TransnetBW Suppliers,,,,tender,mixed
+https://www.elia.be/en/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Elia Suppliers,,,,tender,mixed
+https://www.nationalgrid.com/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,National Grid (UK) Suppliers,,,,tender,mixed
+https://www.rte-france.com/en/working-with-us/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,RTE Suppliers,,,,tender,mixed
+https://www.terna.it/en/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Terna Suppliers,,,,tender,mixed
+https://www.ree.es/en/suppliers,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,REE Suppliers,,,,tender,mixed
+https://www.fingrid.fi/en/company/suppliers/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Fingrid Suppliers,,,,tender,mixed
+https://www.svk.se/en/about-us/procurement/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Svenska kraftnÃ¤t Suppliers,,,,tender,mixed
+https://en.energinet.dk/About-our-company/Procurement,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Energinet Suppliers,,,,tender,mixed
+https://www.statnett.no/en/about-statnett/procurement/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Statnett Suppliers,,,,tender,mixed
+https://www.eirgridgroup.com/the-grid/procurement/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,EirGrid Procurement,,,,tender,mixed
+https://www.nasa.gov/doing-business-with-nasa/procurement/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,NASA Procurement,,,,tender,
+https://www.doi.gov/pam/acquisition,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Department of the Interior Acquisition,,,,tender,
+https://www.epa.gov/contracts,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,EPA Contracting,,,,tender,
+https://www.transportation.gov/osdbu/procurement-assistance,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Department of Transportation OSDBU / Procurement,,,,tender,
+https://www.acq.osd.mil/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Department of Defense Contracting,,,,tender,
+https://about.usps.com/business/procurement.htm,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,USPS Supplier Portal,,,,tender,
+https://www.noaa.gov/organization/acquisition-and-grants,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,NOAA Acquisition,,,,tender,
+https://www.energy.gov/management/procurement-and-assistance-management,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Department of Energy Procurement,,,,tender,
+https://www.nih.gov/about-nih/what-we-do/nih-almanac/office-acquisition-management-policy,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,NIH Acquisition,,,,tender,
+https://www.state.gov/acquisition/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,US Department of State Procurement,,,,tender,
+https://www.tpsgc-pwgsc.gc.ca/app-acq/index-eng.html,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Public Services and Procurement Canada (PSPC),,,,tender,
+https://housing-infrastructure.canada.ca/index-eng.html,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Infrastructure Canada Funding,,,,tender,
+https://www.build.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,US Infrastructure Grants (Build.gov),,,,tender,
+https://cib-bic.ca/en/procurement/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Canada Infrastructure Bank Procurement,,,,tender,
+https://cinea.ec.europa.eu/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,"European Climate, Infrastructure and Environment Executive Agency (CINEA)",,,,tender,
+https://www.clean-hydrogen.europa.eu/funding_en,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Clean Hydrogen Partnership Calls,,,,tender,
+https://climate.ec.europa.eu/eu-action/funding-climate-action/innovation-fund_en,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,Innovation Fund (EU climate action funding),,,,tender,
+https://caleprocure.ca.gov/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,Europe,California eProcure (Cal eProcure),,,,tender,
+https://www.txsmartbuy.com/,Renewable Energy;Offshore Wind;Onshore Wind;Solar (Utility-scale);Hydrogen;Grid / Transmission;Oil & Gas (transition & maintenance);EPC Contractors;Marine & Offshore Construction;Fabrication Yards & Heavy Industry;Industrial Coatings & Corrosion Protection;Infrastructure & Energy Services,North America,Texas SmartBuy (TxSmartBuy),,,,tender,

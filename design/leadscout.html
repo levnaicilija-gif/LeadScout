@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LeadScout</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --rail:#0E1A2B; --rail-2:#16263B; --rail-ink:#C9D3E0; --rail-dim:#7D8BA0;
+    --bg:#F3F5F7; --panel:#FFFFFF; --ink:#141B26; --ink-2:#4F5966; --ink-3:#8590A0;
+    --line:#E3E7EC; --line-2:#EEF1F4;
+    --accent:#0F4C81; --accent-soft:#E6EFF7;
+    --ok:#1E7F4F; --ok-soft:#E3F2EA; --warn:#B7791F; --warn-soft:#FBF0DA; --bad:#B23A3A; --bad-soft:#F8E4E4;
+    --r:6px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "IBM Plex Sans",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+  button{font:inherit;color:inherit;cursor:pointer}
+  a{color:inherit}
+  .app{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
+
+  /* rail */
+  .rail{background:var(--rail);color:var(--rail-ink);padding:22px 16px;display:flex;flex-direction:column;gap:2px;position:sticky;top:0;height:100vh}
+  .brand{display:flex;align-items:center;gap:10px;padding:0 8px 22px}
+  .brand .mark{width:28px;height:28px;border-radius:6px;background:#fff;color:var(--rail);display:grid;place-items:center;font-weight:700;font-size:13px}
+  .brand b{color:#fff;font-weight:600;letter-spacing:.2px}
+  .rail .grp{font-size:11px;color:var(--rail-dim);padding:14px 10px 6px}
+  .rail button{display:flex;justify-content:space-between;align-items:center;width:100%;border:0;background:transparent;text-align:left;padding:8px 10px;border-radius:var(--r);color:var(--rail-ink)}
+  .rail button.on{background:var(--rail-2);color:#fff}
+  .rail button:hover:not(.on){background:rgba(255,255,255,.05)}
+  .rail .count{font-size:12px;color:var(--rail-dim)}
+  .rail button.on .count{color:#fff}
+  .rail .spacer{flex:1}
+  .rail button.dim{color:var(--rail-dim);font-size:13px}
+  .rail .who{font-size:12px;color:var(--rail-dim);padding:12px 10px 0;border-top:1px solid rgba(255,255,255,.08)}
+  .rail .who b{display:block;color:var(--rail-ink);font-weight:500}
+
+  /* main */
+  .main{padding:24px 32px 72px;min-width:0}
+  .top{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:18px}
+  h1{font-size:22px;font-weight:600;margin:0;letter-spacing:-.2px}
+  .top .date{color:var(--ink-3)}
+  .screen{display:none}.screen.on{display:block}
+  .btn{border:1px solid var(--line);background:var(--panel);padding:8px 13px;border-radius:var(--r);font-weight:500;white-space:nowrap}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.ghost{border-color:transparent;background:transparent;color:var(--accent)}
+  .btn:focus-visible,.rail button:focus-visible,tbody tr:focus-visible,.tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .note{color:var(--ink-3);font-size:12px;margin:10px 2px 0}
+  .kv{display:grid;grid-template-columns:130px 1fr;row-gap:7px;font-size:13px}
+  .kv span:nth-child(odd){color:var(--ink-3)}
+  .cell-ok{color:var(--ok)}.cell-warn{color:var(--warn)}.cell-bad{color:var(--bad)}
+  .st{display:inline-flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap}
+  .st::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ink-3)}
+  .st.ok::before{background:var(--ok)}.st.warn::before{background:var(--warn)}.st.bad::before{background:var(--bad)}
+  .tag{display:inline-block;font-size:12px;padding:2px 7px;border-radius:4px;background:var(--line-2);color:var(--ink-2);margin:0 4px 4px 0}
+  .src{font-size:12px;color:var(--ink-3);white-space:nowrap}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:var(--r)}
+  .box .hd{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  .box .hd b{font-weight:600}.box .hd span{font-size:12px;color:var(--ink-3)}
+
+  /* tables */
+  .tbl{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:auto}
+  table{width:100%;border-collapse:collapse}
+  th{position:sticky;top:0;background:var(--panel);z-index:1;text-align:left;font-weight:500;font-size:12px;color:var(--ink-3);padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:11px 14px;border-bottom:1px solid var(--line-2);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  tbody tr{cursor:pointer}tbody tr:hover td{background:#F9FAFB}
+  tbody tr.sel td{background:var(--accent-soft)}
+  td .co{font-weight:500;white-space:nowrap}td .sub{color:var(--ink-3);font-size:12px;margin-top:2px}
+  .icons{display:inline-flex;gap:6px;vertical-align:middle;margin-left:6px}
+  .icons a{width:20px;height:20px;border-radius:4px;border:1px solid var(--line);display:grid;place-items:center;font-size:10px;font-weight:600;color:var(--ink-2);text-decoration:none}
+  .icons a:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* horizon — when the work starts */
+  .hz{position:relative;height:30px;width:170px}
+  .hz .axis{position:absolute;left:0;right:0;top:8px;height:1px;background:var(--line)}
+  .hz .tick{position:absolute;top:16px;font-size:10px;color:var(--ink-3);white-space:nowrap}
+  .hz .bar{position:absolute;top:5px;height:7px;border-radius:4px;background:var(--accent)}
+  .hz .bar.warn{background:var(--warn)}.hz .bar.dim{background:#C7CED8}
+  .hz .now{position:absolute;top:1px;width:1px;height:15px;background:var(--ink)}
+
+  /* today */
+  .today{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px}
+  .tl{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:6px 0}
+  .tl li{display:grid;grid-template-columns:64px 18px 1fr auto;gap:0 14px;align-items:start;padding:14px 20px;position:relative}
+  .tl ol{list-style:none;margin:0;padding:0}
+  .tl li+li::before{content:"";position:absolute;left:98px;top:-10px;height:14px;width:1px;background:var(--line)}
+  .tl .t{font-size:12px;color:var(--ink-3);padding-top:2px}
+  .tl .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);margin-top:5px;box-shadow:0 0 0 3px var(--accent-soft)}
+  .tl .dot.warn{background:var(--warn);box-shadow:0 0 0 3px var(--warn-soft)}
+  .tl .dot.bad{background:var(--bad);box-shadow:0 0 0 3px var(--bad-soft)}
+  .tl b{display:block;font-weight:500}.tl small{display:block;color:var(--ink-3);font-size:12px;margin-top:2px}
+  .tl li.titem{cursor:pointer}.tl li.titem:hover{background:#FAFBFC}
+  .tdetail{grid-column:3/-1;display:none;margin-top:10px;border-top:1px solid var(--line-2);padding-top:12px;font-size:13px;line-height:1.55}
+  .tl li.open .tdetail{display:block}
+  .tdetail .row{display:grid;grid-template-columns:90px 1fr;gap:8px 12px}
+  .tdetail .row>span:nth-child(odd){color:var(--ink-3)}
+  .tdetail ol{margin:0;padding-left:18px;list-style:decimal}.tdetail ol li{display:list-item;padding:0 0 4px;grid-template-columns:none}
+  .tdetail ol li::before{display:none}
+  .tl li.open .dot{box-shadow:0 0 0 3px var(--accent-soft),0 0 0 5px var(--accent)}
+  .stat.sitem{cursor:pointer;grid-template-columns:auto 1fr;position:relative}
+  .stat.sitem:hover{border-color:#B9C4D2}
+  .sdetail{display:none;grid-column:1/-1;margin-top:10px;padding-top:10px;border-top:1px solid var(--line-2);font-size:12.5px;line-height:1.5;color:var(--ink-2)}
+  .stat.open .sdetail{display:block}
+  .sdetail ul{margin:0 0 6px;padding-left:16px}.sdetail li{margin-bottom:4px}
+  .stat .sdetail b,.stat.bad .sdetail b,.stat.ok .sdetail b{font-size:12.5px;font-weight:600;min-width:0;color:var(--ink);line-height:inherit;display:inline}
+  .sdetail small{display:block;color:var(--ink-3);margin-top:6px}.sdetail a{color:var(--accent)}
+  .stats{display:flex;flex-direction:column;gap:10px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center}
+  .stat b{font-size:26px;font-weight:600;line-height:1;min-width:44px}.stat span{font-size:12px;color:var(--ink-3)}
+  .stat.bad b{color:var(--bad)}.stat.ok b{color:var(--ok)}
+  .week{background:var(--rail);color:var(--rail-ink);border-radius:var(--r);padding:14px 16px}
+  .week b{color:#fff;font-weight:500;display:block}.week small{font-size:12px;color:var(--rail-dim);display:block;margin-top:2px}
+  .week .prog{display:flex;gap:4px;margin-top:12px}.week .prog i{flex:1;height:4px;border-radius:2px;background:rgba(255,255,255,.12)}
+  .week .prog i.d{background:var(--ok)}.week .prog i.n{background:#fff}
+
+  /* tabs + filters */
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:14px}
+  .tab{border:0;background:transparent;padding:8px 14px;color:var(--ink-3);border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tab.on{color:var(--ink);border-bottom-color:var(--ink);font-weight:500}
+  .tab .count{font-size:12px;margin-left:6px;color:var(--ink-3)}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+  .chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:5px 11px;font-size:13px;color:var(--ink-2)}
+  .chip.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+  .digest{font-size:15px;color:var(--ink-2);margin:0 0 14px;max-width:70ch}
+  .digest b{color:var(--ink);font-weight:600}
+  .pane{display:none}.pane.on{display:block}
+
+  /* drawer */
+  .drawer{position:fixed;top:0;right:0;height:100vh;width:min(500px,100vw);background:var(--panel);border-left:1px solid var(--line);transform:translateX(100%);transition:transform .22s ease;overflow:auto;padding:24px 26px 48px;z-index:10}
+  .drawer.open{transform:none;box-shadow:-16px 0 48px rgba(14,26,43,.12)}
+  .drawer .close{position:absolute;top:14px;right:14px;border:0;background:transparent;font-size:18px;color:var(--ink-3)}
+  .drawer h2{font-size:18px;font-weight:600;margin:0 0 2px}
+  .drawer .meta{color:var(--ink-3);font-size:13px;margin-bottom:16px}
+  .sec{margin-top:20px}.sec h3{font-size:12px;font-weight:500;color:var(--ink-3);margin:0 0 8px}
+  .quote{border-left:3px solid var(--accent);padding:8px 12px;background:var(--accent-soft);border-radius:0 var(--r) var(--r) 0}
+  .quote small{display:block;color:var(--ink-2);margin-top:6px;font-size:12px}
+  .person{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:grid;grid-template-columns:1fr auto;gap:10px}
+  .person b{font-weight:600;display:block}.person .role{color:var(--ink-2);font-size:13px}
+  .person .lines{margin-top:8px;font-size:13px;display:grid;row-gap:4px}
+  .person .lines em{font-style:normal;color:var(--ink-3);font-size:12px}
+  .people{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-top:8px}
+  .people div{display:grid;grid-template-columns:1fr auto;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line-2);font-size:13px;align-items:center}
+  .people div:last-child{border-bottom:0}
+  .people b{font-weight:500;display:block}.people small{color:var(--ink-3)}
+  .draft{border:1px solid var(--line);border-radius:var(--r);background:#FAFBFC;padding:12px 14px;font-size:13px;line-height:1.55}
+  .draft .subj{font-weight:500;margin-bottom:6px}
+  .draft .why{margin-top:10px;font-size:12px;color:var(--ink-3);border-top:1px dashed var(--line);padding-top:8px}
+  .tools{display:grid;gap:6px}
+  .tool{text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:var(--r);padding:9px 12px;display:grid;gap:2px}
+  .tool.on{border-color:var(--accent);background:var(--accent-soft)}
+  .tool b{font-weight:500}.tool small{color:var(--ink-3);font-size:12px}
+  .toolpane{display:none;margin-top:10px}.toolpane.on{display:block}
+  .qs{margin:0;padding-left:18px;font-size:13px}.qs li{margin-bottom:8px}.qs b{font-weight:500;display:block}.qs small{color:var(--ink-3);font-size:12px}
+  .btns{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+  .log li{display:grid;grid-template-columns:18px 1fr auto;gap:10px;align-items:start;padding:8px 10px;border:1px solid var(--line-2);border-radius:var(--r);opacity:0;animation:rise .35s ease forwards}
+  .log li:nth-child(1){animation-delay:.05s}.log li:nth-child(2){animation-delay:.45s}.log li:nth-child(3){animation-delay:.9s}.log li:nth-child(4){animation-delay:1.4s}.log li:nth-child(5){animation-delay:1.9s}
+  .log .dot{width:16px;height:16px;border-radius:50%;background:var(--ok-soft);color:var(--ok);display:grid;place-items:center;font-size:11px;margin-top:2px}
+  .log .dot.warn{background:var(--warn-soft);color:var(--warn)}
+  .log b{font-weight:500;display:block}.log small{color:var(--ink-3)}.log .t{font-size:12px;color:var(--ink-3)}
+  @keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  @keyframes pulse{50%{opacity:.3}}
+
+  /* verify */
+  .drop{border:1.5px dashed #B3BDCA;border-radius:var(--r);background:var(--panel);padding:44px 20px;text-align:center;transition:border-color .15s,background .15s}
+  .drop.over{border-color:var(--accent);background:var(--accent-soft)}
+  .drop-in{display:flex;flex-direction:column;gap:6px;align-items:center}
+  .drop-in b{font-weight:600;font-size:15px}.drop-in span{color:var(--ink-3);font-size:13px}.drop-in .btn{margin-top:14px}
+  .results{display:grid;gap:14px;margin-top:16px}
+  .res{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;display:grid;grid-template-columns:1fr auto;gap:16px;opacity:0;animation:rise .3s ease forwards}
+  .res .verdict{font-size:17px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .res .verdict::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--ok)}
+  .res.pending .verdict::before{background:var(--ink-3);animation:pulse 1s infinite}
+  .res .file{color:var(--ink-3);font-size:12px;margin-top:2px}.res .kv{margin-top:12px}
+  .res .shot{width:150px;height:96px;border:1px solid var(--line);border-radius:4px;background:repeating-linear-gradient(0deg,#FAFBFC 0 9px,#EEF1F4 9px 10px);position:relative;overflow:hidden}
+  .res .shot::after{content:"screenshot · frosio.no";position:absolute;left:0;right:0;bottom:0;background:rgba(20,27,38,.8);color:#fff;font-size:10px;padding:3px 6px}
+  .res .cv{border:1px solid var(--line);border-radius:4px;padding:10px 12px;font-size:12px;line-height:1.5;background:#FAFBFC;width:220px}
+  .res .cv b{display:block;font-size:13px}.res .cv .redact{background:var(--ink);color:var(--ink);border-radius:2px}
+
+  /* pitch */
+  .two{display:grid;grid-template-columns:minmax(340px,1fr) minmax(0,1.4fr);gap:16px;align-items:start}
+  .form{padding:12px 16px}.form label{display:block;font-size:12px;color:var(--ink-3);margin:10px 0 4px}
+  .form select{width:100%;border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;font:inherit;background:var(--panel);color:var(--ink)}
+  .empty{padding:36px 16px;color:var(--ink-3);text-align:center}
+  .match{padding:12px 16px;border-bottom:1px solid var(--line-2);display:grid;grid-template-columns:1fr auto;gap:12px;opacity:0;animation:rise .3s ease forwards}
+  .match:nth-child(2){animation-delay:.15s}.match:nth-child(3){animation-delay:.3s}
+  .match .co{font-weight:500}.match .why{font-size:12px;color:var(--ink-2);margin-top:2px}.match .to{font-size:12px;color:var(--ink-3);margin-top:4px}
+  .fit{display:inline-flex;align-items:center;gap:6px;font-size:13px}
+  .fit i{width:46px;height:5px;border-radius:3px;background:var(--line);overflow:hidden;display:inline-block}
+  .fit i::before{content:"";display:block;height:100%;width:var(--w);background:var(--accent)}
+  .teaser{margin:12px 16px;border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;background:#FAFBFC;font-size:13px;line-height:1.55;opacity:0;animation:rise .3s ease .5s forwards}
+  .teaser b{display:block;margin-bottom:4px}.teaser .sub{color:var(--ink-3);font-size:12px;margin-bottom:8px}
+  .rank td,.rank th{padding:8px 10px;font-size:13px;position:static}.rank .sc{font-size:16px;font-weight:600;color:var(--accent)}
+  .rec{margin-top:12px;border-left:3px solid var(--accent);padding:8px 12px;background:var(--accent-soft);border-radius:0 var(--r) var(--r) 0;font-size:13px;line-height:1.55}
+  .bul{margin:0;padding-left:18px;font-size:13px;line-height:1.5}.bul li{margin-bottom:4px}
+  .score{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;font-size:13px;line-height:1.55}
+  .score b{font-size:28px;font-weight:600;line-height:1;color:var(--accent)}
+  /* help */
+  .help-btn{width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--ink-3);font-size:12px;font-weight:600;display:inline-grid;place-items:center;margin-left:10px;vertical-align:middle}
+  .help-btn.on,.help-btn:hover{border-color:var(--accent);color:var(--accent)}
+  .help{display:none;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r);padding:14px 18px;margin:0 0 16px;font-size:13px;line-height:1.55;max-width:90ch}
+  .help.on{display:block}
+  .help b{font-weight:600;display:block;margin-bottom:4px}
+  .help .row{display:grid;grid-template-columns:110px 1fr;gap:6px 12px;margin-top:8px}
+  .help .row span:nth-child(odd){color:var(--ink-3)}
+  .tab .help-btn{margin-left:6px;width:18px;height:18px;font-size:11px;vertical-align:-3px}
+  .vsrc{display:inline-flex;align-items:center;gap:5px;font-size:12px;white-space:nowrap}
+  .vsrc::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ink-3)}
+  .vsrc.ok::before{background:var(--ok)}.vsrc.warn::before{background:var(--warn)}.vsrc.bad::before{background:var(--bad)}
+  .vsrc.done{color:var(--ok)}.vsrc.done::before{content:"✓";width:auto;height:auto;background:none;font-size:11px}
+  .vlink{font-size:12px;color:var(--accent);text-decoration:none}
+  .searchbar{display:flex;gap:10px;margin-bottom:12px}
+  .searchbar input{flex:1;border:1px solid var(--line);border-radius:var(--r);padding:9px 12px;font:inherit;background:var(--panel);color:var(--ink)}
+
+  /* pdf */
+  .pdfwrap{position:fixed;inset:0;background:rgba(14,26,43,.5);display:none;place-items:center;z-index:20}
+  .pdfwrap.open{display:grid}
+  .pdf{width:min(620px,94vw);max-height:90vh;overflow:auto;background:#fff;border-radius:4px;box-shadow:0 30px 80px rgba(0,0,0,.35);padding:34px 40px;font-size:13px;line-height:1.5}
+  .pdf .ph{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:16px}
+  .pdf .ph .mark{width:34px;height:34px;border-radius:6px;background:var(--rail);color:#fff;display:grid;place-items:center;font-weight:700}
+  .pdf h4{margin:0;font-size:18px}.pdf .ref{font-size:12px;color:var(--ink-3)}
+  .pdf table{margin:8px 0 14px}.pdf th,.pdf td{padding:7px 8px;font-size:12px;position:static}
+  .pdf .foot{margin-top:18px;padding-top:10px;border-top:1px solid var(--line);font-size:11px;color:var(--ink-3);display:flex;justify-content:space-between}
+  .pdf .closepdf{float:right;border:0;background:transparent;font-size:18px;color:var(--ink-3);margin:-10px -14px 0 0}
+
+  @media (prefers-reduced-motion:reduce){.log li,.res,.match,.teaser{animation:none;opacity:1}.drawer{transition:none}}
+  @media (max-width:900px){
+    .app{grid-template-columns:1fr}
+    .rail{position:static;height:auto;flex-direction:row;align-items:center;overflow:auto;padding:10px 12px}
+    .rail .grp,.rail .who,.rail .spacer{display:none}.brand{padding:0 10px 0 0}
+    .rail button{width:auto;white-space:nowrap}
+    .main{padding:16px}.today{grid-template-columns:1fr}.two{grid-template-columns:1fr}
+    .tl li{grid-template-columns:18px 1fr;gap:10px}.tl .t,.tl li>.btn{display:none}.tl li+li::before{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="rail">
+    <div class="brand"><div class="mark">L</div><b>LeadScout</b></div>
+    <button class="on" data-go="today">Today <span class="count">7</span></button>
+    <button data-go="radar">Radar <span class="count">4 · 18</span></button>
+    <button data-go="verify">Verify <span class="count">drop</span></button>
+    <button data-go="pitch">Pitch <span class="count">reverse</span></button>
+    <button data-go="candidates">Candidates <span class="count">212</span></button>
+    <div class="spacer"></div>
+    <button data-go="sources" class="dim">Settings · Sources <span class="count">senior</span></button>
+    <div class="who"><b>Dejana</b>Week 3 of 4 · Beograd</div>
+  </nav>
+
+  <main class="main">
+
+    <!-- TODAY -->
+    <section class="screen on" id="today">
+      <div class="top"><h1>Monday 7 September<button class="help-btn" data-help="today" aria-label="Explain" type="button">?</button></h1><span class="date">Cádiz group 3 flies Sunday · Semco INEOS framework live</span></div>
+      <div class="help" id="help-today"><b>What Today is</b>Your day, in order, built from the data — not a to-do list you write.<div class="row"><span>Comes from</span><span>Radar leads (new, high fit), verifications still pending, outreach with no reply after 3/7 days, certificates expiring within 60 days, candidates missing documents on active campaigns.</span><span>Each line</span><span>One sentence: the action and the reason. The button opens the screen with the record and the draft already loaded.</span><span>Right side</span><span>This week: certs verified, bad certs caught, leads with a sourced contact, CVs sent with a name (always 0), your learning week.</span><span>Never</span><span>Sends anything. Today proposes; you act.</span></div></div>
+      <div class="today">
+        <div class="tl"><ol>
+          <li class="titem" tabindex="0"><span class="t">08:30</span><span class="dot"></span><div><b>Verify 5 certificates from Friday</b><small>Cádiz group 3 · drop the files, checks run while you read leads</small></div><button class="btn">Verify</button><div class="tdetail"><div class="row"><span>What</span><span>Five candidate files arrived Friday (WhatsApp/email) for Cádiz group 3 and haven’t been checked yet.</span><span>Do</span><ol><li>Save the five files from your phone/inbox to your desktop.</li><li>Open Verify → Certificate check and drop all five at once.</li><li>Checks run in the background (1–3 minutes each). Come back after step 2.</li><li>For each result: green → Save to candidate. Red/amber → read the note (expired, wrong scope, name mismatch) and decide: ask the candidate to renew, or replace.</li><li>Any welder cert will show “Checking with DNV” — the email is drafted, press send.</li></ol><span>Why</span><span>Cádiz flights are Sunday. An unverified cert on site = a worker sent home at your cost.</span><span>Comes from</span><span>Documents table: 5 files uploaded Friday with no verification row.</span></div></div></li>
+          <li class="titem" tabindex="0"><span class="t">09:00</span><span class="dot"></span><div><b>Read 4 leads that won work, 18 companies hiring now</b><small>Bladt, EEW, Navantia first · named people attached · 5 minutes</small></div><button class="btn">Radar</button><div class="tdetail"><div class="row"><span>What</span><span>Radar found four contract awards with a named person, and eighteen companies with open trade postings.</span><span>Do</span><ol><li>Open Radar. Read the one-line digest at the top.</li><li>Won work tab: open Bladt, EEW, Navantia. For each, read the quote, check who the contact is and how contactable (found / pattern / unknown).</li><li>Decide per lead: Pursue (email is already drafted — send or edit), Not for us, or leave for later.</li><li>Hiring now tab: filter Hiring pressure = High. Those three companies need people now — pursue at least one.</li></ol><span>Why</span><span>Contract awards are demand 3–12 months before a job is posted. First agency in usually gets the framework.</span><span>Comes from</span><span>Leads table: 4 new since yesterday 06:00 with fit ≥ 80; job_posts: 18 companies, 3 with hiring_pressure = high.</span></div></div></li>
+          <li class="titem" tabindex="0"><span class="t">11:00</span><span class="dot"></span><div><b>Call Kasper Sottrup-Jensen, Semco Maritime</b><small>Script from his INEOS quote · 6 verified welders and 14 painters to offer · direct line on file</small></div><button class="btn primary">Script</button><div class="tdetail"><div class="row"><span>What</span><span>Semco won a 5-year INEOS framework and is supplying welders and technicians now. Kasper runs their manpower operation. His direct line was found on a Semco job ad.</span><span>Do</span><ol><li>Open the lead. Read the quote and the “why now” block (2 minutes).</li><li>Read the script: opens with his own words, offers overflow capacity for INEOS, references RFBT’s Ineos history.</li><li>Have ready: 6 verified welders from 22 Sep, 14 painters (9 free from 4 Oct). Say numbers and dates, not “we have people”.</li><li>Ask for one thing only: registration as an overflow supplier with a 5-person trial rotation.</li><li>After the call: log outcome on the lead (Call → Trial / follow-up date). If no answer, the email is drafted — send it.</li></ol><span>Why</span><span>This is the highest-fit lead in the system (92) and the only one supplying today.</span><span>Comes from</span><span>Lead: fit 92, status Pursue, call scheduled 11:00 by you on Friday.</span></div></div></li>
+          <li class="titem" tabindex="0"><span class="t">12:00</span><span class="dot warn"></span><div><b>DNV reply due on Stefan K.'s welder cert — day 3</b><small>Nudge email ready if nothing by 15:00 · blocks his Dragados pack</small></div><button class="btn">Open</button><div class="tdetail"><div class="row"><span>What</span><span>Welder certs have no public register, so the app emailed DNV’s certification office on Thursday. No reply yet.</span><span>Do</span><ol><li>If DNV replies: attach the email to the verification, mark valid/invalid. His Dragados pack unblocks automatically.</li><li>If nothing by 15:00: press Send on the nudge email (drafted, references the original request).</li><li>If still nothing tomorrow: call DNV Esbjerg office (number on the verification) — or ask Stefan for the welding test report as a fallback.</li></ol><span>Why</span><span>Stefan is in the pack of 7 for Dragados; a pending cert blocks the whole pack from sending.</span><span>Comes from</span><span>Verifications: method = issuer_email, result = pending, sent 3 days ago.</span></div></div></li>
+          <li class="titem" tabindex="0"><span class="t">14:00</span><span class="dot"></span><div><b>Send 7 ready packs to Dragados</b><small>All certs verified · CVs anonymized · Eli reviews before send (week 3)</small></div><button class="btn">Review</button><div class="tdetail"><div class="row"><span>What</span><span>Seven Cádiz group 3 candidates have all documents in, certs verified, CVs anonymized.</span><span>Do</span><ol><li>Open Candidates → filter Cádiz group 3 → Ready.</li><li>Review the client PDF for each (Preview). Check the three bullets read well.</li><li>Press Send pack — this week Eli approves before it goes (you’re in week 3). He gets a one-click review.</li><li>Sent packs are logged. When Dragados confirms names, use Reveal to release full profiles.</li></ol><span>Why</span><span>Client approval takes days; the sooner packs are in, the fewer candidates you lose to other jobs.</span><span>Comes from</span><span>Campaign_candidates: 7 with all required documents verified and no send row.</span></div></div></li>
+          <li class="titem" tabindex="0"><span class="t">15:00</span><span class="dot bad"></span><div><b>Two candidates still missing documents</b><small>Andrei P. (passport retake, medical), Bogdan M. (medical) · 4 verified painters on the bench if you replace</small></div><button class="btn">Decide</button><div class="tdetail"><div class="row"><span>What</span><span>Andrei P. needs a readable passport scan and a medical; Bogdan M. needs a medical. Flights are Sunday.</span><span>Do</span><ol><li>Decide: wait, or replace. The bench shows 4 verified painters available now.</li><li>If waiting: message them today (your own channel) — what’s missing is listed on their record.</li><li>If replacing: open Candidates → Available now → Painter/blaster; drop their CVs in Verify with the Dragados posting to rank them; prepare packs.</li><li>Tell Lulzim which names are on the flight list by Thursday.</li></ol><span>Why</span><span>A candidate who drops after flights are booked costs the ticket and a client conversation.</span><span>Comes from</span><span>Campaign_candidates with required documents missing; no document uploaded for them in 3+ days.</span></div></div></li>
+          <li class="titem" tabindex="0"><span class="t">16:00</span><span class="dot warn"></span><div><b>3 certificates expire within 60 days</b><small>Re-qualify before next rotation · renewal messages drafted</small></div><button class="btn">Open</button><div class="tdetail"><div class="row"><span>What</span><span>Three candidates’ certificates expire before or during their next rotation.</span><span>Do</span><ol><li>Open Candidates → Cert expiring 90 days.</li><li>For each: check whether they’re on or due for a rotation that needs that cert.</li><li>Send the drafted renewal message (course dates and costs are in the trade card). Mark “renewal booked” when they confirm.</li><li>If not renewed 14 days before expiry, the app marks them unavailable for roles requiring it.</li></ol><span>Why</span><span>An expired cert found on site means a sent-home worker and a client who remembers.</span><span>Comes from</span><span>Verifications: valid_until ≤ today + 60 days; nightly re-check confirmed still valid.</span></div></div></li>
+        </ol></div>
+        <div class="stats">
+          <div class="stat ok sitem" tabindex="0"><b>41</b><span>certificates verified this week</span>
+            <div class="sdetail">Mon–today · 41 checks returned valid. By body: FROSIO 18, PCN 6, IRATA 5, GWO 7, ISO 9606 welder 3 (DNV/BV by email), CISRS 2. Average 2 min 40 s per check. <a href="#" data-go="candidates">See the 41 candidates</a> · <a href="#">Export list</a><br><small>Comes from: verifications with result = valid and checked_at this week.</small></div></div>
+          <div class="stat bad sitem" tabindex="0"><b>3</b><span>expired or wrong-scope certificates caught before a client saw them</span>
+            <div class="sdetail"><ul><li><b>RFBT-P-0247 Nemanja R.</b> — FROSIO expired 06/2026; candidate says renewal booked for October. Blocked from Cádiz replacement list.</li><li><b>RFBT-W-0211 Goran S.</b> — ISO 9606 is 135 PB; role asked 6G pipe. Wrong scope, not sent.</li><li><b>RFBT-P-0266 Filip K.</b> — name on FROSIO cert differs from passport (middle name). Asked for issuer correction.</li></ul>Each would have been a worker sent home from site.<br><small>Comes from: verifications with result invalid/not_found, or a scope/holder mismatch flag, this week.</small></div></div>
+          <div class="stat sitem" tabindex="0"><b>9</b><span>leads with a named, sourced decision-maker</span>
+            <div class="sdetail">Semco (Kasper Sottrup-Jensen), Bladt (Peter Ravn), Semco UK (David Hutchinson), Navantia (Production Manager, company site), Endúr (recruiter on Finn.no), Muehlhan (Head of Site Ops, attendee list), CS Wind (QA manager, press), OMØ (Finn Krogh, reply), Sif (none yet — 3 attendee-list people). 5 contacted, 2 replied. <a href="#" data-go="radar">Open Radar</a><br><small>Comes from: leads created this week with at least one contact row (contact requires a source article or page).</small></div></div>
+          <div class="stat sitem" tabindex="0"><b>0</b><span>CVs sent with a name on them</span>
+            <div class="sdetail">11 packs sent this week (7 Dragados, 3 EEW, 1 OMØ). Every client PDF passed the PII check (regex + review) before send; 1 was blocked on first attempt — an employer name in a project line — fixed and re-sent. <a href="#">See the 11 sends</a><br><small>Comes from: sends this week where the PDF failed the anonymization check. The guardrail makes this 0; it’s shown so everyone sees it stays 0.</small></div></div>
+          <div class="week"><b>Week 3 — client sends</b><small>Verification and anonymized CVs done · calls done · first packs go out today with review · Radar unlocks Monday</small><div class="prog"><i class="d"></i><i class="d"></i><i class="n"></i><i></i></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RADAR -->
+    <section class="screen" id="radar">
+      <div class="top"><h1>Radar<button class="help-btn" data-help="radar" aria-label="Explain" type="button">?</button></h1><span class="date">Read at 06:02 · 212 articles · 604 sources</span></div>
+      <div class="help" id="help-radar"><b>What Radar is</b>Reads 604 sources at 06:00 every day and tells you which companies will need people, and who to talk to.<div class="row"><span>Won work</span><span>Companies that won a contract or project, with the person quoted in the article, the exact quote, and when the work starts.</span><span>Hiring now</span><span>Companies with open trade postings, how many, what certs they ask for, and who to contact — from the posting, the company site, press quotes or the attendee list.</span><span>Verified column</span><span>Every posting and article is re-fetched each morning: Live (with time), stale (old posting date), or Not found (page gone). “Open source” shows you the page; “Confirm” records that you checked it yourself, with your name. Nothing is pitched from an unconfirmed source.</span><span>Contacts</span><span>Name and title always come from a page we fetched. Email is shown as found, pattern (unverified), or the company address. The in / G icons open a LinkedIn or Google search with name + company.</span><span>Drafts</span><span>Every lead opens with an email and a LinkedIn message already written from the quote. You edit and send.</span><span>Never</span><span>Invents a name, an email, a phone number or a job opening.</span></div></div>
+      <p class="digest"><b>Four companies won work worth calling about.</b> Semco is supplying INEOS now — that one first. Bladt and EEW need steel trades from Q4. Eighteen companies have open trade postings; three show real hiring pressure.</p>
+      <div class="tabs">
+        <button class="tab on" data-pane="won">Won work <span class="count">4 new</span><button class="help-btn" data-help="won" aria-label="Explain" type="button">?</button></button>
+        <button class="tab" data-pane="hiring">Hiring now <span class="count">18 companies · 61 posts</span><button class="help-btn" data-help="hiring" aria-label="Explain" type="button">?</button></button>
+      </div>
+      <div class="help" id="help-won"><b>Won work</b>A company won something → someone from that company was quoted → we can call them before the job is ever posted. Strongest signal, earliest timing. The bar shows now → start → end.</div><div class="help" id="help-hiring"><b>Hiring now</b>Companies with live trade postings. Weaker signal (may be filled, may be an agency) but tells you exactly which trades and certs are needed. Pressure = 5+ open roles or the same post reappearing.</div>
+
+      <div class="pane on" id="won">
+        <div class="filters"><span class="chip on">All</span><span class="chip">Denmark</span><span class="chip">Netherlands</span><span class="chip">Norway</span><span class="chip">UK</span><span class="chip">Painters / blasters</span><span class="chip">Welders</span><span class="chip">NDT</span><span class="chip" style="margin-left:auto">End clients only</span></div>
+        <div class="tbl"><table style="min-width:1080px">
+          <thead><tr><th style="min-width:170px">Company</th><th style="min-width:230px">Won</th><th style="min-width:230px">Decision-maker</th><th>Trades likely</th><th>When work starts</th><th>Fit</th><th>Source</th><th>Verified</th></tr></thead>
+          <tbody>
+            <tr class="sel" tabindex="0" data-lead="semco">
+              <td><div class="co">Semco Maritime</div><div class="sub">Esbjerg · end client / manpower</div></td>
+              <td>INEOS Danish North Sea services framework<div class="sub">Jun 2026 – May 2031</div></td>
+              <td><div class="co">Kasper Sottrup-Jensen<span class="icons"><a href="https://www.google.com/search?q=%22Kasper+Sottrup-Jensen%22+%22Semco+Maritime%22+site%3Alinkedin.com" target="_blank" rel="noopener" title="LinkedIn search">in</a><a href="https://www.google.com/search?q=%22Kasper+Sottrup-Jensen%22+%22Semco+Maritime%22" target="_blank" rel="noopener" title="Google">G</a></span></div><div class="sub">Operation Manager · phone found · email pattern</div></td>
+              <td><span class="tag">Welders</span><span class="tag">Electricians</span><span class="tag">Rope access</span></td>
+              <td><div class="hz"><span class="axis"></span><span class="now" style="left:8%"></span><span class="bar" style="left:8%;width:88%"></span><span class="tick" style="left:0">now</span><span class="tick" style="right:0">2031</span></div></td>
+              <td><span class="fit"><i style="--w:92%"></i>92</span></td>
+              <td class="src">Splash247 · 25 Jun</td>
+              <td><span class="vsrc ok">Fetched</span><br><a class="vlink" href="#">Open article</a> · <span class="vsrc done">Confirmed by Eli</span></td>
+            </tr>
+            <tr tabindex="0">
+              <td><div class="co">Bladt Industries</div><div class="sub">Aalborg · fabricator</div></td>
+              <td>Substation + TP fabrication, Danish tenders<div class="sub">Awards Aug 2026</div></td>
+              <td><div class="co">Peter Ravn<span class="icons"><a href="#" title="LinkedIn search">in</a><a href="#" title="Google">G</a></span></div><div class="sub">Senior Operations &amp; QHSE Manager · switchboard · email pattern</div></td>
+              <td><span class="tag">Welders</span><span class="tag">Painters</span><span class="tag">NDT</span></td>
+              <td><div class="hz"><span class="axis"></span><span class="now" style="left:8%"></span><span class="bar warn" style="left:22%;width:60%"></span><span class="tick" style="left:0">now</span><span class="tick" style="left:22%">Nov</span><span class="tick" style="right:0">2027</span></div></td>
+              <td><span class="fit"><i style="--w:86%"></i>86</span></td>
+              <td class="src">offshoreWIND.biz · 6 Aug</td>
+              <td><span class="vsrc ok">Fetched</span><br><a class="vlink" href="#">Open article</a> · <a class="vlink" href="#">Confirm</a></td>
+            </tr>
+            <tr tabindex="0">
+              <td><div class="co">EEW SPC</div><div class="sub">Rostock · fabricator</div></td>
+              <td>Monopile production run extended into 2027<div class="sub">Continuous</div></td>
+              <td><div class="co">—</div><div class="sub">2 people from attendee list · production manager named, no quote</div></td>
+              <td><span class="tag">Welders 121</span><span class="tag">NDT</span><span class="tag">Blasters</span></td>
+              <td><div class="hz"><span class="axis"></span><span class="now" style="left:8%"></span><span class="bar" style="left:8%;width:80%"></span><span class="tick" style="left:0">now</span><span class="tick" style="right:0">2027</span></div></td>
+              <td><span class="fit"><i style="--w:84%"></i>84</span></td>
+              <td class="src">reNEWS · 14 Aug</td>
+              <td><span class="vsrc ok">Fetched</span><br><a class="vlink" href="#">Open article</a> · <a class="vlink" href="#">Confirm</a></td>
+            </tr>
+            <tr tabindex="0">
+              <td><div class="co">Sif Group</div><div class="sub">Rotterdam · fabricator</div></td>
+              <td>190 kt monopile project, both facilities<div class="sub">Fabrication May–Aug 2027</div></td>
+              <td><div class="co">—</div><div class="sub">CEO quoted · no ops contact yet · 3 people from attendee list</div></td>
+              <td><span class="tag">Welders</span><span class="tag">Painters</span><span class="tag">Blasters</span></td>
+              <td><div class="hz"><span class="axis"></span><span class="now" style="left:8%"></span><span class="bar warn" style="left:55%;width:30%"></span><span class="tick" style="left:0">now</span><span class="tick" style="left:55%">May 27</span></div></td>
+              <td><span class="fit"><i style="--w:81%"></i>81</span></td>
+              <td class="src">Sif newsroom · 23 Jun</td>
+              <td><span class="vsrc ok">Fetched</span><br><a class="vlink" href="#">Open article</a> · <a class="vlink" href="#">Confirm</a></td>
+            </tr>
+            <tr tabindex="0">
+              <td><div class="co">DEME</div><div class="sub">Zwijndrecht · T&amp;I contractor</div></td>
+              <td>Zeevonk foundations transport &amp; installation<div class="sub">FID pending</div></td>
+              <td><div class="co">—</div></td>
+              <td><span class="tag">Marine crew</span></td>
+              <td><div class="hz"><span class="axis"></span><span class="now" style="left:8%"></span><span class="bar dim" style="left:80%;width:16%"></span><span class="tick" style="left:0">now</span><span class="tick" style="right:0">2028</span></div></td>
+              <td><span class="fit"><i style="--w:28%"></i>28</span></td>
+              <td class="src">Vattenfall · 20 Jul</td>
+              <td><span class="vsrc ok">Fetched</span><br><a class="vlink" href="#">Open article</a> · <a class="vlink" href="#">Confirm</a></td>
+            </tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="pane" id="hiring">
+        <div class="filters"><span class="chip on">All</span><span class="chip">Small</span><span class="chip">Medium</span><span class="chip">Large</span><span class="chip">End clients</span><span class="chip">Agencies</span><span class="chip on" style="margin-left:auto">Hiring pressure</span></div>
+        <div class="tbl"><table style="min-width:1160px">
+          <thead><tr><th>Company</th><th>Open roles</th><th>Where · when</th><th>Certs required</th><th>Who to contact</th><th>Pressure</th><th>Fit</th><th>Source</th><th>Verified</th></tr></thead>
+          <tbody>
+            <tr tabindex="0">
+              <td><div class="co">Navantia UK</div><div class="sub">Methil · large · end client</div></td>
+              <td>Painter/blaster ×12, Welder ×8, Fitter ×6<div class="sub">3 postings, one reposted</div></td>
+              <td>Methil, Scotland<div class="sub">From October · 4:2</div></td>
+              <td><span class="tag">ICATS</span><span class="tag">ISO 9606</span></td>
+              <td><div class="co">Production Manager<span class="icons"><a href="#" title="LinkedIn search">in</a></span></div><div class="sub">named on company site · HR email on posting</div></td>
+              <td><span class="st bad">High · 26 open</span></td>
+              <td><span class="fit"><i style="--w:88%"></i>88</span></td>
+              <td class="src">Careers page · 2 Sep</td>
+              <td><span class="vsrc ok" title="Page fetched 07:31, posting live, screenshot saved">Live 07:31</span><br><a class="vlink" href="#">Open source</a> · <a class="vlink" href="#">Confirm</a></td>
+            </tr>
+            <tr tabindex="0">
+              <td><div class="co">Endúr Maritime</div><div class="sub">Bergen · medium · end client</div></td>
+              <td>Mechanical fitter, pipefitter, plater ×10<div class="sub">1 posting</div></td>
+              <td>Laksevåg<div class="sub">Immediate · rotation</div></td>
+              <td><span class="tag">EU passport</span></td>
+              <td><div class="co">Recruiter on post<span class="icons"><a href="#" title="LinkedIn search">in</a></span></div><div class="sub">name + email printed on Finn.no</div></td>
+              <td><span class="st bad">High · 10 open</span></td>
+              <td><span class="fit"><i style="--w:79%"></i>79</span></td>
+              <td class="src">Finn.no · 4 Sep</td>
+              <td><span class="vsrc ok">Live 07:31</span><br><a class="vlink" href="#">Open source</a> · <span class="vsrc done">Confirmed by Dejana</span></td>
+            </tr>
+            <tr tabindex="0">
+              <td><div class="co">Muehlhan Wind Service</div><div class="sub">Aabenraa · medium · end client</div></td>
+              <td>IRATA L3 blade repair techs<div class="sub">2026 campaign · reposted twice</div></td>
+              <td>DE / UK / NL / BE<div class="sub">Season from March</div></td>
+              <td><span class="tag">IRATA L3</span><span class="tag">GWO</span></td>
+              <td><div class="co">Head of Site Operations<span class="icons"><a href="#" title="LinkedIn search">in</a></span></div><div class="sub">from attendee list · switchboard</div></td>
+              <td><span class="st warn">Medium · reposted</span></td>
+              <td><span class="fit"><i style="--w:83%"></i>83</span></td>
+              <td class="src">Recruiterflow · 1 Sep</td>
+              <td><span class="vsrc ok">Live 07:32</span><br><a class="vlink" href="#">Open source</a> · <a class="vlink" href="#">Confirm</a></td>
+            </tr>
+            <tr tabindex="0">
+              <td><div class="co">RAM Sveis og Bemanning</div><div class="sub">Verdal · small · agency</div></td>
+              <td>Welder 136/138 offshore, TIG titanium<div class="sub">2 postings, 40+ days old</div></td>
+              <td>Verdal, Norway<div class="sub">14/21 rotation</div></td>
+              <td><span class="tag">ISO 9606</span></td>
+              <td><div class="co">—</div><div class="sub">agency · general email only · subcontract pitch</div></td>
+              <td><span class="st warn">Medium · stale</span></td>
+              <td><span class="fit"><i style="--w:62%"></i>62</span></td>
+              <td class="src">rambemanning.no · 28 Jul</td>
+              <td><span class="vsrc warn" title="Page still up but posting date is 41 days old">Live · 41 d old</span><br><a class="vlink" href="#">Open source</a> · <a class="vlink" href="#">Confirm</a></td>
+            </tr>
+            <tr tabindex="0">
+              <td><div class="co">Skills Provision</div><div class="sub">UK · agency</div></td>
+              <td>Industrial painters DE/NL<div class="sub">1 posting</div></td>
+              <td>Germany / Netherlands<div class="sub">Immediate</div></td>
+              <td><span class="tag">VCA/SCC</span><span class="tag">A1</span></td>
+              <td><div class="co">—</div><div class="sub">agency · form only</div></td>
+              <td><span class="st">Low</span></td>
+              <td><span class="fit"><i style="--w:45%"></i>45</span></td>
+              <td class="src">skills-provision.com · 5 Sep</td>
+              <td><span class="vsrc bad" title="Fetch at 07:32 returned 404 — posting removed">Not found 07:32</span><br><a class="vlink" href="#">Re-check</a> · <a class="vlink" href="#">Archive</a></td>
+            </tr>
+          </tbody>
+        </table></div>
+        <p class="note">Company size is shown only when stated on the company's site or registry; otherwise it stays unknown. Contacts come from the posting, the company site, press quotes, or the attendee list — never guessed.</p>
+      </div>
+    </section>
+
+    <!-- VERIFY -->
+    <section class="screen" id="verify">
+      <div class="top"><h1>Verify<button class="help-btn" data-help="verify" aria-label="Explain" type="button">?</button></h1><span class="date">Nothing leaves the system · recruiter-initiated only</span></div>
+      <div class="help" id="help-verify"><b>What Verify is</b>The only way documents enter the system — when you drop them.<div class="row"><span>Certificates</span><span>Checked on the issuer’s official site (FROSIO, PCN, CSWIP, AMPP, IRATA, GWO, CISRS, electrical registries). You get valid/not, valid until, where it was checked, when, and a screenshot. Welder certs with no public register go to the issuer by email.</span><span>CVs</span><span>Any language → English RFBT-format CV (internal) + anonymized client version. Three bullets for the client. Optional job match with score, fits, missing, blockers. Several CVs + one job → ranked with a recommendation.</span><span>Never</span><span>Marks something verified without a fetched source. Puts a name on a client document.</span></div></div>
+      <div class="tabs">
+        <button class="tab on" data-vpane="vcert">Certificate check<button class="help-btn" data-help="vcert" aria-label="Explain" type="button">?</button></button>
+        <button class="tab" data-vpane="vcv">CV anonymizer<button class="help-btn" data-help="vcv" aria-label="Explain" type="button">?</button></button>
+      </div>
+      <div class="help" id="help-vcert"><b>Certificate check</b>Drop one or many. Each cert is read, the number is looked up on the issuing body’s site, holder is compared to the passport on file, expiry is compared to the project end. Result: valid until, checked where and when, screenshot.</div><div class="help" id="help-vcv"><b>CV anonymizer</b>Drop CVs. You get the internal English CV, the anonymized client version (reference code, no contact details, employers as type + country, certs with status), three bullets for the client, and — with a job pasted — a match score, or a ranking if you dropped several.</div>
+      <div class="pane on" id="vcert">
+        <div class="drop" id="drop" tabindex="0"><div class="drop-in"><b>Drop certificates here</b><span>FROSIO, PCN, CSWIP, AMPP, IRATA, GWO, CISRS, welder ISO 9606, electrical · PDF or photo · several at once</span><button class="btn" id="demoBtn" type="button">Try with a sample FROSIO certificate</button></div></div>
+        <p class="note">Each certificate is checked on the issuer's official site. You get: valid or not, valid until, where it was checked, when, and a screenshot. Welder certs with no public register go to the issuer by email and show "checking, day N".</p>
+      </div>
+      <div class="pane" id="vcv">
+        <div class="two" style="grid-template-columns:1fr 1fr">
+          <div class="drop" id="dropcv" tabindex="0"><div class="drop-in"><b>Drop CVs here</b><span>Any language · PDF, DOCX or photo · several at once</span><button class="btn" id="demoCv" type="button">Try with one CV</button><button class="btn" id="demoRank" type="button" style="margin-top:14px;margin-left:8px">Try with 6 CVs → rank for the job</button></div></div>
+          <div class="box"><div class="hd"><b>Match against a job</b><span>optional</span></div>
+            <div class="form">
+              <textarea id="jd" rows="5" placeholder="Paste a job description or posting, or drop a PDF here…" style="width:100%;border:1px solid var(--line);border-radius:var(--r);padding:9px 10px;font:inherit;resize:vertical"></textarea>
+              <div class="btns" style="margin-top:8px"><button class="btn" id="jdSample" type="button">Use Navantia painter/blaster posting</button><span class="note" style="margin:0;align-self:center">or pick a lead from Radar</span></div>
+            </div></div>
+        </div>
+        <p class="note">You get the English RFBT-format CV (internal), the anonymized client version, three bullets that best sell this candidate to this client, and — if a job is given — a match score with what fits and what's missing.</p>
+      </div>
+      <div class="results" id="results"></div>
+    </section>
+
+    <!-- PITCH -->
+    <section class="screen" id="pitch">
+      <div class="top"><h1>Pitch a candidate<button class="help-btn" data-help="pitch" aria-label="Explain" type="button">?</button></h1><span class="date">Start from a scarce person, find who should hear about them</span></div>
+      <div class="help" id="help-pitch"><b>What Pitch is</b>Start from a scarce candidate instead of a lead.<div class="row"><span>Matching</span><span>Every open lead and known company scored on trade, geography, timing and whether the candidate has worked that site before.</span><span>Output</span><span>Top matches with who to send to and how contactable they are, plus a blind teaser per company (reference code only) and a LinkedIn message.</span><span>Never</span><span>Reveals the candidate’s identity in a teaser.</span></div></div>
+      <div class="two">
+        <div class="box"><div class="hd"><b>Candidate</b><span>anonymized on send</span></div>
+          <div class="form">
+            <label>Candidate<select><option>RFBT-N-0102 · NDT UT/MT · PCN L2 · available now</option><option>RFBT-R-0077 · Rope access blade repair · IRATA L2</option><option>RFBT-W-0203 · Welder 141 pipes · ISO 9606 BV</option></select></label>
+            <div class="kv" style="margin:8px 0 4px"><span>Verified</span><span class="cell-ok">PCN Level 2 UT/MT · 11/2027 · checked bindt.org 3 Sep</span><span>Projects</span><span>Monopiles Rostock 2025–26, offshore substations Lindø 2024</span><span>Languages</span><span>Serbian, English, German</span><span>Rate</span><span>€55 / h all-in, or €3 / h margin-only</span><span>Available</span><span>Now · 2:2 or 4:2 · EU passport</span></div>
+            <label>Send to<select><option>Best matches from Radar</option><option>One company…</option></select></label>
+            <label>Tone<select><option>Short, direct — hiring managers</option><option>Formal — procurement / supplier registration</option></select></label>
+            <div class="btns"><button class="btn primary" id="pitchBtn" type="button">Match and draft</button></div>
+          </div></div>
+        <div class="box"><div class="hd"><b>Who should hear about this person</b><span>trade · geography · timing · prior site</span></div><div id="pitchOut" class="empty">Pick a candidate and press Match and draft.</div></div>
+      </div>
+    </section>
+
+    <!-- CANDIDATES -->
+    <section class="screen" id="candidates">
+      <div class="top"><h1>Candidates<button class="help-btn" data-help="candidates" aria-label="Explain" type="button">?</button></h1><span class="date">212 in pool · 41 on rotation · 26 available now</span></div>
+      <div class="help" id="help-candidates"><b>What Candidates is</b>The pool. Full name, phone and documents stay here, internal only.<div class="row"><span>Where they come from</span><span>Only from you: Verify → Save to candidate (a cert or CV you dropped), the Add candidate button, or records already in RFBT Interviews. Radar never creates candidates; people found in the news are company contacts, kept separately.</span><span>Columns</span><span>Certificates with status and expiry, documents on file, availability tied to rotation end dates, last project, which companies received the anonymized version.</span><span>Reveal</span><span>Releasing a full profile to a client is an explicit action, logged with who, when and which company.</span></div></div>
+      <div class="searchbar"><input type="search" placeholder="Search name, reference, cert number, phone…" aria-label="Search"><button class="btn primary">Add candidate</button></div>
+      <div class="filters"><span class="chip on">All trades</span><span class="chip">Painters / blasters</span><span class="chip">Welders</span><span class="chip">Pipefitters</span><span class="chip">NDT</span><span class="chip">Wind techs</span><span class="chip" style="margin-left:auto">Available now</span><span class="chip">Cert expiring 90 days</span><span class="chip">Docs incomplete</span></div>
+      <div class="tbl"><table style="min-width:980px">
+        <thead><tr><th>Reference</th><th>Trade</th><th>Certificates</th><th>Docs</th><th>Availability</th><th>Last project</th><th>Sent to</th><th>Languages</th></tr></thead>
+        <tbody>
+          <tr tabindex="0" data-cand="0231"><td><div class="co">RFBT-P-0231</div><div class="sub">Marko J. · Beograd</div></td><td>Painter / blaster</td><td><span class="st ok">FROSIO II · 03/2028</span></td><td class="cell-ok">4/4</td><td>On Cádiz to 4 Oct</td><td>Substations, Spain</td><td>Dragados</td><td>SR, EN</td></tr>
+          <tr tabindex="0"><td><div class="co">RFBT-W-0188</div><div class="sub">Stefan K. · Novi Sad</div></td><td>Welder 135 / 136</td><td><span class="st warn">ISO 9606 · DNV, day 3</span></td><td class="cell-ok">4/4</td><td>From 22 Sep</td><td>Shipyard, Esbjerg</td><td>—</td><td>SR, EN</td></tr>
+          <tr tabindex="0"><td><div class="co">RFBT-N-0102</div><div class="sub">Dragan V. · Niš</div></td><td>NDT UT / MT</td><td><span class="st ok">PCN L2 · 11/2027</span></td><td class="cell-ok">4/4</td><td>Available now</td><td>Monopiles, Rostock</td><td>EEW, CS Wind</td><td>SR, EN, DE</td></tr>
+          <tr tabindex="0"><td><div class="co">RFBT-P-0247</div><div class="sub">Nemanja R. · Kragujevac</div></td><td>Blaster</td><td><span class="st bad">FROSIO · expired 06/2026</span></td><td class="cell-ok">4/4</td><td>Blocked until renewed</td><td>Monopiles, Lindø</td><td>—</td><td>SR</td></tr>
+          <tr tabindex="0"><td><div class="co">RFBT-R-0077</div><div class="sub">Milan Đ. · Čačak</div></td><td>Rope access · blade repair</td><td><span class="st ok">IRATA L2 · 05/2027</span> <span class="st warn">GWO BST · 11/2026</span></td><td class="cell-ok">4/4</td><td>Available now</td><td>Blade campaign, DE</td><td>Coast</td><td>SR, EN</td></tr>
+          <tr tabindex="0"><td><div class="co">RFBT-W-0203</div><div class="sub">Andrei P. · Timișoara</div></td><td>Welder 141 · pipes</td><td><span class="st ok">ISO 9606 · BV · 02/2028</span></td><td class="cell-bad">2/4</td><td>Cádiz group 3</td><td>Refinery, Constanța</td><td>—</td><td>RO, EN</td></tr>
+          <tr tabindex="0"><td><div class="co">RFBT-E-0119</div><div class="sub">Luka M. · Subotica</div></td><td>Wind service electrician</td><td><span class="st ok">GWO · 08/2027</span> <span class="st ok">A1 · valid</span></td><td class="cell-ok">5/5</td><td>On rotation to 18 Sep</td><td>Vestas O&amp;M, NL</td><td>Global Wind Service</td><td>SR, EN</td></tr>
+        </tbody>
+      </table></div>
+      <p class="note">Full name, phone and documents stay inside RFBT. "Sent to" shows which companies received the anonymized version; reveals are logged.</p>
+    </section>
+
+    <!-- SOURCES -->
+    <section class="screen" id="sources">
+      <div class="top"><h1>Sources<button class="help-btn" data-help="sources" aria-label="Explain" type="button">?</button></h1><span class="date">What Radar reads every morning</span></div>
+      <div class="help" id="help-sources"><b>What Sources is</b>Admin only — recruiters don’t need this. The list Radar reads every morning: news, job boards, tender portals, company press pages. Turn sources on or off, add your own, see what each one produced.</div>
+      <div class="filters"><span class="chip on">All 604</span><span class="chip">News 263</span><span class="chip">Job boards 41</span><span class="chip">Tenders 300</span><span class="chip">Company press</span><span class="chip" style="margin-left:auto">Add source</span></div>
+      <div class="tbl"><table style="min-width:820px">
+        <thead><tr><th>Source</th><th>Type</th><th>Region</th><th>Access</th><th>Last read</th><th>Articles · 30 d</th><th>Leads found</th><th></th></tr></thead>
+        <tbody>
+          <tr><td><div class="co">offshoreWIND.biz</div></td><td>News</td><td>Europe</td><td>Open</td><td>Today 06:02</td><td>184</td><td>11</td><td class="src">On</td></tr>
+          <tr><td><div class="co">reNEWS</div></td><td>News</td><td>Europe / UK</td><td>Open</td><td>Today 06:03</td><td>141</td><td>9</td><td class="src">On</td></tr>
+          <tr><td><div class="co">Recharge</div></td><td>News</td><td>Global</td><td>Paywall · headlines</td><td>Today 06:04</td><td>62</td><td>2</td><td class="src">On</td></tr>
+          <tr><td><div class="co">Jobindex</div></td><td>Job board</td><td>Denmark</td><td>Open</td><td>Today 06:20</td><td>—</td><td>7 companies</td><td class="src">On</td></tr>
+          <tr><td><div class="co">Finn.no</div></td><td>Job board</td><td>Norway</td><td>Open</td><td>Today 06:21</td><td>—</td><td>5 companies</td><td class="src">On</td></tr>
+          <tr><td><div class="co">TED — Tenders Electronic Daily</div></td><td>Tender</td><td>EU</td><td>Open</td><td>Today 06:10</td><td>—</td><td>2</td><td class="src">On</td></tr>
+          <tr><td><div class="co">Semco Maritime · news</div></td><td>Company press</td><td>Denmark</td><td>Open</td><td>Today 06:12</td><td>3</td><td>2</td><td class="src">On</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+  </main>
+</div>
+
+<!-- LEAD DRAWER -->
+<aside class="drawer" id="leadDrawer" aria-label="Lead details">
+  <button class="close" aria-label="Close">×</button>
+  <h2>Semco Maritime</h2>
+  <div class="meta">Won: INEOS Danish North Sea framework · Jun 2026 – May 2031 · seen in 3 articles</div>
+
+  <div class="sec"><h3>Decision-maker</h3>
+    <div class="person">
+      <div>
+        <b>Kasper Sottrup-Jensen</b><div class="role">Operation Manager, Esbjerg</div>
+        <div class="lines">
+          <span>+45 79 16 61 95 <em>direct · found on Semco job ad</em></span>
+          <span>k.sottrup-jensen@semcomaritime.com <em style="color:var(--warn)">pattern · unverified</em></span>
+          <span>+45 79 16 66 66 · semco@semcomaritime.com <em>company · found on semcomaritime.com</em></span>
+        </div>
+      </div>
+      <div class="icons" style="flex-direction:column;gap:6px;margin:0"><a href="https://www.google.com/search?q=%22Kasper+Sottrup-Jensen%22+%22Semco+Maritime%22+site%3Alinkedin.com" target="_blank" rel="noopener" title="LinkedIn search">in</a><a href="https://www.google.com/search?q=%22Kasper+Sottrup-Jensen%22+%22Semco+Maritime%22" target="_blank" rel="noopener" title="Google">G</a></div>
+    </div>
+    <div class="quote" style="margin-top:10px">"The agreement ensures a long-term planning horizon that enables Semco Maritime to attract, retain and further develop highly skilled onshore and offshore workers."<small>Semco Maritime press release, 25 June 2026 — <a href="#">read article</a></small></div>
+  </div>
+
+  <div class="sec"><h3>Others at Semco we know of</h3>
+    <div class="people">
+      <div><span><b>Anders Benfeldt</b><small>Senior Vice President · WindEurope attendee list</small></span><span class="icons"><a href="#" title="LinkedIn search">in</a></span></div>
+      <div><span><b>David Hutchinson</b><small>MD Semco Maritime UK · quoted in World Oil, 4 Mar</small></span><span class="icons"><a href="#" title="LinkedIn search">in</a></span></div>
+      <div><span><b>Lene Tornel</b><small>Communications · press contact, not for outreach</small></span><span></span></div>
+    </div>
+  </div>
+
+  <div class="sec"><h3>Why now</h3>
+    <div class="kv"><span>Scope</span><span>Welders, electricians, production techs, rope access, NORM</span><span>Timing</span><span>Supplying now · Total and Aker BP frameworks renew 2027</span><span>RFBT history</span><span>30+ painters/blasters and welders supplied to an Ineos project</span><span>Ready to attach</span><span>6 verified welders from 22 Sep · 14 painters, 9 free from 4 Oct</span></div>
+  </div>
+
+  <div class="sec"><h3>Work this need</h3>
+    <div class="tools">
+      <button class="tool on" data-tool="jd"><b>1 · Need as a job description</b><small>Written from the article and Semco’s usual requirements — edit, then everything scores against it</small></button>
+      <button class="tool" data-tool="pool"><b>2 · Score the pool</b><small>212 candidates against this JD · 6 welders ≥ 70</small></button>
+      <button class="tool" data-tool="li"><b>3 · Find candidates on LinkedIn</b><small>X-ray search built from the JD · opens in a tab</small></button>
+      <button class="tool" data-tool="q"><b>4 · Screening questions</b><small>8 questions for welders on this framework, with good answers</small></button>
+    </div>
+    <div class="toolpane on" id="tp-jd"><div class="draft"><div class="subj">Welders — Semco Maritime / INEOS Danish North Sea framework (draft JD)</div>
+      Role: Welder, ISO 9606 process 135/136 (position PB/PF; 6G an advantage), for offshore maintenance and modification campaigns on INEOS installations, Danish sector. Headcount: not stated — Semco pool ~550; overflow need estimated 5–15 per campaign. Location: Esbjerg mobilisation, offshore rotation 2:2 or 2:3. Start: from 22 September 2026, ongoing to 2031. Requirements: valid ISO 9606, offshore medical, BOSIET/GWO <span class="cell-warn">(assumed — Semco standard)</span>, EU passport, A1, English working level. Rate: Danish-compliant contract; RFBT margin-only €2–3/h or all-in.
+      <div class="why">Items marked “assumed” come from the company type, not the article — confirm on the call.</div></div>
+      <div class="btns"><button class="btn primary">Save JD</button><button class="btn">Edit</button></div></div>
+    <div class="toolpane" id="tp-pool"><div class="people">
+      <div><span><b>RFBT-W-0188 · Stefan K.</b><small>135 PB · DNV, consistent with test report · from 22 Sep</small></span><span class="fit"><i style="--w:88%"></i>88</span></div>
+      <div><span><b>RFBT-W-0203 · Andrei P.</b><small>141 pipes · BV verified · Cádiz to Oct</small></span><span class="fit"><i style="--w:74%"></i>74</span></div>
+      <div><span><b>RFBT-W-0219 · Miloš V.</b><small>136 6G · TÜV verified · available now</small></span><span class="fit"><i style="--w:91%"></i>91</span></div>
+      <div><span><b>RFBT-W-0211 · Goran S.</b><small>135 PB · no BOSIET <span class="cell-warn">missing</span></small></span><span class="fit"><i style="--w:63%"></i>63</span></div>
+    </div><div class="btns"><button class="btn primary">Prepare packs for top 3</button><button class="btn">See all 10</button></div></div>
+    <div class="toolpane" id="tp-li"><div class="draft">site:linkedin.com/in (welder OR “welder fitter” OR “pipe welder”) (“ISO 9606” OR “135” OR “136” OR “6G” OR “MAG” OR “FCAW”) (offshore OR shipyard OR “North Sea” OR “oil and gas”) (Serbia OR Romania OR Poland OR Croatia OR Denmark)
+      <div class="why">Built from the JD. You pick the profiles; drop their CVs into Verify and they score against this JD automatically.</div></div>
+      <div class="btns"><a class="btn primary" target="_blank" rel="noopener" href="https://www.google.com/search?q=site%3Alinkedin.com%2Fin+(welder+OR+%22pipe+welder%22)+(%22ISO+9606%22+OR+%22136%22+OR+%226G%22+OR+FCAW)+(offshore+OR+shipyard+OR+%22North+Sea%22)+(Serbia+OR+Romania+OR+Poland+OR+Croatia)">Open search</a><button class="btn">Edit search</button></div></div>
+    <div class="toolpane" id="tp-q"><ol class="qs">
+      <li><b>Which processes and positions are on your current ISO 9606 — and when does it expire?</b><small>Good: names 135/136 and PB/PF/6G from memory, expiry within 2 years, has the test report.</small></li>
+      <li><b>Last offshore or shipyard job: what structure, what thickness, what acceptance criteria?</b><small>Good: specific — e.g. 25 mm plate, ISO 5817 level B, UT after root.</small></li>
+      <li><b>Have you worked a 2:2 rotation offshore? Any missed rotations?</b><small>Good: yes, names the client or platform, none missed.</small></li>
+      <li><b>BOSIET/GWO and offshore medical — valid?</b><small>Good: dates given; if not, willing to take the course before mobilisation.</small></li>
+      <li><b>Passport and A1 — EU passport, any open A1?</b><small>Good: EU passport in hand, understands A1 is arranged by RFBT.</small></li>
+      <li><b>English on site — can you follow a toolbox talk and a permit to work?</b><small>Good: answers this question in English without help.</small></li>
+      <li><b>Rate expectation on a Danish contract, and earliest start?</b><small>Good: realistic for the market, can start within 2 weeks.</small></li>
+      <li><b>Any client you cannot work for (non-compete, previous dismissal)?</b><small>Good: straight answer; no surprises later.</small></li>
+    </ol><div class="btns"><button class="btn primary">Start screening call</button><button class="btn">Copy questions</button></div></div>
+  </div>
+
+  <div class="sec"><h3>Email — drafted</h3>
+    <div class="draft">
+      <div class="subj">Overflow capacity for the INEOS framework — verified welders from 22 Sep</div>
+      Kasper, your line about a long-term horizon that lets Semco attract and retain skilled offshore workers is exactly where we can help. RFBT supplied 30+ painters, blasters and welders to an Ineos project and currently has six ISO 9606 welders (135/136, DNV-verified) available from 22 September on 2:2 under Danish-compliant contracts. Three anonymized, verified profiles attached; full details on your confirmation. Would a 15-minute call this week make sense?
+      <div class="why">Opens with his own words; states proof (Ineos history, verified certs, dates); asks for one small step. Attachments: 3 packs, no names.</div>
+    </div>
+    <div class="btns"><button class="btn primary">Send from dejana@rfbt</button><button class="btn">Edit</button><button class="btn">Copy LinkedIn message (280 chars)</button><button class="btn ghost">Not for us</button></div>
+  </div>
+</aside>
+
+<!-- CANDIDATE DRAWER -->
+<aside class="drawer" id="candDrawer" aria-label="Candidate details">
+  <button class="close" aria-label="Close">×</button>
+  <h2>RFBT-P-0231 · Marko J.</h2>
+  <div class="meta">Industrial painter / blaster · Cádiz group 3 · full profile internal only</div>
+  <div class="sec"><h3>Certificate check — FROSIO Level II</h3>
+    <ul class="log" id="log">
+      <li><span class="dot">✓</span><div><b>Read certificate</b><small>Photo · No. 12 8471 · issued 03/2023</small></div><span class="t">09:12</span></li>
+      <li><span class="dot">✓</span><div><b>Name matches passport</b><small>Marko Jovanović on both documents</small></div><span class="t">09:12</span></li>
+      <li><span class="dot">✓</span><div><b>Checked on frosio.no</b><small>Accredible record found, screenshot saved</small></div><span class="t">09:13</span></li>
+      <li><span class="dot">✓</span><div><b>Valid until 03/2028</b><small>Covers Cádiz project end, Sep 2027</small></div><span class="t">09:13</span></li>
+      <li><span class="dot warn">!</span><div><b>Scope note</b><small>Level II inspector cert; client role is applicator — flag if client asks for Level III</small></div><span class="t">09:13</span></li>
+    </ul></div>
+  <div class="sec"><h3>Documents</h3><div class="kv"><span>Passport</span><span>Received 2 Sep · expires 2031</span><span>Medical</span><span>Received 4 Sep</span><span>A1</span><span>Received 7 Sep</span><span>CV</span><span>Serbian original → English RFBT format · anonymized v2</span></div></div>
+  <div class="btns"><button class="btn primary">Send anonymized pack</button><button class="btn">Preview client PDF</button><button class="btn">Reveal to client…</button></div>
+</aside>
+
+<!-- PDF PREVIEW -->
+<div class="pdfwrap" id="pdfwrap"><div class="pdf" role="dialog" aria-label="Client PDF preview">
+  <button class="closepdf" aria-label="Close">×</button>
+  <div class="ph"><div><h4>Industrial painter / blaster</h4><div class="ref">Reference RFBT-P-0231 · prepared 7 September 2026 · full profile released on client confirmation</div></div><div class="mark">R</div></div>
+  <b>Certificates — verified by RFBT</b>
+  <table><thead><tr><th>Certificate</th><th>Number</th><th>Checked where</th><th>Checked</th><th>Valid until</th><th>Status</th></tr></thead><tbody>
+    <tr><td>FROSIO Level II</td><td>12 8471</td><td>frosio.no (Accredible)</td><td>7 Sep 2026</td><td>14 Mar 2028</td><td class="cell-ok">Valid</td></tr>
+    <tr><td>Medical fitness</td><td>—</td><td>Document on file</td><td>4 Sep 2026</td><td>4 Sep 2027</td><td class="cell-ok">Valid</td></tr>
+    <tr><td>A1 certificate</td><td>—</td><td>Document on file</td><td>7 Sep 2026</td><td>Project end</td><td class="cell-ok">Valid</td></tr></tbody></table>
+  <b>Experience</b>
+  <table><tbody><tr><td>2025–26</td><td>Offshore substations — painting &amp; blasting, Spain (EPC contractor)</td><td>8:2</td></tr><tr><td>2024</td><td>Monopile coating, Denmark (offshore wind fabricator)</td><td>2:2</td></tr><tr><td>2022–23</td><td>Industrial steel structures, Serbia</td><td>—</td></tr></tbody></table>
+  <b>Profile</b>
+  <table><tbody><tr><td>Skills</td><td>Airless spray, grit blasting to Sa 2.5, DFT/WFT control, confined space, dew-point discipline</td></tr><tr><td>Languages</td><td>Serbian (native), English (working)</td></tr><tr><td>Availability</td><td>From 4 October 2026 · EU passport · 2:2 or 8:2</td></tr></tbody></table>
+  <div class="foot"><span>RFBT Recruitment · London · Beograd</span><span>Verify this summary: rfbt.eu/v/P-0231</span></div>
+</div></div>
+
+<script>
+  const screens=[...document.querySelectorAll('.screen')], navBtns=[...document.querySelectorAll('.rail button[data-go]')];
+  const lead=document.getElementById('leadDrawer'), cand=document.getElementById('candDrawer'), pw=document.getElementById('pdfwrap');
+  function closeAll(){lead.classList.remove('open');cand.classList.remove('open');}
+  navBtns.forEach(b=>b.addEventListener('click',()=>{navBtns.forEach(x=>x.classList.remove('on'));b.classList.add('on');screens.forEach(s=>s.classList.toggle('on',s.id===b.dataset.go));closeAll();}));
+  document.querySelectorAll('.tl li.titem').forEach(li=>{li.addEventListener('click',e=>{if(e.target.closest('button'))return;li.classList.toggle('open');});li.addEventListener('keydown',e=>{if(e.key==='Enter')li.classList.toggle('open');});});
+  document.querySelectorAll('.stat.sitem').forEach(st=>{st.addEventListener('click',e=>{if(e.target.closest('a'))return;st.classList.toggle('open');});st.addEventListener('keydown',e=>{if(e.key==='Enter')st.classList.toggle('open');});});
+  document.querySelectorAll('.sdetail a[data-go]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();document.querySelector('.rail button[data-go='+a.dataset.go+']').click();}));
+  document.querySelectorAll('.tool').forEach(t=>t.addEventListener('click',()=>{document.querySelectorAll('.tool').forEach(x=>x.classList.remove('on'));t.classList.add('on');document.querySelectorAll('.toolpane').forEach(p=>p.classList.toggle('on',p.id==='tp-'+t.dataset.tool));}));
+  document.querySelectorAll('.help-btn').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const k=b.dataset.help,pnl=document.getElementById('help-'+k);const on=!pnl.classList.contains('on');document.querySelectorAll('.help').forEach(x=>x.classList.remove('on'));document.querySelectorAll('.help-btn').forEach(x=>x.classList.remove('on'));if(on){pnl.classList.add('on');b.classList.add('on');}}));
+  document.querySelectorAll('.tab[data-pane]').forEach(t=>t.addEventListener('click',e=>{if(e.target.closest('.help-btn'))return;const sec=t.closest('section');sec.querySelectorAll('.tab[data-pane]').forEach(x=>x.classList.remove('on'));t.classList.add('on');sec.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id===t.dataset.pane));}));
+  document.querySelectorAll('#radar tbody tr').forEach(r=>r.addEventListener('click',e=>{if(e.target.closest('a'))return;document.querySelectorAll('#radar tbody tr').forEach(x=>x.classList.remove('sel'));r.classList.add('sel');cand.classList.remove('open');lead.classList.add('open');}));
+  document.querySelectorAll('#candidates tbody tr').forEach(r=>r.addEventListener('click',()=>{lead.classList.remove('open');cand.classList.add('open');const l=document.getElementById('log');l.replaceWith(l.cloneNode(true));}));
+  document.querySelectorAll('.close').forEach(b=>b.addEventListener('click',closeAll));
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeAll();pw.classList.remove('open');}});
+  document.addEventListener('click',e=>{const t=e.target.closest('button');if(!t)return;if(/Preview client PDF/.test(t.textContent))pw.classList.add('open');if(t.classList.contains('closepdf'))pw.classList.remove('open');});
+  pw.addEventListener('click',e=>{if(e.target===pw)pw.classList.remove('open');});
+
+  // Pitch demo
+  document.getElementById('pitchBtn').addEventListener('click',()=>{const out=document.getElementById('pitchOut');out.className='';out.innerHTML=`
+    <div class="match"><div><div class="co">EEW SPC · Rostock</div><div class="why">Monopile production continuing; candidate already worked this site 2025–26</div><div class="to">To: Production manager (reNEWS, 14 Aug) · email pattern · <a href="#">LinkedIn search</a></div></div><span class="fit"><i style="--w:94%"></i>94</span></div>
+    <div class="match"><div><div class="co">Sif Group · Rotterdam</div><div class="why">Monopile fabrication May–Aug 2027 on both facilities; NDT on every weld</div><div class="to">To: no ops contact yet · switchboard · 3 people from attendee list</div></div><span class="fit"><i style="--w:83%"></i>83</span></div>
+    <div class="match"><div><div class="co">Bladt Industries · Aalborg</div><div class="why">Substation and TP fabrication for Danish tenders awarded Aug 2026</div><div class="to">To: Peter Ravn, QHSE (offshoreWIND.biz, 6 Aug) · switchboard</div></div><span class="fit"><i style="--w:78%"></i>78</span></div>
+    <div class="teaser"><b>Blind teaser — EEW SPC</b><div class="sub">Anonymized · reference RFBT-N-0102 · full profile on request after NDA</div>Saw the reNEWS piece on the Rostock production run continuing into 2027. We have a PCN Level 2 UT/MT technician, EU passport, available immediately, who inspected monopile welds at your Rostock site in 2025–26 and knows your QA documentation. Certificate verified against BINDT on 3 Sep, valid to Nov 2027. €55/h all-in or €3/h margin-only on your contract, 2:2 or 4:2. Anonymized CV attached; happy to release the full profile once you confirm interest.<div class="btns"><button class="btn primary">Send to EEW</button><button class="btn">Copy LinkedIn message</button><button class="btn">Edit</button><button class="btn">Draft all three</button></div></div>`;});
+
+  document.querySelectorAll('.tab[data-vpane]').forEach(t=>t.addEventListener('click',e=>{if(e.target.closest('.help-btn'))return;document.querySelectorAll('.tab[data-vpane]').forEach(x=>x.classList.remove('on'));t.classList.add('on');['vcert','vcv'].forEach(id=>document.getElementById(id).classList.toggle('on',id===t.dataset.vpane));document.getElementById('results').innerHTML='';}));
+  // Verify demo
+  const drop=document.getElementById('drop'), dropcv=document.getElementById('dropcv'), results=document.getElementById('results');
+  ['dragenter','dragover'].forEach(ev=>dropcv.addEventListener(ev,e=>{e.preventDefault();dropcv.classList.add('over');}));
+  ['dragleave','drop'].forEach(ev=>dropcv.addEventListener(ev,e=>{e.preventDefault();dropcv.classList.remove('over');}));
+  dropcv.addEventListener('drop',runCv);
+  document.getElementById('demoRank').addEventListener('click',()=>{results.innerHTML='';
+    const c=card(`<div style="grid-column:1/-1"><div class="verdict">Ranked for Navantia UK — Painter/blaster, Methil</div><div class="file">6 CVs read · anonymized · scored against the posting · recommendation below</div>
+      <table class="rank" style="margin-top:12px;min-width:0"><thead><tr><th>#</th><th>Candidate</th><th>Score</th><th>Fits</th><th>Missing</th><th>Blocker</th><th>Available</th><th></th></tr></thead><tbody>
+        <tr><td>1</td><td><div class="co">RFBT-P-0231</div><div class="sub">Marko J. · FROSIO II verified</div></td><td><b class="sc">84</b></td><td>Sa 2.5, airless, offshore substations + monopiles</td><td>ICATS card (FROSIO usually accepted)</td><td>—</td><td class="cell-ok">4 Oct</td><td><span class="st ok">Send</span></td></tr>
+        <tr><td>2</td><td><div class="co">RFBT-P-0251</div><div class="sub">Ivan T. · FROSIO II verified</div></td><td><b class="sc">81</b></td><td>Blasting + spray, Lindø monopiles 2024–25</td><td>No jacket/ship-section work</td><td>—</td><td class="cell-ok">4 Oct</td><td><span class="st ok">Send</span></td></tr>
+        <tr><td>3</td><td><div class="co">RFBT-P-0260</div><div class="sub">Dario M. · NACE CIP 1 verified</div></td><td><b class="sc">77</b></td><td>Shipyard coating, Rijeka 2023–25, 4:2 rotations</td><td>No offshore wind structures</td><td>—</td><td class="cell-ok">Now</td><td><span class="st ok">Send</span></td></tr>
+        <tr><td>4</td><td><div class="co">RFBT-P-0253</div><div class="sub">Bogdan M. · FROSIO II verified</div></td><td><b class="sc">66</b></td><td>Airless spray, industrial steel</td><td>No blasting to Sa 2.5 on CV · English basic</td><td>—</td><td class="cell-warn">Medical missing</td><td><span class="st warn">Hold</span></td></tr>
+        <tr><td>5</td><td><div class="co">RFBT-P-0247</div><div class="sub">Nemanja R. · FROSIO expired</div></td><td><b class="sc">52</b></td><td>Strong monopile blasting record</td><td>Renew FROSIO first</td><td class="cell-bad">Cert expired 06/2026</td><td class="cell-bad">Blocked</td><td><span class="st bad">Not now</span></td></tr>
+        <tr><td>6</td><td><div class="co">RFBT-P-0271</div><div class="sub">Petar I. · no cert on file</div></td><td><b class="sc">38</b></td><td>3 years painting, Serbia</td><td>ICATS or FROSIO · offshore experience</td><td class="cell-bad">Non-EU passport</td><td>—</td><td><span class="st bad">Not eligible</span></td></tr>
+      </tbody></table>
+      <div class="rec"><b>Recommendation:</b> send 0231, 0251 and 0260 as a pack of three — two proven on offshore wind structures, one with shipyard 4:2 experience that matches the FSS work. Ask Navantia whether FROSIO is accepted in place of ICATS before sending; if not, all three need an ICATS conversion (2-day course). Hold 0253 until medical is in. 0247 and 0271 are not eligible for this role.</div>
+      <div class="btns"><button class="btn primary">Prepare pack of 3 for Navantia</button><button class="btn">Draft the ICATS question</button><button class="btn">Save scores to candidates</button></div></div>`);
+    c.style.gridTemplateColumns='1fr';});
+  document.getElementById('jdSample').addEventListener('click',()=>{document.getElementById('jd').value='Navantia UK — Painter/Blaster, Methil, Fife. Abrasive blasting to Sa 2.5, airless spray application on offshore wind jackets and FSS ship sections. ICATS or equivalent required. Start October 2026, 4:2 rotation. EU passport / right to work.';}); document.getElementById('demoCv').addEventListener('click',runCv);
+  ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+  ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+  drop.addEventListener('drop',runDemo); document.getElementById('demoBtn').addEventListener('click',runDemo);
+  function card(html,cls){const d=document.createElement('div');d.className='res '+(cls||'');d.innerHTML=html;results.prepend(d);return d;}
+  function runDemo(){results.innerHTML='';
+    const c1=card(`<div><div class="verdict">Checking…</div><div class="file">FROSIO_Marko_J.jpg · 1.2 MB</div><div class="kv" style="margin-top:12px"><span>Reading</span><span>Certificate number, holder, level, expiry</span></div></div>`,'pending');
+    setTimeout(()=>{c1.className='res';c1.innerHTML=`<div><div class="verdict">Valid until 14 March 2028</div><div class="file">FROSIO_Marko_J.jpg · Level II inspector · No. 12 8471</div><div class="kv"><span>Holder</span><span>Marko Jovanović — matches passport RFBT-P-0231</span><span>Checked where</span><span>frosio.no → Accredible record · 7 Sep 2026, 09:13</span><span>Result</span><span class="cell-ok">Active, issued 15 March 2023</span><span>Project fit</span><span>Covers Cádiz to Sep 2027 · 6 months margin</span></div><div class="btns"><button class="btn">Open source page</button><button class="btn">Save to candidate</button></div></div><div class="shot"></div>`;},1800);
+  }
+  function runCv(){results.innerHTML='';
+    const c2=card(`<div><div class="verdict">Reading CV…</div><div class="file">CV_Marko_Jovanovic_SR.docx</div></div>`,'pending');
+    setTimeout(()=>{c2.className='res';c2.innerHTML=`<div><div class="verdict">Anonymized CV ready</div><div class="file">Serbian original → English RFBT format · reference RFBT-P-0231</div><div class="kv"><span>Removed</span><span>Name, phone, email, address, photo, date of birth, employer names</span><span>Kept</span><span>Trade, certificates (linked to checks), projects by type and country, rotations, languages, availability</span><span>Checked where</span><span>3 certificates listed in CV matched against verification records · 3 of 3 verified</span></div>
+        <div class="sec"><h3>Three bullets for the client <span style="color:var(--ink-3);font-weight:400">· regenerate · edit</span></h3>
+          <ul class="bul"><li>FROSIO Level II, verified 7 Sep 2026, valid to March 2028 — no re-qualification needed for a 12-month project.</li><li>Coated offshore substations in Spain (2025–26) and monopiles in Denmark (2024): airless spray and Sa 2.5 blasting on the exact structures you build.</li><li>Available 4 October, EU passport, has worked 2:2 and 8:2 rotations without a missed rotation.</li></ul></div>
+        <div class="sec" id="jdmatch"><h3>Match to job — Navantia UK, Painter/blaster, Methil</h3>
+          <div class="score"><b>84</b><div><span class="cell-ok">Fits</span> ICATS-equivalent coating experience · Sa 2.5 · airless · offshore structures · available from October · EU passport<br><span class="cell-warn">Missing</span> ICATS card itself (FROSIO accepted by most UK yards, confirm with client) · no UK site experience<br><span class="cell-bad">Blocker</span> none</div></div></div>
+        <div class="btns"><button class="btn primary">Preview client PDF</button><button class="btn">Save to candidate</button><button class="btn">Copy bullets</button></div></div><div class="cv"><b>RFBT-P-0231</b>Industrial painter / blaster<br><span class="redact">Marko Jovanović</span><br>FROSIO II · verified<br>Offshore substations, Spain 2025–26<br>Monopile coating, Denmark 2024<br>2:2 and 8:2 rotations<br>Serbian, English (working)</div>`;},1600);}
+</script>
+</body>
+</html>

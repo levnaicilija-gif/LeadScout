@@ -1,0 +1,40 @@
+'use client';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+export function LeadDrawer({ lead }: { lead: any }) {
+  const r = useRouter(); const [tool, setTool] = useState<'jd' | 'pool' | 'xray' | 'q'>('jd');
+  const [out, setOut] = useState<any>({}); const [busy, setBusy] = useState(''); const [draft, setDraft] = useState<any>(null);
+  const call = async (action: string, extra: any = {}) => { setBusy(action); const res = await fetch('/api/lead', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lead_id: lead.id, action, ...extra }) }); const j = await res.json(); setBusy(''); return j; };
+  const c = lead.contacts?.[0];
+  return (<aside className="fixed top-0 right-0 h-screen w-[500px] bg-panel border-l border-line shadow-[-16px_0_48px_rgba(14,26,43,.12)] overflow-auto p-6 pb-12 z-10">
+    <a href="?" className="absolute top-3 right-3 text-ink3 text-lg" aria-label="Close">×</a>
+    <h2 className="text-[18px] font-semibold">{lead.companies?.name}</h2>
+    <div className="text-ink3 text-[13px] mb-4">{lead.kind === 'won_work' ? `Won: ${lead.project_name}` : `Hiring: ${lead.job_posts?.[0]?.role}`} · {lead.project_location}</div>
+
+    <div className="text-[12px] text-ink3 mb-2">Source</div>
+    <div className="flex items-center gap-2 text-[13px] mb-4"><span className={`st ${lead.source_fetch_status === 'live' ? 'st-ok' : 'st-bad'}`}>{lead.source_fetch_status}</span><a className="text-accent" href={lead.source_url} target="_blank" rel="noopener">Open source</a>{lead.confirmed_at ? <span className="text-ok">✓ confirmed</span> : <button className="btn" onClick={async () => { await call('confirm'); r.refresh(); }}>Confirm I checked it</button>}</div>
+
+    <div className="text-[12px] text-ink3 mb-2">Decision-maker</div>
+    {c ? <div className="border border-line rounded p-3.5 text-[13px]"><b className="block font-semibold">{c.name}</b><div className="text-ink2">{c.title}</div>
+      <div className="mt-2 grid gap-1">{c.phone && <span>{c.phone} <em className="not-italic text-ink3 text-[12px]">found · <a href={c.phone_source_url} target="_blank" className="underline">source</a></em></span>}{c.email ? <span>{c.email} <em className={`not-italic text-[12px] ${c.email_status === 'found' ? 'text-ok' : 'text-warn'}`}>{c.email_status}</em></span> : <span className="text-ink3">email unknown — use company address</span>}</div>
+      <div className="mt-2 flex gap-2"><a className="btn" href={c.linkedin_search_url} target="_blank" rel="noopener">Find on LinkedIn</a><a className="btn" href={c.google_search_url} target="_blank" rel="noopener">Search name + company</a></div>
+      {c.quote && <div className="mt-3 border-l-[3px] border-accent bg-accentsoft px-3 py-2 rounded-r">“{c.quote}”</div>}</div>
+      : <div className="text-ink3 text-[13px]">No named person quoted. {lead.lead_people?.length ? 'People at this company from the attendee list:' : ''}</div>}
+    {!!lead.lead_people?.length && <div className="border border-line rounded mt-2 text-[13px]">{lead.lead_people.map((lp: any, i: number) => <div key={i} className="px-3 py-2 border-b border-line2 last:border-0"><b className="font-medium">{lp.people.name}</b><div className="text-ink3 text-[12px]">{lp.people.title} · {lp.people.source} · title not verified</div></div>)}</div>}
+
+    <div className="text-[12px] text-ink3 mt-5 mb-2">Work this need</div>
+    <div className="grid gap-1.5">{([['jd', '1 · Need as a job description'], ['pool', '2 · Score the pool'], ['xray', '3 · Find candidates on LinkedIn'], ['q', '4 · Screening questions']] as const).map(([k, l]) => <button key={k} onClick={() => setTool(k)} className={`text-left border rounded px-3 py-2 ${tool === k ? 'border-accent bg-accentsoft' : 'border-line'}`}>{l}</button>)}</div>
+    <div className="mt-3 text-[13px]">
+      {tool === 'jd' && <><button className="btn btn-primary" disabled={!!busy} onClick={async () => setOut({ ...out, jd: await call('jd') })}>{busy === 'jd' ? 'Writing…' : lead.job_description ? 'Rewrite JD' : 'Write JD'}</button>{(out.jd?.job_description ?? lead.job_description) && <div className="mt-2 border border-line rounded bg-[#FAFBFC] p-3 whitespace-pre-wrap">{out.jd?.job_description ?? lead.job_description}{out.jd?.assumptions?.length > 0 && <div className="mt-2 text-warn text-[12px]">Assumed (confirm on the call): {out.jd.assumptions.join(' · ')}</div>}</div>}</>}
+      {tool === 'pool' && <><button className="btn btn-primary" disabled={!!busy} onClick={async () => setOut({ ...out, pool: await call('score_pool') })}>{busy === 'score_pool' ? 'Scoring…' : 'Score the pool'}</button>{out.pool?.error && <div className="text-bad mt-2">{out.pool.error}</div>}{out.pool?.ranked && <div className="border border-line rounded mt-2">{out.pool.ranked.map((x: any) => <div key={x.id} className="px-3 py-2 border-b border-line2 last:border-0 grid grid-cols-[1fr_auto] gap-2"><span><b className="font-medium">{x.reference_code}</b><div className="text-[12px] text-ink3">{x.fits.slice(0, 2).join(' · ')}{x.missing.length ? ` · missing: ${x.missing[0]}` : ''}{x.blockers.length ? <span className="text-bad"> · blocker: {x.blockers[0]}</span> : ''}</div></span><b className="text-accent">{x.score}</b></div>)}</div>}</>}
+      {tool === 'xray' && <><button className="btn btn-primary" disabled={!!busy} onClick={async () => { const j = await call('xray'); window.open(j.url, '_blank'); }}>Open LinkedIn search</button><div className="text-ink3 text-[12px] mt-2">Built from the JD, English only. Drop chosen CVs into Verify → they score against this lead.</div></>}
+      {tool === 'q' && <><button className="btn btn-primary" disabled={!!busy} onClick={async () => setOut({ ...out, q: await call('questions') })}>{busy === 'questions' ? 'Writing…' : 'Get questions'}</button>{out.q?.questions && <ol className="list-decimal pl-5 mt-2">{out.q.questions.map((q: any, i: number) => <li key={i} className="mb-2"><b className="font-medium block">{q.q}</b><small className="text-ink3">Good: {q.good_answer}</small></li>)}</ol>}</>}
+    </div>
+
+    <div className="text-[12px] text-ink3 mt-5 mb-2">Outreach</div>
+    {!draft ? <button className="btn btn-primary" disabled={!!busy || !lead.confirmed_at} title={lead.confirmed_at ? '' : 'Confirm the source first'} onClick={async () => setDraft(await call('draft'))}>{busy === 'draft' ? 'Drafting…' : 'Draft email + LinkedIn message'}</button>
+      : <div className="border border-line rounded bg-[#FAFBFC] p-3 text-[13px]"><input className="w-full border border-line rounded px-2 py-1 mb-2 font-medium" defaultValue={draft.subject} id="subj" /><textarea className="w-full border border-line rounded px-2 py-1 h-40" defaultValue={draft.email} id="body" /><div className="text-[12px] text-ink3 mt-1">{draft.reasoning}</div>
+        <div className="flex gap-2 mt-3 flex-wrap"><input className="border border-line rounded px-2 py-1 flex-1" placeholder="to: contact or company email" id="to" defaultValue={c?.email ?? ''} /><button className="btn btn-primary" onClick={async () => { const res = await fetch('/api/outreach', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ outreach_id: draft.outreach_id, to: (document.getElementById('to') as HTMLInputElement).value, subject: (document.getElementById('subj') as HTMLInputElement).value, body: (document.getElementById('body') as HTMLTextAreaElement).value }) }); const j = await res.json(); alert(j.ok ? 'Sent' : j.error); if (j.ok) r.refresh(); }}>Send</button><button className="btn" onClick={() => navigator.clipboard.writeText(draft.linkedin)}>Copy LinkedIn message</button></div></div>}
+    <div className="flex gap-2 mt-4"><button className="btn" onClick={async () => { await call('status', { status: 'pursue' }); r.refresh(); }}>Mark pursued</button><button className="btn" onClick={async () => { await call('status', { status: 'not_for_us' }); r.push('/app/radar'); }}>Not for us</button></div>
+  </aside>);
+}
