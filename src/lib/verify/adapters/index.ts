@@ -1,9 +1,15 @@
 import { frosio } from './frosio';
 import { pcn } from './pcn';
+import { cswip } from './cswip';
+import { irata } from './irata';
+import { winda, ampp } from './closed';
 import type { Adapter, LookupInput, LookupResult } from './types';
 
-/** Bodies with a public register get a browser adapter. Add cswip, ampp, irata, winda, cisrs, electrical_dk here (same shape). */
-export const ADAPTERS: Record<string, Adapter> = { frosio, pcn };
+/**
+ * One adapter per certifying body. `frosio`, `winda` and `ampp` have no public register and
+ * say so instead of guessing; the rest search a real one. Still to add: cisrs, electrical_dk.
+ */
+export const ADAPTERS: Record<string, Adapter> = { frosio, pcn, cswip, irata, winda, ampp };
 
 /** Welder ISO 9606 (DNV/BV/TÜV/LRQA): no public register → issuer email + test-report consistency (see verify route). */
 export const ISSUER_EMAIL_BODIES = new Set(['iso9606']);

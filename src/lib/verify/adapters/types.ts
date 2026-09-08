@@ -7,6 +7,8 @@ export type LookupInput = {
   level?: string;
   /** Verification URL/QR printed on the certificate (e.g. an Accredible credential.net link). */
   credentialUrl?: string;
+  /** yyyy-mm-dd. Some registers (CSWIP) key on date of birth, not the holder name. */
+  dob?: string;
 };
 
 /** One certificate row as printed on the issuer's register. Values are copied verbatim from the fetched page. */

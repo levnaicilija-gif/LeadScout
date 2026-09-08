@@ -19,17 +19,31 @@ Test one against the live register without touching the database:
     npx tsx scripts/check-adapter.ts pcn --number 347534 --method Radiography
     npx tsx scripts/check-adapter.ts frosio --credentialUrl https://www.credential.net/<id>
 
-| body | register | status |
-|---|---|---|
-| `pcn` | bindt.org PCN verification form | working — confirmed live 2026-09-08 |
-| `frosio` | none public | `not_supported` unless the certificate carries an Accredible credential URL |
-| `cswip` `ampp` `irata` `winda` `cisrs` `electrical_dk` | — | not written yet |
-| `iso9606` (welders) | no public register | issuer email + test-report consistency, in `/api/verify` |
+All six registers below were checked live on 2026-09-08.
 
-FROSIO has no public register: frosio.no has no search, the FROSIO Portal
-(apps.frosio.no) is login-only, and Accredible — which issues the certificates — has no
-public search and needs an issuer API token. The only honest check is the credential
-URL/QR printed on the certificate itself, or an email to frosio@frosio.no.
+| body | register | needs | status |
+|---|---|---|---|
+| `pcn` | bindt.org PCN verification form | PCN number, or surname | working, success path confirmed |
+| `cswip` | cswip.com JSON API behind the verification form | certificate number **+ date of birth** | working; success payload shape still to confirm |
+| `irata` | techconnect.irata.org/verify/tech | IRATA number (L/XXXXX) + surname | working; result markup still to confirm |
+| `frosio` | none public | Accredible credential URL/QR on the certificate | `not_supported` without that URL |
+| `winda` | none public (login only) | — | `not_supported`, tells the recruiter what to do instead |
+| `ampp` | none public (sign-in only) | — | `not_supported`, same |
+| `cisrs` `electrical_dk` | — | — | not written yet |
+| `iso9606` (welders) | no public register | — | issuer email + test-report consistency, in `/api/verify` |
+
+Three bodies have no public register at all. FROSIO: frosio.no has no search, the FROSIO
+Portal (apps.frosio.no) is login-only, and Accredible — which issues the certificates —
+has no public search and needs an issuer API token, so the only honest check is the
+credential URL/QR on the certificate or an email to frosio@frosio.no. WINDA: every page
+redirects to a login and records are shared by the technician, not looked up. AMPP: the
+certification search sits behind an account sign-in.
+
+Where a success path is marked "still to confirm", the adapter has been driven against the
+live site and its not-found path verified, but no real certificate was available to confirm
+the fields a *hit* returns. Those adapters only report `valid` when the holder or number
+actually appears in the fetched response; confirm and record the real shape on the first
+real certificate (build order step 1).
 
 To add an adapter: copy `pcn.ts`, confirm every selector against the live site, record the
 confirmed URL/selectors in the file header with the date, and register it in `index.ts`.

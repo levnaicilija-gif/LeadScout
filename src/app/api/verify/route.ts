@@ -33,9 +33,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ document: doc, extracted: ext, verification: v, issuerEmailDraft: issuerEmail(ext) });
   }
 
+  // CSWIP keys on date of birth; take it from the passport on file when the certificate omits it.
+  let dob = ext.dob;
+  if (!dob && candidateId) {
+    const { data: pp } = await sb.from('documents').select('extracted').eq('candidate_id', candidateId).eq('type', 'passport').limit(1).maybeSingle();
+    dob = (pp?.extracted as any)?.dob;
+  }
   const r = await runLookup(ext.cert_body ?? 'other', {
     number: ext.number, holder: ext.holder, issuer: ext.issuer,
-    method: ext.method ?? ext.process, level: ext.level, credentialUrl: ext.credential_url,
+    method: ext.method ?? ext.process, level: ext.level, credentialUrl: ext.credential_url, dob,
   });
   let shot: string | null = null;
   if (r.screenshot) { shot = `verify/${doc.id}.png`; await sb.storage.from('screenshots').upload(shot, r.screenshot, { contentType: 'image/png' }); }

@@ -15,7 +15,7 @@ if (!body || !ADAPTERS[body]) {
 }
 
 runLookup(body, {
-  number: arg('number'), holder: arg('holder'), method: arg('method'), level: arg('level'), credentialUrl: arg('credentialUrl'),
+  number: arg('number'), holder: arg('holder'), method: arg('method'), level: arg('level'), credentialUrl: arg('credentialUrl'), dob: arg('dob'),
 }).then((r) => {
   console.log(`adapter      ${ADAPTERS[body].name}`);
   console.log(`result       ${r.result}`);
