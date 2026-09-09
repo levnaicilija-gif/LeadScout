@@ -33,6 +33,7 @@ async function run(req: Request) {
   let q = db.from('sources').select('*').eq('enabled', true);
   const only = params.get('only');
   if (only) q = q.ilike('url', `%${only}%`);
+  const auditOnly = params.get('audit') === '1';
   const { data: sources } = await q.limit(Number(params.get('limit') ?? 25));
   const { data: agencies } = await db.from('companies').select('name').eq('employer_type', 'staffing_agency');
   const agencyNames = (agencies ?? []).map((a) => a.name);
@@ -57,6 +58,10 @@ async function run(req: Request) {
       tally.linksFound += links.length;
       audit.push({ source: src.url, via: index.via, links: links.length, note: index.note });
       report.push({ source: src.url, linksFound: links.length, via: index.via });
+
+      // ?audit=1 — index pages only. Answers "which sources can we read for free?" inside the
+      // function's 300 s budget; a full crawl of 20 sources cannot fit and times out.
+      if (auditOnly) continue;
 
       for (const url of links) {
        try {
