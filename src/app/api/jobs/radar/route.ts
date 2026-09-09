@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { fetchPage, articleLinks } from '@/lib/fetch-page';
 import { browserProvider } from '@/lib/browser';
+import { ruleFor } from '@/lib/source-rules';
 import { extractLead, extractJobPost } from '@/lib/ai/radar-extract';
 import { detectEmployerType } from '@/lib/agency-detector';
 import { linkedinSearchUrl, googleSearchUrl } from '@/lib/search-urls';
@@ -34,7 +35,18 @@ async function run(req: Request) {
   const only = params.get('only');
   if (only) q = q.ilike('url', `%${only}%`);
   const auditOnly = params.get('audit') === '1';
-  const { data: sources } = await q.limit(Number(params.get('limit') ?? 25));
+  // Chunking: a Vercel function has 300 s, which is not enough for many sources. Each
+  // invocation takes `batch` sources from `cursor`, then hands the next batch to a fresh
+  // invocation, so the daily run finishes across several functions instead of timing out.
+  const batch = Math.max(1, Number(params.get('batch') ?? 5));
+  const cursor = Math.max(0, Number(params.get('cursor') ?? 0));
+  const chain = params.get('chain') !== '0';
+  const batchesLeft = Number(params.get('batchesLeft') ?? 40);
+  const limitParam = params.get('limit');
+  // `limit` caps the whole run; a batch never exceeds it.
+  const total = limitParam ? Number(limitParam) : undefined;
+  const take = total ? Math.min(batch, Math.max(0, total - cursor)) : batch;
+  const { data: sources } = take > 0 ? await q.order('id').range(cursor, cursor + take - 1) : { data: [] as any[] };
   const { data: agencies } = await db.from('companies').select('name').eq('employer_type', 'staffing_agency');
   const agencyNames = (agencies ?? []).map((a) => a.name);
 
@@ -47,16 +59,26 @@ async function run(req: Request) {
   for (const src of sources ?? []) {
     tally.sources++;
     try {
-      const index = await fetchPage(src.url);
+      const rule = ruleFor(src.url, src.link_rule);
+      let index = await fetchPage(rule?.index ?? src.url, rule?.browser ? { force: 'browser' } : {});
       if (index.status !== 'live') {
         tally.sourcesUnreachable++;
         audit.push({ source: src.url, via: index.via, links: 0, note: index.note });
         report.push({ source: src.url, status: 'index not reachable', via: index.via, note: index.note });
         continue;
       }
-      const links = articleLinks(index);
+      let links = articleLinks(index, 15, rule?.pattern);
+      // Read fine but nothing article-shaped on it: usually a client-rendered list. Worth one
+      // browser attempt before writing the source off.
+      if (links.length === 0 && index.via !== 'browser') {
+        const rendered = await fetchPage(rule?.index ?? src.url, { force: 'browser' });
+        if (rendered.status === 'live') {
+          const better = articleLinks(rendered, 15, rule?.pattern);
+          if (better.length) { index = rendered; links = better; }
+        }
+      }
       tally.linksFound += links.length;
-      audit.push({ source: src.url, via: index.via, links: links.length, note: index.note });
+      audit.push({ source: src.url, via: index.via, links: links.length, note: rule ? `rule: ${rule.why}` : index.note });
       report.push({ source: src.url, linksFound: links.length, via: index.via });
 
       // ?audit=1 — index pages only. Answers "which sources can we read for free?" inside the
@@ -98,7 +120,26 @@ async function run(req: Request) {
       await db.from('sources').update({ last_crawled_at: new Date().toISOString() }).eq('id', src.id);
     } catch (e: any) { report.push({ source: src.url, error: e.message }); }
   }
-  return NextResponse.json({ ok: true, browser: browserProvider(), tally, audit, rejected, report });
+  // Hand the next batch to a fresh invocation. The chained request is dispatched and then
+  // abandoned on purpose — waiting for it would nest the 300 s budgets and time out. Aborting
+  // our side does not stop the function that has already been started.
+  const more = (sources ?? []).length === take && take > 0;
+  let next: string | null = null;
+  if (more && chain && batchesLeft > 1) {
+    const u = new URL(req.url);
+    u.searchParams.set('cursor', String(cursor + take));
+    u.searchParams.set('batch', String(batch));
+    u.searchParams.set('batchesLeft', String(batchesLeft - 1));
+    next = u.toString();
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 1500);
+    await fetch(next, { method: 'POST', headers: { 'x-cron-secret': process.env.CRON_SECRET! }, signal: ac.signal }).catch(() => {});
+  }
+
+  // One line per batch, so the daily run is readable in the Vercel logs.
+  console.log(`[radar] cursor=${cursor} batch=${take} sources=${tally.sources} articles=${tally.articlesRead} leads=${tally.leads} rejected=${tally.rejected} next=${next ? cursor + take : 'done'}`);
+
+  return NextResponse.json({ ok: true, browser: browserProvider(), cursor, batch: take, nextCursor: more ? cursor + take : null, chained: !!next, tally, audit, rejected, report });
 }
 
 function fit(trades: string[], location = '', employer: string, timingMonths: number | null) {

@@ -56,8 +56,10 @@ function needsBrowser(html: string, text: string, links: number): string | null 
  *
  * `via` records which path answered, so a source audit can report what actually needs a browser.
  */
-export async function fetchPage(url: string, opts: { allowBrowser?: boolean } = {}): Promise<Fetched> {
+export async function fetchPage(url: string, opts: { allowBrowser?: boolean; force?: 'browser' } = {}): Promise<Fetched> {
   const allowBrowser = opts.allowBrowser ?? true;
+  // Some sites are known to be client-rendered — skip the pointless plain fetch.
+  if (opts.force === 'browser') return allowBrowser ? viaBrowser(url, 'source rule says this host is client-rendered') : miss(url, 'source rule requires a browser', 'none');
   const now = () => new Date().toISOString();
 
   const res = await httpGet(url);
@@ -136,7 +138,7 @@ const ASSET = /\.(png|jpe?g|gif|svg|webp|avif|css|js|json|xml|pdf|zip|mp4|mp3|ic
  *
  * RSS item links skip the shape test: a feed only carries articles, so trust it.
  */
-export function articleLinks(index: Fetched, limit = 15): string[] {
+export function articleLinks(index: Fetched, limit = 15, pattern?: RegExp): string[] {
   let origin: string;
   try { origin = new URL(index.url).origin; } catch { return []; }
   const self = index.url.replace(/\/$/, '');
@@ -153,7 +155,10 @@ export function articleLinks(index: Fetched, limit = 15): string[] {
     if (href === self || seen.has(href)) continue;
     const path = u.pathname;
     if (ASSET.test(path)) continue;
-    if (!fromFeed) {
+    // A per-source pattern replaces the shape test entirely: the site told us what an
+    // article URL looks like, so trust that over the generic guess.
+    if (pattern) { if (!pattern.test(path)) continue; }
+    else if (!fromFeed) {
       if (NOT_ARTICLE.test(path)) continue;
       const segments = path.split('/').filter(Boolean);
       if (segments.length === 0) continue;
