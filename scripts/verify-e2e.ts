@@ -42,6 +42,20 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SU
     await page.fill('input[type=password]', PASSWORD);
     await page.click('form button:not([type=button])');
     await page.waitForURL(/\/app\//, { timeout: 60000 }).catch(() => {});
+
+    // Supabase rate-limits sign-ins per IP; repeated probe runs trip it. Report what the page
+    // actually said, wait, and try once more rather than failing on a locator timeout later.
+    for (let attempt = 1; attempt <= 3 && !/\/app\//.test(page.url()); attempt++) {
+      const shown = await page.evaluate(() => (document.querySelector('.text-bad') as HTMLElement)?.innerText ?? '(no message shown)');
+      console.log(`sign-in attempt ${attempt} did not reach /app — page says: ${shown}`);
+      await page.waitForTimeout(15000 * attempt);
+      await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await page.fill('input[type=email]', EMAIL);
+      await page.fill('input[type=password]', PASSWORD);
+      await page.click('form button:not([type=button])');
+      await page.waitForURL(/\/app\//, { timeout: 60000 }).catch(() => {});
+    }
+    if (!/\/app\//.test(page.url())) throw new Error('could not sign in after 3 attempts');
     console.log('signed in ->', page.url(), '\n');
 
     for (const [label, tab, file] of [
