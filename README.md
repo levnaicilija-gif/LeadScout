@@ -76,5 +76,25 @@ Audit which sources are readable for free, without crawling them:
 
 Add `&only=<url substring>` to aim a run at particular sources.
 
+## The daily run
+
+Radar chunks itself: each invocation crawls `batch` sources (default 5) starting at
+`cursor`, then dispatches the next batch to a fresh invocation and returns. A Vercel
+function has 300 s and a 20-source crawl does not fit in one. `batchesLeft` caps the chain,
+`chain=0` disables it, and every batch logs one line:
+
+    [radar] cursor=0 batch=5 sources=5 articles=22 leads=1 rejected=21 next=5
+
+Useful parameters: `only=` (comma-separated url substrings) aims a run at particular
+sources; `audit=1` reports how each source can be read without crawling it.
+
+### Per-source link rules
+
+Most sites are handled by the generic article-shape heuristic. The ones that are not get a
+rule in `src/lib/source-rules.ts`, or a per-workspace override in `sources.link_rule`
+(migration 0005) — a bare regex for the article pathname, or JSON
+`{index:...,pattern:...,browser:true}`. A source that reads fine but yields no
+article-shaped links also gets one browser attempt before being written off.
+
 ## Security
 No keys in source. Rotate the Google API key and Supabase anon key that were committed in the previous version of this repo.
