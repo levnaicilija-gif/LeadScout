@@ -49,6 +49,7 @@ Search the web, then answer with JSON only:
 Rules:
 - Return the company's OWN website, not a directory, aggregator, LinkedIn, Bloomberg, Wikipedia, a news article or a jobs board.
 - Only answer with a domain when a page you actually read names that company as itself — its title, header or footer. Quote that text in confirmed_by.
+- THE COUNTRY MUST MATCH. Company names repeat across countries: "AXYS" in Belgium is not AXYS Technologies in British Columbia. If the site you find is a different company in a different country, that is a miss — answer null. Only accept a site whose own pages place the company in the country given, or that is plainly the same group operating there.
 - If the company is not clearly identifiable, or you only find it mentioned on someone else's page, answer {"domain": null, "confirmed_by": null, "source_url": null}. A wrong website is far worse than none.
 - domain is the bare hostname without scheme or "www.".`;
 
