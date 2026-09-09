@@ -68,7 +68,7 @@ async function run(req: Request) {
         const { data: seen } = await db.from('articles').select('id').eq('url', url).maybeSingle();
         if (seen) { tally.alreadySeen++; continue; }
         const page = await fetchPage(url);
-        if (page.status !== 'live') { tally.fetchFailed++; rejected.push({ url, why: 'page did not load' }); continue; }
+        if (page.status !== 'live') { tally.fetchFailed++; rejected.push({ url, why: `page did not load — ${page.note ?? 'no reason given'}` }); continue; }
         if (page.text.length < 400) { tally.tooShort++; rejected.push({ url, why: `only ${page.text.length} characters of text — not an article` }); continue; }
 
         const shotPath = `radar/${Date.now()}-${Math.abs(hash(url))}.png`;
