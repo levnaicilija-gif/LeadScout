@@ -15,12 +15,16 @@ export const CertSchema = z.object({
 });
 export type CertExtraction = z.output<typeof CertSchema>;
 
-/** Vision extraction: image/PDF as base64. */
+/** Extraction from a PDF, an image, or plain text (DOCX arrives here already converted). */
 export async function extractDocument(base64: string, mediaType: string): Promise<CertExtraction> {
+  const asText = mediaType === 'text/plain';
+  const source = asText
+    ? [{ type: 'text', text: Buffer.from(base64, 'base64').toString('utf8').slice(0, 30000) }]
+    : [{ type: mediaType === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: mediaType, data: base64 } }];
   const r = await claude.messages.create({
     model: MODEL_EXTRACT, max_tokens: 800,
     system: 'Read this document for a recruitment agency. Classify it and copy the fields exactly as printed. If a field is unreadable, list it in unreadable. cert_body: frosio, pcn, cswip, ampp, irata, winda, cisrs, iso9606 (any welder qualification), electrical_dk, or other. number: the registry/certificate number as printed (for PCN copy the PCN number as well if both are shown). method: the NDT/inspection method or discipline. scope: the scope line. credential_url: any verification URL printed on the certificate or encoded in a QR code (e.g. credential.net/...), copied exactly; omit if none. dob: date of birth as yyyy-mm-dd if printed (passports always print it). Return JSON only.',
-    messages: [{ role: 'user', content: [{ type: mediaType === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: mediaType as any, data: base64 } } as any, { type: 'text', text: 'Extract.' }] }],
+    messages: [{ role: 'user', content: [...(source as any[]), { type: 'text', text: 'Extract.' }] as any }],
   });
   const text = r.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
   return CertSchema.parse(JSON.parse(text.match(/\{[\s\S]*\}/)![0]));
