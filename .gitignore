@@ -9,3 +9,6 @@ node_modules
 !.env.example
 client-cv-sample.pdf
 fixtures/
+
+# Real candidate documents used for testing — never commit these.
+design/samples/
