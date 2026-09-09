@@ -86,17 +86,33 @@ export const anonymize = (p: Profile) => ({
 });
 
 /** PII check on the client-facing text. Regex first, then a model review. */
+/**
+ * Is this span something we deliberately print?
+ *
+ * Substring matching is not enough: the model quotes "cert. 12 8471" while the CV claims
+ * "certificate 12 8471", and those do not contain one another. What identifies a certificate
+ * is its digits, so a span is permitted when its digit run appears in an allowed value.
+ */
+export function isAllowedSpan(span: string, allowed: string[]) {
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+  const digits = (s: string) => s.replace(/\D+/g, '');
+  const s = norm(span);
+  const d = digits(span);
+  return allowed.filter(Boolean).some((a) => {
+    const an = norm(a);
+    if (an.includes(s)) return true;
+    return d.length >= 4 && digits(a).includes(d);
+  });
+}
+
 export function piiRegexHits(text: string, fullName?: string, employers: string[] = [], allowed: string[] = []) {
   const hits: string[] = [];
-  const ok = allowed.filter(Boolean).map((a) => a.toLowerCase().replace(/\s+/g, ' ').trim());
-  const permitted = (span: string) => {
-    const s = span.toLowerCase().replace(/\s+/g, ' ').trim();
-    return ok.some((a) => a.includes(s));
-  };
+  const permitted = (span: string) => isAllowedSpan(span, allowed);
 
   // Quote the span, not just its shape: "phone-like number" alone leaves a recruiter with a
-  // blocked CV and nothing to act on.
-  const phone = text.match(/\+?\d[\d\s().-]{7,}\d/g) ?? [];
+  // blocked CV and nothing to act on. The class excludes newlines on purpose — with \s it
+  // bridged two lines and reported "2027. 2025-26", an expiry year meeting a date range.
+  const phone = text.match(/\+?\d[\d().\-  \t]{7,}\d/g) ?? [];
   for (const m of phone) if (!permitted(m)) { hits.push(`phone-like number: "${m.trim()}"`); break; }
   const email = text.match(/[\w.+-]+@[\w-]+\.[\w.]+/g) ?? [];
   for (const m of email) if (!permitted(m)) { hits.push(`email: "${m}"`); break; }
@@ -138,11 +154,7 @@ export async function piiModelReview(clientFacingText: string, allowed: string[]
     'This text is about to be sent to a client as an ANONYMISED candidate summary. It must not identify the candidate or their current/previous employers. Find anything that does: personal names, employer or agency names, phone numbers, emails, addresses, dates of birth, passport/licence/ID numbers, social or portfolio links, a named vessel/site/project so specific it identifies the person, or an unusually small home town. Certificate numbers, certifying bodies (FROSIO, BINDT, IRATA...), countries, years, trades, rotations and languages are all FINE and must not be reported. Quote each offending span verbatim in `text`. clean = true only when you find nothing.',
     clientFacingText.slice(0, 20000),
   );
-  const ok = allowed.filter(Boolean).map((a) => a.toLowerCase().trim());
-  const findings = r.findings.filter((f) => {
-    const t = f.text.toLowerCase().trim();
-    return !!t && !ok.some((a) => a.includes(t));
-  });
+  const findings = r.findings.filter((f) => !!f.text.trim() && !isAllowedSpan(f.text, allowed));
   return { findings, clean: findings.length === 0 };
 }
 
