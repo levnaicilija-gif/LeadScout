@@ -14,17 +14,25 @@ export type Fetched = {
 /**
  * Fetch a page with a real browser: visible text, the anchor hrefs, and a screenshot.
  *
- * Browserbase is required anywhere without a local browser. Vercel's serverless runtime has
- * no Playwright download, so falling back to chromium.launch() there fails with a confusing
- * "Executable doesn't exist" per source; fail with the real reason instead.
+ * Browserbase where a key is set, otherwise a local browser. Vercel's serverless runtime has
+ * no Playwright download, so the local launch fails there with "Executable doesn't exist",
+ * which reads as a Playwright problem rather than a missing key — restate it.
+ *
+ * Deliberately no environment sniffing: `vercel env pull` writes VERCEL=1 into .env.local,
+ * so checking that variable reports "we are on Vercel" on a developer's own machine. Try the
+ * browser and report what actually happened instead.
  */
 async function connect(): Promise<Browser> {
   const key = process.env.BROWSERBASE_API_KEY;
   if (key) return chromium.connectOverCDP(`wss://connect.browserbase.com?apiKey=${key}`);
-  if (process.env.VERCEL) {
-    throw new Error('BROWSERBASE_API_KEY is not set. Vercel has no local browser, so Radar cannot fetch pages without it.');
+  try {
+    return await chromium.launch();
+  } catch (e: any) {
+    throw new Error(
+      `No BROWSERBASE_API_KEY, and no local browser to fall back on (${String(e?.message ?? e).split('\n')[0]}). ` +
+        'Set BROWSERBASE_API_KEY for any environment without a Playwright install — a Vercel function is one.',
+    );
   }
-  return chromium.launch();
 }
 
 export async function fetchPage(url: string): Promise<Fetched> {
