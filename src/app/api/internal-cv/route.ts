@@ -46,6 +46,9 @@ export async function GET(req: Request) {
     agencyLine: ws?.name ?? 'RFBT Recruitment',
   };
 
+  // Releasing personal data is logged, like a client reveal is.
+  await db.from('internal_downloads').insert({ workspace_id: me.workspace_id, candidate_id: id, downloaded_by: me.id });
+
   const pdf = await renderInternalCv(data);
   return new NextResponse(new Uint8Array(pdf), {
     headers: {
