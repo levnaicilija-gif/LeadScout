@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>LeadScout — Verify</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--rail:#0E1A2B;--rail2:#16263B;--railink:#C9D3E0;--raildim:#7D8BA0;--bg:#F3F5F7;--panel:#fff;--ink:#141B26;--ink2:#4F5966;--ink3:#8590A0;--line:#E3E7EC;--line2:#EEF1F4;--accent:#0F4C81;--accentsoft:#E6EFF7;--ok:#1E7F4F;--oksoft:#E3F2EA;--warn:#B7791F;--warnsoft:#FBF0DA;--bad:#B23A3A;--badsoft:#F8E4E4;--r:6px}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "IBM Plex Sans",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;cursor:pointer}a{color:inherit}
+.app{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
+.rail{background:var(--rail);color:var(--railink);padding:22px 16px;display:flex;flex-direction:column;gap:2px}
+.brand{display:flex;align-items:center;gap:10px;padding:0 8px 22px}.brand .mark{width:28px;height:28px;border-radius:6px;background:#fff;color:var(--rail);display:grid;place-items:center;font-weight:700;font-size:13px}.brand b{color:#fff}
+.rail a{display:flex;justify-content:space-between;padding:8px 10px;border-radius:var(--r);text-decoration:none}.rail a.on{background:var(--rail2);color:#fff}.rail .c{font-size:12px;color:var(--raildim)}
+.main{padding:24px 32px 72px;min-width:0}
+.top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px}h1{font-size:22px;font-weight:600;margin:0}.top span{color:var(--ink3)}
+.help-btn{margin-left:10px;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--ink3);font-size:12px;font-weight:600;vertical-align:middle}
+.grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(320px,1fr);gap:16px;align-items:start}
+.drop{border:1.5px dashed #B3BDCA;border-radius:var(--r);background:var(--panel);padding:40px 24px;text-align:center}
+.drop b{display:block;font-size:16px;font-weight:600}.drop .sub{color:var(--ink3);font-size:13px;margin-top:4px}.drop .link{color:var(--accent);font-size:13px;margin-top:10px}
+.promise{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:22px;text-align:left}
+.promise div{border:1px solid var(--line2);border-radius:var(--r);padding:10px 12px;background:#FAFBFC;font-size:12.5px;line-height:1.45}.promise b{display:block;font-size:13px;font-weight:600;margin-bottom:2px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--r)}.box .hd{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}.box .hd b{font-weight:600}.box .hd span{font-size:12px;color:var(--ink3)}
+select,textarea{width:100%;border:1px solid var(--line);border-radius:var(--r);padding:9px 10px;font:inherit;background:var(--panel);color:var(--ink)}
+.orl{display:flex;align-items:center;gap:10px;color:var(--ink3);font-size:12px;margin:12px 0 6px}.orl::before,.orl::after{content:"";flex:1;height:1px;background:var(--line)}
+.btn{border:1px solid var(--line);background:var(--panel);padding:8px 13px;border-radius:var(--r);font-weight:500}.btn.p{background:var(--accent);border-color:var(--accent);color:#fff}
+.toolbar{display:flex;justify-content:space-between;align-items:center;margin:26px 0 10px}.toolbar h2{font-size:13px;color:var(--ink3);font-weight:500;margin:0}
+.cand{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);margin-bottom:14px}
+.cand .ch{padding:12px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}.cand .ch b{font-weight:600}.cand .ch span{font-size:12px;color:var(--ink3)}
+.card{padding:14px 18px;border-bottom:1px solid var(--line2);display:grid;grid-template-columns:1fr auto;gap:16px}.card:last-child{border-bottom:0}
+.hl{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}.hl::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--ok)}.hl.w::before{background:var(--warn)}.hl.b::before{background:var(--bad)}.hl.n::before{background:var(--ink3)}
+.file{color:var(--ink3);font-size:12px;margin-top:2px}
+.kv{display:grid;grid-template-columns:120px 1fr;gap:5px 12px;font-size:13px;margin-top:10px}.kv span:nth-child(odd){color:var(--ink3)}
+.g{color:var(--ok)}.a{color:var(--warn)}.rd{color:var(--bad)}
+.steps{display:flex;gap:6px;font-size:12px;color:var(--ink3);margin-top:8px}.steps i{font-style:normal}.steps i.d{color:var(--ok)}.steps i.n{color:var(--accent);font-weight:500}
+.bul{margin:8px 0 0;padding-left:18px;font-size:13px}.bul li{margin-bottom:3px}
+.acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.side{width:210px;border:1px solid var(--line);border-radius:4px;padding:10px 12px;background:#FAFBFC;font-size:12px;line-height:1.5}.side b{display:block;font-size:13px}.side .rd2{background:var(--ink);color:var(--ink);border-radius:2px}
+.score{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;margin-top:12px;display:grid;grid-template-columns:auto 1fr;gap:14px;font-size:13px;line-height:1.55}.score b{font-size:26px;font-weight:600;color:var(--accent);line-height:1}
+.shot{width:150px;height:96px;border:1px solid var(--line);border-radius:4px;background:repeating-linear-gradient(0deg,#FAFBFC 0 9px,#EEF1F4 9px 10px);position:relative;overflow:hidden}.shot::after{content:"screenshot · bindt.org";position:absolute;left:0;right:0;bottom:0;background:rgba(20,27,38,.8);color:#fff;font-size:10px;padding:3px 6px}
+.help{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r);padding:14px 18px;margin-bottom:16px;font-size:13px;line-height:1.55;max-width:96ch}
+</style></head><body>
+<div class="app">
+<nav class="rail"><div class="brand"><span class="mark">L</span><b>LeadScout</b></div><a href="#">Today<span class="c">7</span></a><a href="#">Radar<span class="c">8 · 0</span></a><a class="on" href="#">Verify<span class="c">drop</span></a><a href="#">Pitch<span class="c">reverse</span></a><a href="#">Candidates<span class="c">212</span></a></nav>
+<main class="main">
+<div class="top"><h1>Verify<button class="help-btn">?</button></h1><span>Nothing leaves the system · recruiter-initiated only</span></div>
+
+<div class="help"><b>What Verify does.</b> Drop anything a candidate sends. Each file is recognised and handled: CVs are anonymized with three client bullets and a downloadable PDF; certificates are checked with the issuer and show what they cover and until when; passports and contracts feed cross-checks and availability. Nothing is sent anywhere; nothing is marked verified without a source.</div>
+
+<div class="grid">
+  <div class="drop">
+    <b>Drop any candidate documents here</b>
+    <div class="sub">CVs, certificates, passport, contract, medical, A1, welding test report · PDF, DOCX or photo · any language · several at once</div>
+    <div class="link">or click to choose</div>
+    <div class="promise">
+      <div><b>CV</b>Anonymized version, three client bullets, PDF to download</div>
+      <div><b>Certificate</b>Checked with the issuer · what it covers · valid until</div>
+      <div><b>Passport · contract</b>Name and expiry cross-checks · availability from contract end</div>
+      <div><b>Medical · A1 · test report</b>Saved with dates on the candidate</div>
+    </div>
+  </div>
+
+  <div class="box"><div class="hd"><b>Match against a job</b><span>optional</span></div>
+    <div style="padding:14px 16px">
+      <select><option>Choose an open lead or job post…</option><option>Navantia UK · Painter/blaster ×12 · Methil</option><option>Semco Maritime · Welders 135/136 · Esbjerg (INEOS framework)</option><option>Bladt Industries · Welders, painters, NDT · Aalborg</option><option>EEW SPC · Welders 121, NDT · Rostock</option></select>
+      <div class="orl">or paste a job description</div>
+      <textarea rows="4" placeholder="Paste a job description or posting…"></textarea>
+      <div style="font-size:12px;color:var(--ink3);margin-top:8px">Every CV in the batch is scored against this job. You get fits, missing, blockers and a recommendation.</div>
+    </div>
+  </div>
+</div>
+
+<div class="toolbar"><h2>3 files · 2 candidates · recognised and handled</h2><button class="btn">Clear</button></div>
+
+<div class="cand">
+  <div class="ch"><b>RFBT-P-0004 · Marian C.</b><span>new candidate created from CV · 2 files</span></div>
+
+  <div class="card">
+    <div>
+      <div class="hl">CV — Industrial painter / blaster · anonymized · RFBT-P-0004</div>
+      <div class="file">Marian M CV - SANDBLASTER.docx · Romanian → English</div>
+      <div class="steps"><i class="d">✓ Read</i><i class="d">✓ Anonymized</i><i class="d">✓ Bullets</i><i class="d">✓ PDF</i></div>
+      <div class="kv"><span>Removed</span><span>name, phone, email, address, photo, date of birth, employer names</span><span>Kept</span><span>trade, certificates with status, projects by type and country, rotations, languages, availability</span><span>Certs in CV</span><span>2 claimed · 0 verified on file — drop the certificates to check them</span></div>
+      <div style="font-size:12px;color:var(--ink3);margin-top:10px">Three bullets for the client — facts only</div>
+      <ul class="bul"><li>Spray painting and sandblasting on the Jotun A project, Norway, 2020–2024.</li><li>Industrial insulation on pipes and structures, classes 1–9, 2017–2021.</li><li>Romanian native; English B1 listening, A2 spoken. Available from 1 January 2027.</li></ul>
+      <div class="score"><b>77</b><div><span class="g">Fits</span> blasting, spray painting, offshore structures, 4/2 rotation experience<br><span class="a">Missing</span> ICATS card (FROSIO accepted by most UK yards — confirm) · English A2 vs "toolbox talk in English"<br><span class="rd">Blocker</span> none · <span style="color:var(--ink3)">vs Navantia UK · Painter/blaster · Methil</span></div></div>
+      <div class="acts"><button class="btn p">Download client PDF</button><button class="btn">Copy bullets</button><button class="btn">Preview verification page</button><button class="btn">Send to this lead</button></div>
+    </div>
+    <div class="side"><b>RFBT-P-0004</b>Industrial painter / blaster<br><span class="rd2">name redacted</span><br>Spray painting / sandblasting, Norway 2020–24<br>Insulation, pipes and structures, 2017–21<br>Romanian, English (B1/A2)<br>Available 01/01/2027</div>
+  </div>
+
+  <div class="card">
+    <div>
+      <div class="hl n">Contract — BWO Manpower, welder/fitter, until 31/12/2026 · availability set to 01/01/2027</div>
+      <div class="file">Marian_Crangasu_Signed_contract.pdf · employment agreement</div>
+      <div class="kv"><span>Employer</span><span>BWO Manpower Solutions ApS, Vejle · internal only</span><span>Workplace</span><span>Nicon Sites, Falkevej 5 · 4/2 rotation</span><span>Ends</span><span>31 Dec 2026 (extension possible) → availability 1 Jan 2027, editable</span><span>Not stored</span><span>rate, allowances, pension, date of birth</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="cand">
+  <div class="ch"><b>RFBT-N-0102 · Dragan V.</b><span>matched to existing candidate by name on document · 1 file</span></div>
+  <div class="card">
+    <div>
+      <div class="hl">Certificate — PCN Level 2 UT · verified on bindt.org · valid to 21/03/2029</div>
+      <div class="file">PCN_certificate.pdf · British Institute of Non-Destructive Testing · No. 347534</div>
+      <div class="kv"><span>Level / scope</span><span>PCN Level 2 Ultrasonic Testing — can set up and perform UT, interpret and report results to written procedures</span><span>Covers</span><span>NDT technician roles: weld inspection, plate and pipe UT, offshore fabrication QC</span><span>Issued</span><span>21 Mar 2024</span><span>Valid until</span><span class="g">21 Mar 2029 · 2 years 6 months left</span><span>Holder</span><span>Dragan Veselinović — matches passport on file</span><span>Confirmation</span><span class="g">Verified on register · bindt.org · 9 Sep 2026, 15:19 · screenshot saved</span></div>
+      <div class="acts"><button class="btn">Open register page</button><button class="btn">Saved to candidate</button></div>
+    </div>
+    <div class="shot"></div>
+  </div>
+</div>
+
+<div class="cand" style="border-style:dashed">
+  <div class="card"><div><div class="hl b">Not a candidate document — not saved</div><div class="file">IMG_2231.jpg · looks like a photo of a vehicle</div></div></div>
+</div>
+
+</main></div></body></html>

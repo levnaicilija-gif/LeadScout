@@ -2,12 +2,26 @@ import { Help } from '@/components/Help';
 import { VerifyClient } from '@/components/VerifyClient';
 import { currentUser } from '@/lib/supabase/server';
 export const dynamic = 'force-dynamic';
-export default async function Verify({ searchParams }: { searchParams: { tab?: string } }) {
+
+/** One drop zone. No tabs: the file says what it is, not the recruiter. */
+export default async function Verify() {
   const me = await currentUser();
-  const tab = searchParams.tab === 'cv' ? 'cv' : 'cert';
   return (<>
-    <div className="flex items-baseline justify-between mb-3"><h1 className="text-[22px] font-semibold">Verify<Help title="What Verify is" intro="The only way documents enter the system — when you drop them." rows={[['Certificates', 'Checked on the issuer\'s official site. You get valid/not, valid until, where, when, screenshot. Welder certs: test-report consistency now, issuer confirmation by email.'], ['CVs', 'Any language → anonymized client version, three bullets, optional job match; several CVs + one job → ranked.'], ['Never', 'Marks something verified without a fetched source. Puts a name on a client document.']]} /></h1><span className="text-ink3">Nothing leaves the system · recruiter-initiated only</span></div>
-    <div className="flex gap-0.5 border-b border-line mb-3">{[['cert', 'Certificate check'], ['cv', 'CV anonymizer']].map(([t, l]) => <a key={t} href={`?tab=${t}`} className={`px-3.5 py-2 -mb-px border-b-2 ${tab === t ? 'border-ink text-ink font-medium' : 'border-transparent text-ink3'}`}>{l}</a>)}</div>
-    <VerifyClient mode={tab} senior={me?.role === 'senior'} />
+    <div className="flex items-baseline justify-between mb-4">
+      <h1 className="text-[22px] font-semibold">
+        Verify
+        <Help
+          title="What Verify does"
+          intro="Verify is the only way documents enter the system. Drop anything a candidate sends; each file is recognised and handled: CVs are anonymized with three client bullets and a downloadable PDF; certificates are checked with the issuer and show what they cover and until when; passports and contracts feed cross-checks and availability. Nothing is sent anywhere; nothing is marked verified without a source."
+          rows={[
+            ['Recognised', 'CV, certificate, passport, contract, medical, A1, welding test report.'],
+            ['Grouped', 'Results are grouped by candidate. Only a CV creates a new candidate; other documents attach by the name on them.'],
+            ['Never', 'Saves a file it cannot recognise, or marks something verified without a fetched source.'],
+          ]}
+        />
+      </h1>
+      <span className="text-ink3">Nothing leaves the system · recruiter-initiated only</span>
+    </div>
+    <VerifyClient senior={me?.role === 'senior'} />
   </>);
 }
