@@ -23,7 +23,31 @@ export async function extractDocument(base64: string, mediaType: string): Promis
     : [{ type: mediaType === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: mediaType, data: base64 } }];
   const r = await claude.messages.create({
     model: MODEL_EXTRACT, max_tokens: 800,
-    system: 'Read this document for a recruitment agency. Classify it and copy the fields exactly as printed. If a field is unreadable, list it in unreadable. cert_body: frosio, pcn, cswip, ampp, irata, winda, cisrs, iso9606 (any welder qualification), electrical_dk, or other. number: the registry/certificate number as printed (for PCN copy the PCN number as well if both are shown). method: the NDT/inspection method or discipline. scope: the scope line. credential_url: any verification URL printed on the certificate or encoded in a QR code (e.g. credential.net/...), copied exactly; omit if none. dob: date of birth as yyyy-mm-dd if printed (passports always print it). Return JSON only.',
+    // The key names are not negotiable. Asked in prose, the model returns sensible names of
+    // its own ("document_type", "certificate_number", "issuing_body") and every parse fails,
+    // which is exactly how Verify came to reject every document it was ever given.
+    system: `Read this document for a recruitment agency and copy the fields exactly as printed.
+
+Return ONLY this JSON object, using these exact keys and no others:
+{
+  "doc_type": "certificate | passport | cv | medical | a1 | test_report | other",
+  "cert_body": "frosio | pcn | cswip | ampp | irata | winda | cisrs | iso9606 | electrical_dk | other",
+  "issuer": "the organisation that issued it, as printed",
+  "number": "the certificate or registry number as printed; for PCN prefer the PCN number when both are shown",
+  "holder": "the person's full name as printed",
+  "level": "certification level",
+  "process": "welding process",
+  "position": "welding position",
+  "method": "the NDT or inspection method / discipline",
+  "scope": "the scope line",
+  "dob": "date of birth as yyyy-mm-dd, if printed",
+  "credential_url": "any verification URL printed or encoded in a QR code, copied exactly",
+  "issued": "date of issue as printed",
+  "expiry": "expiry date as printed",
+  "unreadable": ["names of fields you could not read"]
+}
+
+doc_type and unreadable are required. Omit any other key whose value is not on the document — never guess one. Return the JSON only, with no prose and no markdown fences.`,
     messages: [{ role: 'user', content: [...(source as any[]), { type: 'text', text: 'Extract.' }] as any }],
   });
   const text = r.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
@@ -38,7 +62,22 @@ export const ProfileSchema = z.object({
   pii: z.object({ phone: z.string().optional(), email: z.string().optional(), address: z.string().optional(), dob: z.string().optional() }).default({}),
 });
 export type Profile = z.output<typeof ProfileSchema>;
-export const parseCv = (cvText: string) => askJson(ProfileSchema, 'Parse this CV (any language) into a structured profile in English for an industrial/offshore staffing agency. Copy facts; do not embellish. trade_code: P painter/blaster, W welder, F fitter/pipefitter, N NDT, R rope access, E electrician/wind tech, O other.', cvText.slice(0, 30000));
+export const parseCv = (cvText: string) => askJson(ProfileSchema, `Parse this CV (any language) into a structured profile in English for an industrial/offshore staffing agency. Copy facts; do not embellish.
+
+Return ONLY this JSON object, using these exact keys and no others:
+{
+  "full_name": "the candidate's name as printed",
+  "trade": "their trade in English, e.g. Industrial painter / blaster",
+  "trade_code": "P painter/blaster | W welder | F fitter/pipefitter | N NDT | R rope access | E electrician/wind tech | O other",
+  "certificates_claimed": ["each certificate named on the CV, as printed"],
+  "projects": [{ "years": "2025-26", "type": "what the work was", "country": "country", "employer": "employer name", "rotation": "e.g. 8:2" }],
+  "skills": ["skill"],
+  "languages": ["language (level)"],
+  "availability": "when they are free, as stated",
+  "pii": { "phone": "", "email": "", "address": "", "dob": "yyyy-mm-dd" }
+}
+
+trade and trade_code are required. Omit any other key the CV does not state. Return the JSON only, with no prose and no markdown fences.`, cvText.slice(0, 30000));
 
 export const anonymize = (p: Profile) => ({
   trade: p.trade, certificates: p.certificates_claimed,
