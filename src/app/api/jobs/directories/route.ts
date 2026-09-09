@@ -95,7 +95,10 @@ async function run(req: Request) {
         members = raw ? membersFromHtml(raw, d.url) : page.links.filter((l) => { try { return new URL(l).origin !== new URL(d.url).origin && !NOT_A_MEMBER.test(l); } catch { return false; } }).map((l) => { const h = new URL(l).hostname.replace(/^www\./, ''); return { name: hostWord(h), domain: h }; });
       } else {
         // profile mode: each member has an internal page; the website is one hop further in.
-        const profiles = page.links.filter((l) => d.profilePattern!.test(new URL(l).pathname)).slice(0, Number(p.get('max') ?? 40));
+        // offset walks a long directory across several invocations without redoing the start.
+        const off = Number(p.get('offset') ?? 0);
+        const all = page.links.filter((l) => d.profilePattern!.test(new URL(l).pathname)).sort();
+        const profiles = all.slice(off, off + Number(p.get('max') ?? 40));
         for (const prof of profiles) {
           // Profile pages are usually plain HTML even when the list is not — try the cheap path.
           const sub = await fetchPage(prof);
