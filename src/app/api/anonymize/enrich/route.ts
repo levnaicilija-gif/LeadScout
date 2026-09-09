@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
-import { anonymize, clientBullets, scoreAgainstJob, piiRegexHits, piiModelReview } from '@/lib/ai/documents';
+import { anonymize, buildBullets, scoreAgainstJob, piiRegexHits, piiModelReview } from '@/lib/ai/documents';
 import { renderClientCv, clientCvText, clientCvAllowed, type ClientCvData } from '@/lib/pdf/render';
 export const maxDuration = 120;
 
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       .select('result, valid_until, checked_where, checked_at, documents!inner(candidate_id, cert_body, extracted)')
       .eq('documents.candidate_id', candidateId);
 
-    const bullets = (await clientBullets(anon, verified ?? [], job)).bullets;
+    const { bullets, dropped: droppedBullets } = await buildBullets(anon, verified ?? [], job);
     const score = job ? await scoreAgainstJob(anon, verified ?? [], job) : null;
     if (score) await db.from('scores').insert({ candidate_id: candidateId, ...score });
 
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       candidate: { id: candidateId, reference_code: code },
-      bullets, score, piiHits, piiPassed: passed, pdfPath,
+      bullets, droppedBullets, score, piiHits, piiPassed: passed, pdfPath,
       crossCheck: { claimed: (profile.certificates_claimed ?? []).length, verified: (verified ?? []).length },
     });
   } catch (e: any) {

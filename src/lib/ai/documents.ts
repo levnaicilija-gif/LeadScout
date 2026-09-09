@@ -159,8 +159,84 @@ export async function piiModelReview(clientFacingText: string, allowed: string[]
 }
 
 export const BulletsSchema = z.object({ bullets: z.array(z.string()).length(3) });
+
+const BULLETS_SYSTEM = `Write exactly three bullets describing this candidate for a client.
+
+State only what the data says: what they hold, what they did, and when they are available.
+Every noun and number must come from the data given to you.
+
+Do NOT write:
+- benefits, savings or outcomes for the client ("reduces QC costs", "cuts mobilisation time",
+  "proving deepwater experience") — these are claims about the future, not facts on file;
+- adjectives of quality ("proven", "highly experienced", "reliable", "strong track record");
+- anything not present in the data, however reasonable it seems.
+
+A good bullet reads like a record, not a pitch:
+  "FROSIO Inspector Level II, certificate 12 8471, valid to 14 March 2028."
+  "Offshore substation painting and blasting in Spain, 2025-26, 8:2 rotation."
+  "Available from 4 October 2026; 2:2 or 8:2 rotations."
+
+No name. No employer names. Max 28 words each.`;
+
 export const clientBullets = (anon: object, verified: object[], jobContext?: string) =>
-  askJson(BulletsSchema, 'Write exactly three bullets that best sell this anonymized candidate to a client. Each bullet must cite a verifiable fact from the data (certificate + check date, project type + year, availability/rotation). No name. No employer names. Max 28 words each.', JSON.stringify({ candidate: anon, verified_certificates: verified, job: jobContext ?? null }));
+  askJson(BulletsSchema, BULLETS_SYSTEM, JSON.stringify({ candidate: anon, verified_certificates: verified, job: jobContext ?? null }));
+
+/** Per-bullet verdict: which claims in it cannot be traced back to the source. */
+export const BulletCheckSchema = z.object({
+  results: z.array(z.object({
+    i: z.number(),
+    supported: z.boolean(),
+    unsupported: z.array(z.string()).nullish().transform((v) => v ?? []),
+  })).default([]),
+});
+
+export const checkBullets = (bullets: string[], source: object) =>
+  askJson(
+    BulletCheckSchema,
+    `You are checking bullets about a job candidate against the ONLY data we hold on them. This is a factual audit, not editing.
+
+For each bullet, list every claim that cannot be traced to the source data — an invented certificate, a date not present, a benefit or outcome for the client, a judgement of quality, a place or rotation not in the data. Quote each offending phrase verbatim in "unsupported".
+A bullet is supported only when every claim in it appears in the source. Restating a source fact in different words is fine; adding anything is not.
+
+Return {"results":[{"i":0,"supported":true,"unsupported":[]}]} with one entry per bullet, in order.`,
+    JSON.stringify({ bullets: bullets.map((b, i) => ({ i, text: b })), source }),
+  );
+
+/**
+ * Three bullets that survive an audit against the source.
+ *
+ * Generation alone drifts into selling — a run produced "reduces third-party QC costs" and
+ * "cutting mobilisation time and equipment overhead", neither of which is anywhere in the CV.
+ * So every bullet is checked against the same data it was written from, the failures are named
+ * back to the model for one retry, and anything still unsupported is dropped rather than sent.
+ */
+export async function buildBullets(anon: object, verified: object[], jobContext?: string) {
+  const source = { candidate: anon, verified_certificates: verified };
+  let bullets = (await clientBullets(anon, verified, jobContext)).bullets;
+  const dropped: string[] = [];
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { results } = await checkBullets(bullets, source);
+    const bad = results.filter((r) => !r.supported);
+    if (bad.length === 0) return { bullets, dropped };
+
+    if (attempt === 0) {
+      // Name the exact phrases and ask again, rather than throwing the whole set away.
+      const complaint = bad.map((r) => `bullet ${r.i + 1}: remove ${r.unsupported.map((u) => `"${u}"`).join(', ')}`).join('; ');
+      bullets = (await askJson(
+        BulletsSchema,
+        `${BULLETS_SYSTEM}\n\nA previous attempt failed the factual audit. Fix exactly these problems and change nothing else: ${complaint}`,
+        JSON.stringify({ candidate: anon, verified_certificates: verified, job: jobContext ?? null }),
+      )).bullets;
+      continue;
+    }
+    // Still unsupported after the retry: drop those bullets. Two true bullets beat three with a lie.
+    const badIdx = new Set(bad.map((r) => r.i));
+    dropped.push(...bullets.filter((_, i) => badIdx.has(i)));
+    bullets = bullets.filter((_, i) => !badIdx.has(i));
+  }
+  return { bullets, dropped };
+}
 
 export const ScoreSchema = z.object({ score: z.number().min(0).max(100), fits: z.array(z.string()), missing: z.array(z.string()), blockers: z.array(z.string()) });
 export const scoreAgainstJob = (anon: object, verified: object[], jd: string) =>

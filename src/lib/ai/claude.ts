@@ -1,7 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 export const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-export const MODEL_EXTRACT = 'claude-sonnet-4-6';
+// Sonnet 5: newer than 4-6 and cheaper with it ($2/$10 per Mtok against $3/$15).
+export const MODEL_EXTRACT = 'claude-sonnet-5';
 export const MODEL_CLASSIFY = 'claude-haiku-4-5';
 
 /** Ask for JSON only; parse; validate with zod. Throws on failure — callers decide fallback. */
