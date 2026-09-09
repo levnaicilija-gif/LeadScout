@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { claude, MODEL_EXTRACT } from '@/lib/ai/claude';
+import { claude, MODEL_CLASSIFY } from '@/lib/ai/claude';
 import { logCost, logModelCall, modelCostEur } from '@/lib/cost';
 export const maxDuration = 300;
 
@@ -94,21 +94,23 @@ async function run(req: Request) {
       let msgs: any[] = [{ role: 'user', content: `Company: ${c.name}\nCountry: ${c.country}\nSector: ${c.sector}` }];
       let text = '';
       let searches = 0;
-      for (let hop = 0; hop < 3; hop++) {
+      // Two hops, one search, Haiku. Sonnet 5 with the filtering search tool took 214 s and
+      // cost €0.28 for one company — ten hours and €50 for the whole set.
+      for (let hop = 0; hop < 2; hop++) {
         const r: any = await claude.messages.create({
-          model: MODEL_EXTRACT, max_tokens: 700, system: SYSTEM,
-          tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 2 }] as any,
+          model: MODEL_CLASSIFY, max_tokens: 400, system: SYSTEM,
+          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 1 }] as any,
           messages: msgs,
         } as any);
-        spent += await logModelCall(db, workspace, MODEL_EXTRACT, `resolve ${c.name}`, r.usage);
+        spent += await logModelCall(db, workspace, MODEL_CLASSIFY, `resolve ${c.name}`, r.usage);
         searches += (r.content ?? []).filter((b: any) => b.type === 'server_tool_use' || b.type === 'web_search_tool_result').length;
         text = (r.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
         if (r.stop_reason !== 'pause_turn') break;
         msgs = [...msgs, { role: 'assistant', content: r.content }];
       }
       if (searches > 0) {
-        const eur = SEARCH_EUR * Math.min(searches, 2);
-        await logCost(db, workspace, 'search', `web search · ${c.name}`, Math.min(searches, 2), eur);
+        const eur = SEARCH_EUR * Math.min(searches, 1);
+        await logCost(db, workspace, 'search', `web search · ${c.name}`, Math.min(searches, 1), eur);
         spent += eur;
       }
 
