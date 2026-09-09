@@ -27,7 +27,12 @@ async function run(req: Request) {
   if (!authorised(req)) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
   const db = supabaseAdmin();
   const params = new URL(req.url).searchParams;
-  const { data: sources } = await db.from('sources').select('*').eq('enabled', true).limit(Number(params.get('limit') ?? 25));
+  // `only` aims a run at particular sources (substring of the url) — for tuning Stage 1 on
+  // sources that matter rather than whichever rows happen to come back first.
+  let q = db.from('sources').select('*').eq('enabled', true);
+  const only = params.get('only');
+  if (only) q = q.ilike('url', `%${only}%`);
+  const { data: sources } = await q.limit(Number(params.get('limit') ?? 25));
   const { data: agencies } = await db.from('companies').select('name').eq('employer_type', 'staffing_agency');
   const agencyNames = (agencies ?? []).map((a) => a.name);
 
@@ -45,6 +50,7 @@ async function run(req: Request) {
       report.push({ source: src.url, linksFound: links.length });
 
       for (const url of links) {
+       try {
         const { data: seen } = await db.from('articles').select('id').eq('url', url).maybeSingle();
         if (seen) { tally.alreadySeen++; continue; }
         const page = await fetchPage(url);
@@ -69,6 +75,11 @@ async function run(req: Request) {
           tally.rejected++;
           rejected.push({ url, why: res.why });
         }
+       } catch (e: any) {
+        // One unreadable article must not cost us the rest of the source.
+        tally.rejected++;
+        rejected.push({ url, why: `error: ${String(e?.message ?? e).replace(/\s+/g, ' ').slice(0, 300)}` });
+       }
       }
       await db.from('sources').update({ last_crawled_at: new Date().toISOString() }).eq('id', src.id);
     } catch (e: any) { report.push({ source: src.url, error: e.message }); }
@@ -106,7 +117,12 @@ async function upsertWonLead(db: any, ws: string, x: any, articleId: string, url
   }
   await db.from('lead_articles').upsert({ lead_id: leadId, article_id: articleId });
   for (const p of x.people) {
-    await db.from('contacts').upsert({ lead_id: leadId, company_id: co.id, name: p.name, title: p.title, quote: p.quote, quote_article_id: articleId, linkedin_search_url: linkedinSearchUrl(p.name, x.company), google_search_url: googleSearchUrl(p.name, x.company), email_status: 'unknown' }, { onConflict: 'lead_id,name' as any, ignoreDuplicates: true });
+    // A lead without its quoted decision-maker is not a lead. Never let this fail quietly.
+    const { error } = await db.from('contacts').upsert(
+      { lead_id: leadId, company_id: co.id, name: p.name, title: p.title, quote: p.quote, quote_article_id: articleId, linkedin_search_url: linkedinSearchUrl(p.name, x.company), google_search_url: googleSearchUrl(p.name, x.company), email_status: 'unknown' },
+      { onConflict: 'lead_id,name' as any, ignoreDuplicates: true },
+    );
+    if (error) throw new Error(`could not save contact "${p.name}" for ${x.company}: ${error.code} ${error.message}`);
   }
 }
 async function upsertJobLead(db: any, ws: string, j: any, url: string, pageText: string, shot: string, agencyNames: string[]) {
