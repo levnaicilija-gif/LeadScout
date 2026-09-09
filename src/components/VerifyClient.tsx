@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { PreviewPdf } from './PreviewPdf';
 import { Progress, AnonymizedPreview, DownloadPdf, type Stage } from './CvCard';
+import { friendlyError } from '@/lib/friendly-error';
 
 /** Nothing may spin forever: every call is bounded and every failure is shown. */
 const STEP_TIMEOUT_MS = 90_000;
@@ -123,7 +124,7 @@ export function VerifyClient({ mode, senior }: { mode: 'cert' | 'cv'; senior?: b
         </div>
       </div>}
 
-    {err && <div className="mt-4 bg-panel border border-bad rounded p-4 text-[13px]"><b className="text-bad">That did not work.</b><div className="mt-1">{err}</div></div>}
+    {err && <div className="mt-4 bg-panel border border-bad rounded p-4 text-[13px]"><b className="text-bad">{friendlyError(err, mode === 'cv' ? 'cv' : 'certificate')}</b><details className="mt-1 text-[12px] text-ink3"><summary className="cursor-pointer">Technical detail</summary><pre className="whitespace-pre-wrap mt-1">{err}</pre></details></div>}
 
     {v && <div className="bg-panel border border-line rounded p-4 mt-4 grid grid-cols-[1fr_auto] gap-4">
       <div>
@@ -137,7 +138,12 @@ export function VerifyClient({ mode, senior }: { mode: 'cert' | 'cv'; senior?: b
     </div>}
 
     {res?.cv && <div className="mt-4 grid gap-3">
-      {(res.cv.failed ?? []).map((f: any, i: number) => <div key={'f' + i} className="bg-panel border border-bad rounded p-3 text-[13px]"><b className="text-bad">{f.file}</b> — {f.why}</div>)}
+      {(res.cv.failed ?? []).map((f: any, i: number) => (
+        <div key={'f' + i} className="bg-panel border border-bad rounded p-3 text-[13px]">
+          <b className="text-bad">{f.file}</b> — {friendlyError(f.why, 'cv')}
+          <details className="mt-1 text-[12px] text-ink3"><summary className="cursor-pointer">Technical detail</summary><pre className="whitespace-pre-wrap mt-1">{f.why}</pre></details>
+        </div>
+      ))}
 
       {res.cv.results?.map((x: any, i: number) => {
         const blocked = x.piiHits?.length > 0;
@@ -158,7 +164,7 @@ export function VerifyClient({ mode, senior }: { mode: 'cert' | 'cv'; senior?: b
             </div>
 
             {x.droppedBullets?.length > 0 && <div className="mt-2 text-[12px] text-warn">Dropped {x.droppedBullets.length} bullet(s) that could not be traced to the CV.</div>}
-            {x.enrichError && <div className="mt-2 text-[13px] text-warn">The CV was read and the candidate saved, but preparing the client version failed: {x.enrichError}</div>}
+            {x.enrichError && <div className="mt-2 text-[13px] text-warn">The CV was read and the candidate saved, but the client version could not be prepared. <details className="inline text-[12px] text-ink3"><summary className="cursor-pointer inline">detail</summary><pre className="whitespace-pre-wrap mt-1">{x.enrichError}</pre></details></div>}
 
             <AnonymizedPreview x={x} />
 

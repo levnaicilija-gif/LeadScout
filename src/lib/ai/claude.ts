@@ -7,10 +7,22 @@ export const MODEL_CLASSIFY = 'claude-haiku-4-5';
 
 /** Ask for JSON only; parse; validate with zod. Throws on failure — callers decide fallback. */
 export async function askJson<S extends z.ZodTypeAny>(schema: S, system: string, user: string, model = MODEL_EXTRACT, maxTokens = 2000): Promise<z.output<S>> {
-  const r = await claude.messages.create({ model, max_tokens: maxTokens, system: system + '\nReturn valid JSON only. No prose, no markdown fences.', messages: [{ role: 'user', content: user }] });
+  const r = await claude.messages.create({
+    model, max_tokens: maxTokens,
+    system: system + '\nReturn valid JSON only. Return a single JSON object, not an array. No prose, no markdown fences.',
+    messages: [{ role: 'user', content: user }],
+  });
   const text = r.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
   const m = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-  return schema.parse(JSON.parse(m ? m[0] : text));
+  let parsed = JSON.parse(m ? m[0] : text);
+
+  // The model sometimes wraps the object in an array — a real CV failed with
+  // "Expected object, received array". Every schema here describes one object, and the
+  // alternation above matches the array first when it comes earlier in the text, so unwrap it
+  // rather than losing the extraction to a bracket.
+  if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object' && parsed[0] !== null) parsed = parsed[0];
+
+  return schema.parse(parsed);
 }
 
 /** THE honesty check: every string in `values` must appear (case-insensitive, whitespace-normalised) in `source`. */
