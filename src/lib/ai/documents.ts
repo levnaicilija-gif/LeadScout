@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { askJson, claude, MODEL_EXTRACT } from './claude';
 
 export const CertSchema = z.object({
-  doc_type: z.enum(['certificate', 'passport', 'cv', 'medical', 'a1', 'test_report', 'other']),
+  doc_type: z.enum(['certificate', 'passport', 'cv', 'medical', 'a1', 'test_report', 'contract', 'other']),
   cert_body: z.string().optional(), // frosio|pcn|cswip|ampp|irata|winda|cisrs|iso9606|electrical_dk|other
   issuer: z.string().optional(), number: z.string().optional(), holder: z.string().optional(),
   level: z.string().optional(), process: z.string().optional(), position: z.string().optional(),
@@ -12,6 +12,10 @@ export const CertSchema = z.object({
   /** Verification URL or QR-code target printed on the certificate — the only way to check a FROSIO/Accredible credential. */
   credential_url: z.string().optional(),
   issued: z.string().optional(), expiry: z.string().optional(), unreadable: z.array(z.string()).default([]),
+  /** Employment contract. Rate, allowances, pension and date of birth are deliberately absent:
+   *  they stay in the file itself and never reach a profile, a bullet or any PDF. */
+  employer: z.string().optional(), role: z.string().optional(), workplace: z.string().optional(),
+  rotation: z.string().optional(), start: z.string().optional(), end: z.string().optional(),
 });
 export type CertExtraction = z.output<typeof CertSchema>;
 
@@ -30,7 +34,7 @@ export async function extractDocument(base64: string, mediaType: string): Promis
 
 Return ONLY this JSON object, using these exact keys and no others:
 {
-  "doc_type": "certificate | passport | cv | medical | a1 | test_report | other",
+  "doc_type": "certificate | passport | cv | medical | a1 | test_report | contract | other",
   "cert_body": "frosio | pcn | cswip | ampp | irata | winda | cisrs | iso9606 | electrical_dk | other",
   "issuer": "the organisation that issued it, as printed",
   "number": "the certificate or registry number as printed; for PCN prefer the PCN number when both are shown",
@@ -44,10 +48,20 @@ Return ONLY this JSON object, using these exact keys and no others:
   "credential_url": "any verification URL printed or encoded in a QR code, copied exactly",
   "issued": "date of issue as printed",
   "expiry": "expiry date as printed",
+  "employer": "contract only: the employing company",
+  "role": "contract only: the position",
+  "workplace": "contract only: the site or vessel",
+  "rotation": "contract only: e.g. 4:2",
+  "start": "contract only: start date",
+  "end": "contract only: end date",
   "unreadable": ["names of fields you could not read"]
 }
 
-doc_type and unreadable are required. Omit any other key whose value is not on the document — never guess one. Return the JSON only, with no prose and no markdown fences.`,
+doc_type and unreadable are required. Omit any other key whose value is not on the document — never guess one.
+
+contract means an employment agreement between a person and an employer: parties, position, dates, workplace. It is NOT a CV. holder must be the person named on the document, copied exactly as printed — if you cannot find a name, omit holder rather than shortening or inventing one.
+
+NEVER return pay rate, allowances, pension, bonus or bank details, on any document type. They are not wanted and must not appear in the JSON. Return the JSON only, with no prose and no markdown fences.`,
     messages: [{ role: 'user', content: [...(source as any[]), { type: 'text', text: 'Extract.' }] as any }],
   });
   const text = r.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
