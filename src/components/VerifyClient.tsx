@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { PreviewPdf } from './PreviewPdf';
 import { Progress, AnonymizedPreview, DownloadPdf, type Stage } from './CvCard';
 import { friendlyError } from '@/lib/friendly-error';
+import { CertCard } from './CertCard';
 
 /** Nothing may spin forever: every call is bounded and every failure is shown. */
 const STEP_TIMEOUT_MS = 90_000;
@@ -102,15 +103,6 @@ export function VerifyClient({ mode, senior }: { mode: 'cert' | 'cv'; senior?: b
   const KV = ({ rows }: { rows: [string, any][] }) => <div className="grid grid-cols-[130px_1fr] gap-y-1.5 text-[13px] mt-3">{rows.map(([k, v], i) => <><span key={'k' + i} className="text-ink3">{k}</span><span key={'v' + i}>{v ?? '—'}</span></>)}</div>;
 
   const v = res?.cert; const ver = v?.verification;
-  const certHeadline = ver?.result === 'valid' ? `Valid${ver.valid_until ? ` until ${ver.valid_until}` : ''}`
-    : ver?.result === 'pending' ? ver.notes
-      : ver?.result === 'consistent_with_test_report' ? 'Consistent with test report — issuer confirmation requested'
-        : ver?.result === 'not_found' ? 'Not found on issuer site'
-          : ver?.result === 'not_supported' ? 'No online register for this body — manual check'
-            : ver?.result === 'invalid' ? 'Expired or invalid'
-              : v?.verdict?.result === 'needs_retake' ? `Retake needed: ${v.verdict.unreadable.join(', ')}`
-                : v?.extracted?.doc_type !== 'certificate' ? `Read as ${v?.extracted?.doc_type} — saved`
-                  : busy ? 'Read — checking the register…' : 'Read';
 
   return (<>
     {(res || err) && !busy && <div className="flex justify-end mb-2"><button className="btn" onClick={clear}>Clear</button></div>}
@@ -126,16 +118,7 @@ export function VerifyClient({ mode, senior }: { mode: 'cert' | 'cv'; senior?: b
 
     {err && <div className="mt-4 bg-panel border border-bad rounded p-4 text-[13px]"><b className="text-bad">{friendlyError(err, mode === 'cv' ? 'cv' : 'certificate')}</b><details className="mt-1 text-[12px] text-ink3"><summary className="cursor-pointer">Technical detail</summary><pre className="whitespace-pre-wrap mt-1">{err}</pre></details></div>}
 
-    {v && <div className="bg-panel border border-line rounded p-4 mt-4 grid grid-cols-[1fr_auto] gap-4">
-      <div>
-        <div className="text-[17px] font-semibold flex items-center gap-2"><span className={`w-2.5 h-2.5 rounded-full ${ver?.result === 'valid' ? 'bg-ok' : ver?.result === 'pending' || ver?.result === 'consistent_with_test_report' ? 'bg-warn' : v.verdict?.result === 'needs_retake' ? 'bg-warn' : ver ? 'bg-bad' : 'bg-accent'}`} />{certHeadline}</div>
-        <div className="text-ink3 text-[12px]">{[v.extracted?.issuer, v.extracted?.level ?? v.extracted?.process, v.extracted?.number && `No. ${v.extracted.number}`].filter(Boolean).join(' · ')}</div>
-        <KV rows={[['Holder', v.extracted?.holder], ['Checked where', ver?.checked_where ? <a className="text-accent" href={ver.checked_where} target="_blank">{ver.checked_where}</a> : '—'], ['Checked', ver?.checked_at ? new Date(ver.checked_at).toLocaleString() : '—'], ['Notes', ver?.notes ?? '—'], ['Warnings', v.warnings?.length ? <span className="text-warn">{v.warnings.join(' · ')}</span> : 'none']]} />
-        {v.lookupError && <div className="mt-3 text-[13px] text-warn">The certificate was read and saved, but the register check failed: {v.lookupError}</div>}
-        {v.issuerEmailDraft && <details className="mt-3 text-[13px]"><summary className="cursor-pointer text-accent">Issuer email — drafted, you send it</summary><pre className="whitespace-pre-wrap bg-[#FAFBFC] border border-line rounded p-3 mt-2">{v.issuerEmailDraft.subject}{'\n\n'}{v.issuerEmailDraft.body}</pre></details>}
-      </div>
-      {ver?.screenshot_path && <div className="w-[150px] h-[96px] border border-line rounded bg-line2 text-[10px] text-ink3 grid place-items-end p-1">screenshot saved</div>}
-    </div>}
+    {v && <CertCard res={v} busy={busy} />}
 
     {res?.cv && <div className="mt-4 grid gap-3">
       {(res.cv.failed ?? []).map((f: any, i: number) => (
