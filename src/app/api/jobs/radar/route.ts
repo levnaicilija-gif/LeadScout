@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { fetchPage, articleLinks } from '@/lib/fetch-page';
+import { browserProvider } from '@/lib/browser';
 import { extractLead, extractJobPost } from '@/lib/ai/radar-extract';
 import { detectEmployerType } from '@/lib/agency-detector';
 import { linkedinSearchUrl, googleSearchUrl } from '@/lib/search-urls';
@@ -39,15 +40,23 @@ async function run(req: Request) {
   const report: any[] = [];
   const tally = { sources: 0, sourcesUnreachable: 0, linksFound: 0, alreadySeen: 0, fetchFailed: 0, tooShort: 0, articlesRead: 0, leads: 0, jobLeads: 0, rejected: 0 };
   const rejected: { url: string; why: string }[] = [];
+  /** Which sources the free path could read, and which would need a paid browser. */
+  const audit: { source: string; via: string; links: number; note?: string }[] = [];
 
   for (const src of sources ?? []) {
     tally.sources++;
     try {
       const index = await fetchPage(src.url);
-      if (index.status !== 'live') { tally.sourcesUnreachable++; report.push({ source: src.url, status: 'index not reachable' }); continue; }
+      if (index.status !== 'live') {
+        tally.sourcesUnreachable++;
+        audit.push({ source: src.url, via: index.via, links: 0, note: index.note });
+        report.push({ source: src.url, status: 'index not reachable', via: index.via, note: index.note });
+        continue;
+      }
       const links = articleLinks(index);
       tally.linksFound += links.length;
-      report.push({ source: src.url, linksFound: links.length });
+      audit.push({ source: src.url, via: index.via, links: links.length, note: index.note });
+      report.push({ source: src.url, linksFound: links.length, via: index.via });
 
       for (const url of links) {
        try {
@@ -84,7 +93,7 @@ async function run(req: Request) {
       await db.from('sources').update({ last_crawled_at: new Date().toISOString() }).eq('id', src.id);
     } catch (e: any) { report.push({ source: src.url, error: e.message }); }
   }
-  return NextResponse.json({ ok: true, tally, rejected, report });
+  return NextResponse.json({ ok: true, browser: browserProvider(), tally, audit, rejected, report });
 }
 
 function fit(trades: string[], location = '', employer: string, timingMonths: number | null) {

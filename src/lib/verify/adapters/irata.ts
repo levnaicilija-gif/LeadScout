@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { connectBrowser, NoBrowserError } from '@/lib/browser';
 import { appearsIn } from '@/lib/ai/claude';
 import type { Adapter, LookupInput, LookupResult } from './types';
 
@@ -59,7 +59,11 @@ export const irata: Adapter = {
       return { result: 'not_supported', checkedWhere: ENTRY_URL, checkedAt, notes: 'IRATA verification needs both the IRATA number (L/XXXXX) and the technician surname' };
     }
 
-    const browser = await chromium.launch();
+    let browser;
+    try { browser = await connectBrowser(); } catch (e) {
+      if (e instanceof NoBrowserError) return { result: 'not_supported', checkedWhere: ENTRY_URL, checkedAt, notes: `IRATA gates its verification API behind reCAPTCHA, so it is the one register that needs a real browser. ${e.message}` };
+      throw e;
+    }
     try {
       const page = await browser.newPage({ userAgent: UA });
       page.setDefaultTimeout(45000);
