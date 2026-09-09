@@ -1,48 +1,79 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { fetchPage } from '@/lib/fetch-page';
+import { fetchPage, articleLinks } from '@/lib/fetch-page';
 import { extractLead, extractJobPost } from '@/lib/ai/radar-extract';
 import { detectEmployerType } from '@/lib/agency-detector';
 import { linkedinSearchUrl, googleSearchUrl } from '@/lib/search-urls';
 import { RFBT_TRADES, SUPPLY_COUNTRIES } from '@/lib/types';
 export const maxDuration = 300;
 
-/** Cron 06:00 CET. Reads sources, fetches unseen links, extracts leads under Stage 1 rules, validates against text, dedups. */
-export async function POST(req: Request) {
-  if (req.headers.get('x-cron-secret') !== process.env.CRON_SECRET) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
+/**
+ * Cron 06:00 CET. Reads sources, fetches unseen links, extracts leads under Stage 1 rules,
+ * validates against text, dedups.
+ *
+ * Vercel cron issues a GET and sends `Authorization: Bearer <CRON_SECRET>`; a manual run
+ * sends `x-cron-secret`. Accept both, on both verbs, or the daily job silently 405s.
+ */
+const authorised = (req: Request) => {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  return req.headers.get('x-cron-secret') === secret || req.headers.get('authorization') === `Bearer ${secret}`;
+};
+
+export const GET = (req: Request) => run(req);
+export const POST = (req: Request) => run(req);
+
+async function run(req: Request) {
+  if (!authorised(req)) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
   const db = supabaseAdmin();
-  const { data: sources } = await db.from('sources').select('*').eq('enabled', true).limit(Number(new URL(req.url).searchParams.get('limit') ?? 25));
+  const params = new URL(req.url).searchParams;
+  const { data: sources } = await db.from('sources').select('*').eq('enabled', true).limit(Number(params.get('limit') ?? 25));
   const { data: agencies } = await db.from('companies').select('name').eq('employer_type', 'staffing_agency');
   const agencyNames = (agencies ?? []).map((a) => a.name);
+
   const report: any[] = [];
+  const tally = { sources: 0, sourcesUnreachable: 0, linksFound: 0, alreadySeen: 0, fetchFailed: 0, tooShort: 0, articlesRead: 0, leads: 0, jobLeads: 0, rejected: 0 };
+  const rejected: { url: string; why: string }[] = [];
 
   for (const src of sources ?? []) {
+    tally.sources++;
     try {
       const index = await fetchPage(src.url);
-      if (index.status !== 'live') { report.push({ source: src.url, status: 'index not reachable' }); continue; }
-      // Candidate article links: same host, look like articles/postings (heuristic; RSS if present is better — TODO per source)
-      const links = Array.from(new Set((index.text.match(/https?:\/\/[^\s)]+/g) ?? []).filter((u) => u.startsWith(new URL(src.url).origin)))).slice(0, 15);
+      if (index.status !== 'live') { tally.sourcesUnreachable++; report.push({ source: src.url, status: 'index not reachable' }); continue; }
+      const links = articleLinks(index);
+      tally.linksFound += links.length;
+      report.push({ source: src.url, linksFound: links.length });
+
       for (const url of links) {
         const { data: seen } = await db.from('articles').select('id').eq('url', url).maybeSingle();
-        if (seen) continue;
+        if (seen) { tally.alreadySeen++; continue; }
         const page = await fetchPage(url);
-        if (page.status !== 'live' || page.text.length < 400) continue;
+        if (page.status !== 'live') { tally.fetchFailed++; rejected.push({ url, why: 'page did not load' }); continue; }
+        if (page.text.length < 400) { tally.tooShort++; rejected.push({ url, why: `only ${page.text.length} characters of text — not an article` }); continue; }
+
         const shotPath = `radar/${Date.now()}-${Math.abs(hash(url))}.png`;
         if (page.screenshot) await db.storage.from('screenshots').upload(shotPath, page.screenshot, { contentType: 'image/png' });
         const { data: article } = await db.from('articles').insert({ source_id: src.id, url, title: page.title, text: page.text, screenshot_path: shotPath, last_fetch_status: 'live', last_fetch_at: page.fetchedAt }).select().single();
+        tally.articlesRead++;
 
         if (src.type === 'job_board' || src.type === 'company_press') {
           const job = await extractJobPost(page.text, url);
-          if (job) await upsertJobLead(db, src.workspace_id, job, url, page.text, shotPath, agencyNames);
+          if (job) { await upsertJobLead(db, src.workspace_id, job, url, page.text, shotPath, agencyNames); tally.jobLeads++; }
         }
-        const lead = await extractLead(page.text, url);
-        if (lead) await upsertWonLead(db, src.workspace_id, lead, article.id, url, page.fetchedAt, agencyNames);
-        report.push({ url, lead: !!lead });
+        const res = await extractLead(page.text, url);
+        if (res.ok) {
+          await upsertWonLead(db, src.workspace_id, res.lead, article.id, url, page.fetchedAt, agencyNames);
+          tally.leads++;
+          report.push({ url, title: page.title, lead: true, company: res.lead.company, people: res.lead.people.map((p) => `${p.name} (${p.title})`) });
+        } else {
+          tally.rejected++;
+          rejected.push({ url, why: res.why });
+        }
       }
       await db.from('sources').update({ last_crawled_at: new Date().toISOString() }).eq('id', src.id);
     } catch (e: any) { report.push({ source: src.url, error: e.message }); }
   }
-  return NextResponse.json({ ok: true, report });
+  return NextResponse.json({ ok: true, tally, rejected, report });
 }
 
 function fit(trades: string[], location = '', employer: string, timingMonths: number | null) {

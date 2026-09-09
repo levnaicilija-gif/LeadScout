@@ -22,15 +22,25 @@ Names, titles and quotes must be copied VERBATIM from the article text. Never gu
 Also map every company mentioned to its role in the project and expected start of activity (verbatim dates only).
 trades: which manual trades the work implies (welder, painter, blaster, pipefitter, ndt, rope access, wind technician, electrician, scaffolder) — infer from the scope, not from the article's words.`;
 
-/** Extract and then VALIDATE against the source text. Anything not in the article is dropped. */
-export async function extractLead(articleText: string, url: string): Promise<RadarExtraction | null> {
+/**
+ * Extract and then VALIDATE against the source text. Anything not in the article is dropped.
+ * Returns why it rejected, so the daily run can be reviewed without re-running extraction.
+ */
+export type LeadResult = { ok: true; lead: RadarExtraction } | { ok: false; why: string };
+
+export async function extractLead(articleText: string, url: string): Promise<LeadResult> {
   const out = await askJson(Schema, SYSTEM, `URL: ${url}\n\nARTICLE:\n${articleText.slice(0, 20000)}`);
-  if (!out.qualifies || !out.company) return null;
-  if (!appearsIn(articleText, out.company)) return null;
+  if (!out.qualifies) return { ok: false, why: out.reason?.trim() || 'does not meet Stage 1 rules' };
+  if (!out.company) return { ok: false, why: 'qualified but named no company' };
+  if (!appearsIn(articleText, out.company)) return { ok: false, why: `company "${out.company}" is not in the article text` };
+
+  const before = out.people.length;
   out.people = out.people.filter((p) => appearsIn(articleText, p.name, p.title) && appearsIn(articleText, p.quote.slice(0, 60)));
-  if (out.people.length === 0) return null; // rule 2
+  if (out.people.length === 0) {
+    return { ok: false, why: before === 0 ? 'no person from the company is quoted by name with a title' : `all ${before} quoted people failed the verbatim check against the article` };
+  }
   out.companies_mentioned = out.companies_mentioned.filter((c) => appearsIn(articleText, c.name));
-  return out;
+  return { ok: true, lead: out };
 }
 
 const JobSchema = z.object({
