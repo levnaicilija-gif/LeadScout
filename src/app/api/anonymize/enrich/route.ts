@@ -43,8 +43,12 @@ export async function POST(req: Request) {
     const clientText = clientCvText(pdfData);
     const employers = (profile.projects ?? []).map((p: any) => p.employer ?? '').filter(Boolean);
 
-    const regexHits = piiRegexHits(clientText, profile.full_name, employers);
-    const review = await piiModelReview(clientText, clientCvAllowed(pdfData));
+    // Certificate numbers the CV itself claims belong on the client summary — a bullet that
+    // cites 'FROSIO Level II, cert 12 8471' is the point of the bullet. Without these in the
+    // allow-list the gates block their own output.
+    const allowed = [...clientCvAllowed(pdfData), ...(profile.certificates_claimed ?? [])];
+    const regexHits = piiRegexHits(clientText, profile.full_name, employers, allowed);
+    const review = await piiModelReview(clientText, allowed);
     const piiHits = [...regexHits, ...review.findings.map((f) => `${f.kind}: "${f.text}" — ${f.why}`)];
     const passed = piiHits.length === 0;
 

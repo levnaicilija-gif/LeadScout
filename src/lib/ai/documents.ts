@@ -86,12 +86,26 @@ export const anonymize = (p: Profile) => ({
 });
 
 /** PII check on the client-facing text. Regex first, then a model review. */
-export function piiRegexHits(text: string, fullName?: string, employers: string[] = []) {
+export function piiRegexHits(text: string, fullName?: string, employers: string[] = [], allowed: string[] = []) {
   const hits: string[] = [];
-  if (/\+?\d[\d\s().-]{7,}\d/.test(text)) hits.push('phone-like number');
-  if (/[\w.+-]+@[\w-]+\.[\w.]+/.test(text)) hits.push('email');
-  if (fullName && fullName.split(/\s+/).some((n) => n.length > 2 && new RegExp(`\\b${n}\\b`, 'i').test(text))) hits.push('name');
-  for (const e of employers) if (e && e.length > 3 && text.toLowerCase().includes(e.toLowerCase())) hits.push(`employer: ${e}`);
+  const ok = allowed.filter(Boolean).map((a) => a.toLowerCase().replace(/\s+/g, ' ').trim());
+  const permitted = (span: string) => {
+    const s = span.toLowerCase().replace(/\s+/g, ' ').trim();
+    return ok.some((a) => a.includes(s));
+  };
+
+  // Quote the span, not just its shape: "phone-like number" alone leaves a recruiter with a
+  // blocked CV and nothing to act on.
+  const phone = text.match(/\+?\d[\d\s().-]{7,}\d/g) ?? [];
+  for (const m of phone) if (!permitted(m)) { hits.push(`phone-like number: "${m.trim()}"`); break; }
+  const email = text.match(/[\w.+-]+@[\w-]+\.[\w.]+/g) ?? [];
+  for (const m of email) if (!permitted(m)) { hits.push(`email: "${m}"`); break; }
+
+  if (fullName) {
+    const part = fullName.split(/\s+/).find((n) => n.length > 2 && new RegExp(`\\b${n}\\b`, 'i').test(text));
+    if (part) hits.push(`name: "${part}"`);
+  }
+  for (const e of employers) if (e && e.length > 3 && text.toLowerCase().includes(e.toLowerCase())) hits.push(`employer: "${e}"`);
   return hits;
 }
 
