@@ -32,8 +32,12 @@ async function run(req: Request) {
   // `only` aims a run at particular sources (substring of the url) — for tuning Stage 1 on
   // sources that matter rather than whichever rows happen to come back first.
   let q = db.from('sources').select('*').eq('enabled', true);
+  // Comma-separated: aim a run at a set of sources (the RFBT-relevant ones, say).
   const only = params.get('only');
-  if (only) q = q.ilike('url', `%${only}%`);
+  if (only) {
+    const terms = only.split(',').map((t) => t.trim()).filter(Boolean);
+    q = terms.length > 1 ? q.or(terms.map((t) => `url.ilike.%${t}%`).join(',')) : q.ilike('url', `%${terms[0]}%`);
+  }
   const auditOnly = params.get('audit') === '1';
   // Chunking: a Vercel function has 300 s, which is not enough for many sources. Each
   // invocation takes `batch` sources from `cursor`, then hands the next batch to a fresh
