@@ -133,9 +133,28 @@ async function run(req: Request) {
     }
   }
 
+  const remaining = (pool ?? []).filter((c) => ops.has(c.name.trim().toLowerCase())).length - stats.looked;
+
+  // Hand the next batch to a fresh invocation. A web search takes long enough that eight
+  // companies overran the 300 s budget, so batches stay small and chain instead. The request
+  // is dispatched and abandoned on purpose — waiting would nest the budgets.
+  const chain = p.get('chain') !== '0';
+  const batchesLeft = Number(p.get('batchesLeft') ?? 80);
+  let chained = false;
+  if (remaining > 0 && chain && batchesLeft > 1 && spent < capEur && stats.looked > 0) {
+    const u = new URL(req.url);
+    u.searchParams.set('batchesLeft', String(batchesLeft - 1));
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 1500);
+    await fetch(u.toString(), { method: 'POST', headers: { 'x-cron-secret': process.env.CRON_SECRET! }, signal: ac.signal }).catch(() => {});
+    chained = true;
+  }
+
+  console.log(`[resolve-domains] looked=${stats.looked} resolved=${stats.resolved} notFound=${stats.notFound} spent=€${spent.toFixed(2)} remaining=${remaining} chained=${chained}`);
+
   return NextResponse.json({
-    ok: true, stats, found,
+    ok: true, stats, found, chained,
     spentOnSearchEur: Number(spent.toFixed(3)), capEur,
-    remainingInScope: (pool ?? []).filter((c) => ops.has(c.name.trim().toLowerCase())).length - stats.looked,
+    remainingInScope: remaining,
   });
 }
