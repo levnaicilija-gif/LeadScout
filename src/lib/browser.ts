@@ -15,7 +15,9 @@ export const remoteBrowserConfigured = () => !!(process.env.BROWSERLESS_TOKEN ||
 export function browserProvider(): string {
   if (process.env.BROWSERLESS_TOKEN) return 'browserless.io';
   if (process.env.BROWSERBASE_API_KEY) return 'browserbase.com';
-  return 'local playwright';
+  // Not "local playwright": a Vercel function has none, and claiming otherwise reads as if a
+  // browser were available when nothing browser-backed can run.
+  return 'none configured (local Playwright only, where one is installed)';
 }
 
 export class NoBrowserError extends Error {
