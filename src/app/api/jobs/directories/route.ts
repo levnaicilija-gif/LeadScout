@@ -97,7 +97,8 @@ async function run(req: Request) {
         // profile mode: each member has an internal page; the website is one hop further in.
         const profiles = page.links.filter((l) => d.profilePattern!.test(new URL(l).pathname)).slice(0, Number(p.get('max') ?? 40));
         for (const prof of profiles) {
-          const sub = await fetchPage(prof, d.browser ? { force: 'browser' } : {});
+          // Profile pages are usually plain HTML even when the list is not — try the cheap path.
+          const sub = await fetchPage(prof);
           if (sub.status !== 'live') continue;
           const ext = sub.links.find((l) => { try { const u = new URL(l); return u.origin !== new URL(d.url).origin && !NOT_A_MEMBER.test(u.hostname); } catch { return false; } });
           if (ext) members.push({ name: sub.title.split(/[|–-]/)[0].trim() || hostWord(new URL(ext).hostname), domain: new URL(ext).hostname.replace(/^www\./, '') });

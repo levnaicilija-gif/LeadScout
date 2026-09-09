@@ -34,8 +34,8 @@ export const DIRECTORIES: Directory[] = [
   },
   {
     key: 'norwegian_offshore_wind', name: 'Norwegian Offshore Wind', url: 'https://www.norwegianoffshorewind.no/members/directory', country: 'NO',
-    mode: 'profile', browser: true, profilePattern: /\/members\/directory\/[^/]+$/, status: 'needs_work',
-    note: 'Directory renders client-side (293 links via browser, only 2 external). Member websites sit one hop in, on each profile page.',
+    mode: 'profile', browser: true, profilePattern: /^\/members\/member-\d+$/, status: 'ok',
+    note: 'Directory renders client-side, so the list needs a browser; the 276 member profiles at /members/member-<id> are plain HTML and carry the member website.',
   },
   {
     key: 'windeurope', name: 'WindEurope', url: 'https://windeurope.org/membership/', country: undefined,
