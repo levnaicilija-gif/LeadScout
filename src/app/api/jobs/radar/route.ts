@@ -6,7 +6,8 @@ import { ruleFor } from '@/lib/source-rules';
 import { extractLead, extractJobPost } from '@/lib/ai/radar-extract';
 import { detectEmployerType } from '@/lib/agency-detector';
 import { linkedinSearchUrl, googleSearchUrl } from '@/lib/search-urls';
-import { RFBT_TRADES, SUPPLY_COUNTRIES } from '@/lib/types';
+import { inferTrades, hasRfbtTrades } from '@/lib/trades';
+import { countryFromText, regionFor, isEuropean, NON_EUROPE_MAX_FIT } from '@/lib/geo';
 export const maxDuration = 300;
 
 /**
@@ -146,12 +147,20 @@ async function run(req: Request) {
   return NextResponse.json({ ok: true, browser: browserProvider(), cursor, batch: take, nextCursor: more ? cursor + take : null, chained: !!next, tally, audit, rejected, report });
 }
 
-function fit(trades: string[], location = '', employer: string, timingMonths: number | null) {
-  const t = trades.some((x) => RFBT_TRADES.some((r) => x.toLowerCase().includes(r))) ? 1 : 0;
-  const g = SUPPLY_COUNTRIES.some((c) => location.toLowerCase().includes(c.toLowerCase())) ? 1 : 0;
+/**
+ * Fit 0-100: trades x0.4, geography x0.2, timing x0.25, employer type x0.15.
+ *
+ * Geography is a gate before it is a weight: outside Europe the score is capped at
+ * NON_EUROPE_MAX_FIT so a non-European project can never reach Today, however good the trades.
+ */
+function fit(trades: string[], country: string | undefined, employer: string, timingMonths: number | null) {
+  const t = hasRfbtTrades(trades) ? 1 : 0;
+  const european = isEuropean(country);
+  const g = european ? 1 : 0;
   const tm = timingMonths == null ? 0.5 : timingMonths <= 12 ? 1 : 0.3;
   const e = employer === 'end_client' || employer === 'epc_contractor' ? 1 : employer === 'unknown' ? 0.5 : 0.3;
-  return Math.round((t * 0.4 + g * 0.2 + tm * 0.25 + e * 0.15) * 100);
+  const score = Math.round((t * 0.4 + g * 0.2 + tm * 0.25 + e * 0.15) * 100);
+  return european ? score : Math.min(score, NON_EUROPE_MAX_FIT);
 }
 async function company(db: any, ws: string, name: string, agencyNames: string[]) {
   const { data: existing } = await db.from('companies').select('*').eq('workspace_id', ws).ilike('name', name).maybeSingle();
@@ -170,7 +179,10 @@ async function upsertWonLead(db: any, ws: string, x: any, articleId: string, url
   const { data: dup } = await db.from('leads').select('id').eq('company_id', co.id).eq('kind', 'won_work').gte('created_at', since).ilike('project_name', `%${(x.project?.name ?? '').split(' ').slice(0, 2).join(' ')}%`).maybeSingle();
   let leadId = dup?.id;
   if (!leadId) {
-    const { data: lead } = await db.from('leads').insert({ workspace_id: ws, company_id: co.id, kind: 'won_work', project_name: x.project?.name, project_location: x.project?.location, project_value: x.project?.value, phase: x.project?.phase, trades_inferred: x.trades, fit_score: fit(x.trades, x.project?.location, co.employer_type, null), source_url: url, source_fetched_at: fetchedAt }).select().single();
+    // Trades from the scope, not just from words the article happened to use.
+    const { trades } = inferTrades(x.trades ?? [], x.project?.name, x.project?.phase, x.project?.location, x.company);
+    const country = countryFromText(x.project?.location) ?? countryFromText(x.project?.name);
+    const { data: lead } = await db.from('leads').insert({ workspace_id: ws, company_id: co.id, kind: 'won_work', project_name: x.project?.name, project_location: x.project?.location, project_value: x.project?.value, phase: x.project?.phase, trades_inferred: trades, country, region: regionFor(country), fit_score: fit(trades, country, co.employer_type, null), source_url: url, source_fetched_at: fetchedAt }).select().single();
     leadId = lead.id;
     await attachPeople(db, leadId, ws, x.company);
   }
@@ -186,7 +198,9 @@ async function upsertWonLead(db: any, ws: string, x: any, articleId: string, url
 }
 async function upsertJobLead(db: any, ws: string, j: any, url: string, pageText: string, shot: string, agencyNames: string[]) {
   const co = await company(db, ws, j.company, agencyNames);
-  const { data: lead } = await db.from('leads').upsert({ workspace_id: ws, company_id: co.id, kind: 'job_post', project_name: j.role, project_location: j.location, trades_inferred: j.trades, fit_score: fit(j.trades, j.country ?? j.location, co.employer_type, 3), source_url: url, source_fetched_at: new Date().toISOString() }, { onConflict: 'source_url' as any }).select().single();
+  const { trades } = inferTrades(j.trades ?? [], j.role, j.location);
+  const country = (j.country && j.country.length === 2 ? j.country.toUpperCase() : undefined) ?? countryFromText(j.country) ?? countryFromText(j.location);
+  const { data: lead } = await db.from('leads').upsert({ workspace_id: ws, company_id: co.id, kind: 'job_post', project_name: j.role, project_location: j.location, trades_inferred: trades, country, region: regionFor(country), fit_score: fit(trades, country, co.employer_type, 3), source_url: url, source_fetched_at: new Date().toISOString() }, { onConflict: 'source_url' as any }).select().single();
   await db.from('job_posts').upsert({ lead_id: lead.id, role: j.role, trades: j.trades, location: j.location, country: j.country, posted_at: j.posted_at, certs_required: j.certs_required, rotation: j.rotation, contract_type: j.contract_type, headcount: j.headcount, source_url: url, screenshot_path: shot, poster_type: co.employer_type }, { onConflict: 'lead_id,source_url' });
   if (j.contact?.name && j.contact?.title) await db.from('contacts').insert({ lead_id: lead.id, company_id: co.id, name: j.contact.name, title: j.contact.title, source_url: url, email: j.contact.email, email_status: j.contact.email ? 'found' : 'unknown', email_source_url: j.contact.email ? url : null, phone: j.contact.phone, phone_source_url: j.contact.phone ? url : null, linkedin_search_url: linkedinSearchUrl(j.contact.name, j.company), google_search_url: googleSearchUrl(j.contact.name, j.company) });
   // hiring pressure: 5+ open posts for the company
