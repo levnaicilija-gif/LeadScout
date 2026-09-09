@@ -18,6 +18,7 @@ export type CertState =
   | 'consistent_with_test_report'
   | 'pending_issuer'
   | 'awaiting_candidate_share'
+  | 'checked_not_found'
   | 'unsupported';
 
 export type CertBody = {
@@ -33,6 +34,7 @@ export const STATE_LABEL: Record<CertState, string> = {
   consistent_with_test_report: 'consistent with test report',
   pending_issuer: 'pending issuer — email drafted',
   awaiting_candidate_share: 'awaiting candidate share',
+  checked_not_found: 'not on the issuer register',
   unsupported: 'no route to confirm yet',
 };
 
@@ -44,6 +46,7 @@ export const STATE_TONE: Record<CertState, 'ok' | 'warn' | 'bad'> = {
   consistent_with_test_report: 'warn',
   pending_issuer: 'warn',
   awaiting_candidate_share: 'warn',
+  checked_not_found: 'bad',
   unsupported: 'bad',
 };
 
@@ -71,7 +74,7 @@ export function stateFor(route: CertRoute, adapterResult: string | null): CertSt
     case 'issuer_email': return 'pending_issuer';
     case 'candidate_share': return 'awaiting_candidate_share';
     case 'credential_link': return 'pending_issuer';   // no link on the certificate → ask the issuer
-    case 'register': return 'unsupported';             // the register answered nothing usable
+    case 'register': return 'checked_not_found';       // the register was asked and does not hold it
     default: return 'unsupported';
   }
 }

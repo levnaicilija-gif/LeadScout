@@ -58,45 +58,33 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SU
     if (!/\/app\//.test(page.url())) throw new Error('could not sign in after 3 attempts');
     console.log('signed in ->', page.url(), '\n');
 
-    for (const [label, tab, file] of [
-      ['CV ANONYMIZER', 'vcv', 'fixtures/test-cv.pdf'],
-      ['CERTIFICATE CHECK', 'vcert', 'fixtures/test-certificate.pdf'],
-    ] as const) {
-      console.log(`=== ${label} =====================================================`);
-      await page.goto(`${BASE}/app/verify`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      await page.waitForTimeout(1200);
-
-      // The CV anonymizer sits behind the second tab.
-      if (tab === 'vcv') {
-        const t = page.locator('button, .tab, a').filter({ hasText: /cv|anonymi/i }).first();
-        if (await t.count()) { await t.click().catch(() => {}); await page.waitForTimeout(600); }
-      }
-
-      const input = page.locator('input[type=file]').first();
-      await input.setInputFiles(file);
-
-      const started = Date.now();
-      // Wait for either a result card or an error card — never longer than the UI's own bound.
-      await page.waitForFunction(
-        () => {
-          const t = document.body.innerText;
-          return /Anonymized CV ready|CV read|Valid|Read as|Not found|No online register|Retake needed|Expired or invalid|Read —|That did not work|^Read$/m.test(t) && !/Reading the|Checking the|Preparing the/.test(t);
-        },
-        undefined,
-        { timeout: 150_000 },
-      ).catch(() => console.log('   (no terminal state within 150s)'));
-      const took = Math.round((Date.now() - started) / 1000);
-
-      const shot = `fixtures/${tab}-result.png`;
-      await page.screenshot({ path: shot, fullPage: true });
-      const card = await page.evaluate(() => {
-        const panels = [...document.querySelectorAll('.bg-panel')].map((e) => (e as HTMLElement).innerText.trim()).filter((t) => t.length > 40);
-        return panels.slice(-3).join('\n---\n');
+    console.log('=== ONE DROP ZONE: CV + certificate + contract ===');
+    await page.goto(`${BASE}/app/verify`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForTimeout(1500);
+    await page.locator('input[type=file]').first().setInputFiles([
+      'fixtures/sandblaster-cv.docx',
+      'fixtures/test-certificate.pdf',
+      'design/samples/BWO_contract_sample.pdf',
+    ]);
+    const started = Date.now();
+    await page.waitForFunction(
+      () => /recognised and handled/.test(document.body.innerText) && !/Reading |Checking |Preparing /.test(document.body.innerText),
+      undefined, { timeout: 280000 },
+    ).catch(() => console.log('   (still working after 280s)'));
+    console.log(`   settled in ${Math.round((Date.now() - started) / 1000)}s`);
+    await page.screenshot({ path: 'fixtures/verify-all.png', fullPage: true });
+    const cards = await page.evaluate(() => {
+      const out: string[] = [];
+      document.querySelectorAll('.bg-panel.border').forEach((el) => {
+        const t = (el as HTMLElement).innerText.trim();
+        if (t.length > 60) out.push(t);
       });
-      console.log(`   settled in ${took}s · screenshot ${shot}\n`);
-      console.log(card.split('\n').map((l) => '   | ' + l).join('\n'));
-      console.log('');
-    }
+      return out;
+    });
+    cards.forEach((c) => {
+      console.log('\n--- card ---');
+      console.log(c.split('\n').map((l) => '   | ' + l).join('\n'));
+    });
   } finally {
     await browser.close();
     const { data: cands } = await admin.from('candidates').select('id').eq('workspace_id', workspace);

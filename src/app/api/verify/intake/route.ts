@@ -166,7 +166,7 @@ function parseDate(s?: string | null) {
   if (!s) return null;
   const iso = s.match(/(\d{4})-(\d{2})-(\d{2})/);
   if (iso) return new Date(`${iso[0]}T00:00:00Z`);
-  const uk = s.match(/(\d{1,2})[./](\d{1,2})[./](\d{4})/);
+  const uk = s.match(/(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
   if (uk) return new Date(Date.UTC(+uk[3], +uk[2] - 1, +uk[1]));
   const t = Date.parse(s);
   return Number.isNaN(t) ? null : new Date(t);

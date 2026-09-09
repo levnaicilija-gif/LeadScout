@@ -42,7 +42,7 @@ export function CertCard({ res, busy }: { res: any; busy?: string }) {
   const dot = exp.tone === 'bad' ? 'bg-bad' : state ? (STATE_TONE[state] === 'ok' ? 'bg-ok' : STATE_TONE[state] === 'warn' ? 'bg-warn' : 'bg-bad') : 'bg-accent';
 
   return (
-    <div className="bg-panel border border-line rounded p-4 mt-4">
+    <div>
       <div className="text-[17px] font-semibold flex items-center gap-2"><span className={`w-2.5 h-2.5 rounded-full ${dot}`} />{headline}</div>
       <div className="text-ink3 text-[12px]">{[ext.holder, ext.number && `No. ${ext.number}`].filter(Boolean).join(' · ') || 'holder not printed'}</div>
 

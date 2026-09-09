@@ -130,7 +130,10 @@ export function piiRegexHits(text: string, fullName?: string, employers: string[
   // Quote the span, not just its shape: "phone-like number" alone leaves a recruiter with a
   // blocked CV and nothing to act on. The class excludes newlines on purpose — with \s it
   // bridged two lines and reported "2027. 2025-26", an expiry year meeting a date range.
-  const phone = text.match(/\+?\d[\d().\-  \t]{7,}\d/g) ?? [];
+  // A span only looks like a phone number if it carries enough digits to be one. Nine is the
+  // shortest international subscriber number; a date range like "2023-2025" has eight, and it
+  // was blocking a perfectly clean CV.
+  const phone = (text.match(/\+?\d[\d().\-  \t]{7,}\d/g) ?? []).filter((m) => m.replace(/\D/g, '').length >= 9);
   for (const m of phone) if (!permitted(m)) { hits.push(`phone-like number: "${m.trim()}"`); break; }
   const email = text.match(/[\w.+-]+@[\w-]+\.[\w.]+/g) ?? [];
   for (const m of email) if (!permitted(m)) { hits.push(`email: "${m}"`); break; }
