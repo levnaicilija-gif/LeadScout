@@ -56,6 +56,9 @@ doc_type and unreadable are required. Omit any other key whose value is not on t
 
 export const ProfileSchema = z.object({
   full_name: z.string().optional(), trade: z.string(), trade_code: z.enum(['P', 'W', 'F', 'N', 'R', 'E', 'O']).default('O'),
+  /** Every trade the CV actually supports. trade is the headline; a blaster who also insulates
+   *  must still match an insulation job, so the secondary trades are kept alongside it. */
+  trades: z.array(z.string()).nullish().transform((v) => v ?? []),
   certificates_claimed: z.array(z.string()).default([]),
   projects: z.array(z.object({ years: z.string(), type: z.string(), country: z.string(), employer: z.string().optional(), rotation: z.string().optional() })).default([]),
   skills: z.array(z.string()).default([]), languages: z.array(z.string()).default([]), availability: z.string().optional(),
@@ -69,6 +72,7 @@ Return ONLY this JSON object, using these exact keys and no others:
   "full_name": "the candidate's name as printed",
   "trade": "their trade in English, e.g. Industrial painter / blaster",
   "trade_code": "P painter/blaster | W welder | F fitter/pipefitter | N NDT | R rope access | E electrician/wind tech | O other",
+  "trades": ["every trade the CV supports, lower case, e.g. painter, blaster, insulator, scaffolder — not just the headline one"],
   "certificates_claimed": ["each certificate named on the CV, as printed"],
   "projects": [{ "years": "2025-26", "type": "what the work was", "country": "country", "employer": "employer name", "rotation": "e.g. 8:2" }],
   "skills": ["skill"],
@@ -80,7 +84,7 @@ Return ONLY this JSON object, using these exact keys and no others:
 trade and trade_code are required. Omit any other key the CV does not state. Return the JSON only, with no prose and no markdown fences.`, cvText.slice(0, 30000));
 
 export const anonymize = (p: Profile) => ({
-  trade: p.trade, certificates: p.certificates_claimed,
+  trade: p.trade, trades: p.trades, certificates: p.certificates_claimed,
   projects: p.projects.map(({ years, type, country, rotation }) => ({ years, type, country, rotation })), // employer dropped
   skills: p.skills, languages: p.languages, availability: p.availability,
 });

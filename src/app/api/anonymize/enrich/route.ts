@@ -70,6 +70,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       candidate: { id: candidateId, reference_code: code },
       bullets, droppedBullets, score, piiHits, piiPassed: passed, pdfPath,
+      // The card renders the same certificate rows the PDF does.
+      certificates: pdfData.certificates,
       crossCheck: { claimed: (profile.certificates_claimed ?? []).length, verified: (verified ?? []).length },
     });
   } catch (e: any) {
