@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
-import { runLookup, ISSUER_EMAIL_BODIES } from '@/lib/verify/adapters';
+import { runLookup, ADAPTERS } from '@/lib/verify/adapters';
+import { loadCertBody, stateFor, issuerEmail, STATE_LABEL, type CertState } from '@/lib/verify/routes';
 export const maxDuration = 120;
 
 /**
- * STEP 2 of the certificate check: ask the issuer's register, and record what it said.
+ * STEP 2 of the certificate check: take the route the issuing body actually offers, and record
+ * the state it reached.
  *
- * Separate from the upload on purpose — a register can be slow or need a hosted browser, and
- * that must not hold up showing the recruiter what the certificate says.
+ * Separate from the upload because a register can be slow or need a hosted browser, and that
+ * must not hold up showing the recruiter what the certificate says.
  *
  *   POST { document_id, campaign_end? }
  */
@@ -24,26 +26,61 @@ export async function POST(req: Request) {
     if (!doc) return NextResponse.json({ error: 'document not found in this workspace' }, { status: 404 });
 
     const ext: any = doc.extracted ?? {};
+    const { data: ws } = await db.from('workspaces').select('name').eq('id', me.workspace_id).maybeSingle();
+    const agency = ws?.name ?? 'RFBT Recruitment';
     const notes: string[] = [];
 
-    // Welder qualifications have no public register: consistency with the test report now,
-    // issuer confirmation by email in parallel.
-    if (ISSUER_EMAIL_BODIES.has(ext.cert_body ?? '')) {
+    const cb = await loadCertBody(db, me.workspace_id, ext.cert_body);
+    if (!cb) {
+      // An unknown body is a task for a senior, not a dead end.
+      const { data: v } = await db.from('verifications').insert({
+        document_id: doc.id, method: 'manual', result: 'not_supported', route: 'unsupported', state: 'unsupported',
+        valid_until: ext.expiry ?? null,
+        notes: `No confirmation route recorded for "${ext.cert_body ?? 'this body'}" — a senior can add one in cert_bodies.`,
+      }).select().single();
+      await db.from('documents').update({ cert_state: 'unsupported' }).eq('id', doc.id);
+      return NextResponse.json({ verification: v, certBody: null, state: 'unsupported', stateLabel: STATE_LABEL.unsupported, addRouteTask: true });
+    }
+
+    // Welder qualifications: consistency with the test report now, issuer confirmation by email.
+    if (cb.body === 'iso9606') {
+      let state: CertState = 'pending_issuer';
       let result = 'pending';
-      let note = `Checking with ${ext.issuer ?? 'the issuer'} by email`;
+      let note = `Checking with ${ext.issuer ?? cb.name} by email`;
       if (doc.candidate_id) {
         const { data: tr } = await db.from('documents').select('extracted').eq('candidate_id', doc.candidate_id).eq('type', 'test_report').order('uploaded_at', { ascending: false }).limit(1).maybeSingle();
         const t: any = tr?.extracted;
         if (t && t.number === ext.number && t.process === ext.process && (t.holder ?? '').toLowerCase() === (ext.holder ?? '').toLowerCase()) {
+          state = 'consistent_with_test_report';
           result = 'consistent_with_test_report';
           note = 'Certificate and welder test report agree; issuer confirmation requested';
         }
       }
       const { data: v } = await db.from('verifications').insert({
-        document_id: doc.id, method: result === 'pending' ? 'issuer_email' : 'test_report',
-        result, valid_until: ext.expiry ?? null, notes: note,
+        document_id: doc.id, method: state === 'pending_issuer' ? 'issuer_email' : 'test_report',
+        result, route: cb.route, state, valid_until: ext.expiry ?? null, notes: note,
       }).select().single();
-      return NextResponse.json({ verification: v, issuerEmailDraft: issuerEmail(ext) });
+      await db.from('documents').update({ cert_state: state }).eq('id', doc.id);
+      return NextResponse.json({
+        verification: v, certBody: cb, state, stateLabel: STATE_LABEL[state],
+        issuerEmailDraft: issuerEmail(ext.issuer ?? cb.name, cb.email, ext, agency),
+        needsTestReport: state === 'pending_issuer',
+      });
+    }
+
+    // Routes that never call an adapter: nobody but the holder can show us the record.
+    if (cb.route === 'candidate_share' || (cb.route === 'issuer_email' && !ADAPTERS[cb.adapter ?? ''])) {
+      const state: CertState = cb.route === 'candidate_share' ? 'awaiting_candidate_share' : 'pending_issuer';
+      const { data: v } = await db.from('verifications').insert({
+        document_id: doc.id, method: state === 'pending_issuer' ? 'issuer_email' : 'manual',
+        result: state === 'pending_issuer' ? 'pending' : 'not_supported',
+        route: cb.route, state, checked_where: cb.url, valid_until: ext.expiry ?? null, notes: cb.instructions,
+      }).select().single();
+      await db.from('documents').update({ cert_state: state }).eq('id', doc.id);
+      return NextResponse.json({
+        verification: v, certBody: cb, state, stateLabel: STATE_LABEL[state],
+        issuerEmailDraft: state === 'pending_issuer' ? issuerEmail(cb.name, cb.email, ext, agency) : undefined,
+      });
     }
 
     let dob = ext.dob;
@@ -52,10 +89,12 @@ export async function POST(req: Request) {
       dob = (pp?.extracted as any)?.dob;
     }
 
-    const r = await runLookup(ext.cert_body ?? 'other', {
+    const r = await runLookup(cb.adapter ?? ext.cert_body ?? 'other', {
       number: ext.number, holder: ext.holder, issuer: ext.issuer,
       method: ext.method ?? ext.process, level: ext.level, credentialUrl: ext.credential_url, dob,
     });
+
+    const state = stateFor(cb.route, r.result === 'not_found' || r.result === 'not_supported' ? null : r.result);
 
     let shot: string | null = null;
     if (r.screenshot) {
@@ -78,20 +117,26 @@ export async function POST(req: Request) {
     }
 
     const { data: v, error } = await db.from('verifications').insert({
-      document_id: doc.id, method: 'browser_lookup', checked_where: r.checkedWhere, checked_at: r.checkedAt,
-      result: r.result, valid_until: r.validUntil ?? ext.expiry ?? null, holder_on_source: r.holderOnSource,
-      screenshot_path: shot, source_rows: r.certificates ?? [], notes: [r.notes, ...notes].filter(Boolean).join(' · '),
+      document_id: doc.id, method: 'browser_lookup', checked_where: r.checkedWhere || cb.url, checked_at: r.checkedAt,
+      result: r.result, route: cb.route, state, valid_until: r.validUntil ?? ext.expiry ?? null,
+      holder_on_source: r.holderOnSource, screenshot_path: shot, source_rows: r.certificates ?? [],
+      notes: [r.notes, ...notes].filter(Boolean).join(' · '),
     }).select().single();
     if (error) return NextResponse.json({ error: `could not save the verification: ${error.code} ${error.message}` }, { status: 500 });
 
-    await db.from('documents').update({ status: r.result === 'valid' ? 'verified' : r.result === 'invalid' ? 'expired' : 'received' }).eq('id', doc.id);
-    return NextResponse.json({ verification: v, warnings: notes });
+    await db.from('documents').update({
+      cert_state: state,
+      status: r.result === 'valid' ? 'verified' : r.result === 'invalid' ? 'expired' : 'received',
+    }).eq('id', doc.id);
+
+    // A register that could not confirm still has an issuer who can.
+    const draft = state === 'pending_issuer' || state === 'unsupported' ? issuerEmail(cb.name, cb.email, ext, agency) : undefined;
+
+    return NextResponse.json({
+      verification: v, certBody: cb, state, stateLabel: STATE_LABEL[state],
+      warnings: notes, issuerEmailDraft: draft,
+    });
   } catch (e: any) {
     return NextResponse.json({ error: String(e?.message ?? e).slice(0, 300) }, { status: 500 });
   }
 }
-
-const issuerEmail = (e: any) => ({
-  subject: `Verification request — welder qualification ${e.number ?? ''}`,
-  body: `Dear certification office,\n\nPlease confirm the validity of the following welder qualification issued by ${e.issuer ?? 'your office'}:\n\nCertificate number: ${e.number ?? ''}\nHolder: ${e.holder ?? ''}\nProcess / position: ${e.process ?? ''} ${e.position ?? ''}\nIssued: ${e.issued ?? ''} · Expiry: ${e.expiry ?? ''}\n\nA copy is attached. Kind regards,\nRFBT Recruitment`,
-});
