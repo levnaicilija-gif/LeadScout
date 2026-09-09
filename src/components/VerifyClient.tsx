@@ -4,6 +4,7 @@ import { PreviewPdf } from './PreviewPdf';
 import { Progress, AnonymizedPreview, DownloadPdf, type Stage } from './CvCard';
 import { friendlyError } from '@/lib/friendly-error';
 import { CertCard } from './CertCard';
+import { JobPanel, SendToLead, type JobChoice } from './JobPanel';
 
 /** Nothing may spin forever: every call is bounded and every failure is shown. */
 const STEP_TIMEOUT_MS = 90_000;
@@ -31,7 +32,7 @@ export function VerifyClient({ mode, senior }: { mode: 'cert' | 'cv'; senior?: b
   const [over, setOver] = useState(false);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
-  const [job, setJob] = useState('');
+  const [job, setJob] = useState<JobChoice | null>(null);
   const [res, setRes] = useState<any>(null);
 
   const run = async (files: FileList | File[]) => {
@@ -75,7 +76,7 @@ export function VerifyClient({ mode, senior }: { mode: 'cert' | 'cv'; senior?: b
           try {
             const enriched = await call('/api/anonymize/enrich', {
               method: 'POST', headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ candidate_id: out[i].candidate.id, job: job || undefined }),
+              body: JSON.stringify({ candidate_id: out[i].candidate.id, job: job?.jd || undefined }),
             });
             out[i] = { ...out[i], ...enriched, stage: 'done' as Stage };
           } catch (e: any) {
@@ -110,15 +111,21 @@ export function VerifyClient({ mode, senior }: { mode: 'cert' | 'cv'; senior?: b
     {mode === 'cert' ? <Drop label="Drop a certificate here" sub="FROSIO, PCN, CSWIP, AMPP, IRATA, GWO, CISRS, welder ISO 9606, electrical · PDF or photo" />
       : <div className="grid grid-cols-2 gap-4">
         <Drop label="Drop CVs here" sub="Any language · PDF, DOCX, image or text · several at once" />
-        <div className="bg-panel border border-line rounded">
-          <div className="px-4 py-3 border-b border-line flex justify-between"><b className="font-semibold">Match against a job</b><span className="text-ink3 text-[12px]">optional</span></div>
-          <div className="p-3"><textarea value={job} onChange={(e) => setJob(e.target.value)} rows={6} placeholder="Paste a job description or posting…" className="w-full border border-line rounded px-2.5 py-2" /></div>
-        </div>
+        <JobPanel value={job} onChange={setJob} />
       </div>}
 
     {err && <div className="mt-4 bg-panel border border-bad rounded p-4 text-[13px]"><b className="text-bad">{friendlyError(err, mode === 'cv' ? 'cv' : 'certificate')}</b><details className="mt-1 text-[12px] text-ink3"><summary className="cursor-pointer">Technical detail</summary><pre className="whitespace-pre-wrap mt-1">{err}</pre></details></div>}
 
     {v && <CertCard res={v} busy={busy} />}
+
+    {res?.cv && job?.id && (res.cv.results ?? []).some((x: any) => x.piiPassed) && (
+      <div className="bg-panel border border-line rounded p-3 mt-4 flex flex-wrap gap-2 items-center text-[13px]">
+        <b className="font-semibold">{job.label}</b>
+        <span className="text-ink3">· {(res.cv.results ?? []).filter((x: any) => x.piiPassed).length} candidate(s) ready</span>
+        <div className="flex-1" />
+        <SendToLead leadId={job.id} leadLabel={job.label} candidateIds={(res.cv.results ?? []).filter((x: any) => x.piiPassed).map((x: any) => x.candidate.id)} />
+      </div>
+    )}
 
     {res?.cv && <div className="mt-4 grid gap-3">
       {(res.cv.failed ?? []).map((f: any, i: number) => (
