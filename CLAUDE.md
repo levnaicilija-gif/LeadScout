@@ -25,22 +25,30 @@ After deploying, run `scripts/smoke.ts https://leadscout-rfbt.vercel.app` and re
 
 **Migrations are applied by hand by the user, so a deploy can land before its schema.** Never name a new column without guarding it — `src/lib/schema-features.ts#hasColumn` asks once per process. A missing column fails the *whole* query, which has taken Leads, the drawer and Verify down.
 
+**A migration that adds a unique index must dedupe inside the migration.** 0014 failed on live data holding the same source_url twice. Adding the index is not the job; making the data satisfy it is. Keep the oldest row so `first_seen_at` still means what it says, and re-point references before deleting.
+
+**`findOrCreateCompany` is the only way to create a company.** Four jobs each matched on their own `ilike name`, which is how "Equinor" and "Equinor ASA" became two rows and the unique index would not build. `src/lib/company-identity.ts` holds the one rule; it is deliberately cautious, because a wrong merge moves another company's provenance onto the survivor with no way back.
+
 ## State of the codebase
-- **Migrations 0001–0013 applied.** 0011 source tiers + `radar_runs`, 0012 employer-type override, 0013 right to work + `workspaces.candidate_countries`.
-- **Radar**: 600 sources classified by Haiku into priority (44) / standard (189) / off (366, reason stored). Priority daily, everything on Sundays — same cron. `repair-sources` finds a newsroom again when a URL rots and follows a rebrand (Wood → woodgroup.com). 29 won-work leads.
-- **Hiring now**: careers/ATS discovery over the company universe — 226 boards found, **208 companies still queued** (runs overnight off the recheck cron). 20 ATS vendors; Workday needs a POST. Job-post crawl: fingerprint → Haiku titles (also maps trades from the source language) → Sonnet bodies, €2/day cap. 32 open postings, grouped one row per company, sorted by pressure, agencies hidden by default.
-- **Verify**: one drop zone, recognises by content. CV card streams Read → Anonymized → Bullets → PDF → Questions. Questions are match-aware when a job is selected. Adapters `frosio`, `pcn` live; **cswip, ampp, irata, winda, cisrs, electrical_dk still TODO** (`src/lib/verify/adapters/types.ts`) — confirm selectors against the live site and record them in the file.
-- **Right to work**: `src/lib/right-to-work.ts` is the single rule. Blocker keyed on the **lead's** country. EU job → EU/EEA passport. UK job → an EU passport is *not* enough. `unknown` never passes. LinkedIn search countries follow the job; never Serbia by default.
-- **Screens**: Home (day < 8 lands here, logo always goes Home), Today, Leads (Won work / Hiring now), Verify, Pitch, Candidates, Settings, public `/v/[slug]`.
-- **Chains**: every chained job dispatches the next batch *before* doing its own work. Doing it after means one 300 s timeout kills the whole run — this has bitten Radar, discovery and the job crawl.
+- **Migrations 0001–0014 applied. 0015 (campaigns) is written and waiting.**
+  0011 source tiers + `radar_runs` · 0012 employer-type override · 0013 right to work + `workspaces.candidate_countries` · 0014 job boards · 0015 campaigns.
+- **Radar**: 600 sources tiered by Haiku — priority 44 / standard 189 / off 366, each with a stored reason. Priority daily, everything on Sundays, one cron. `repair-sources` finds a newsroom again when a URL rots and follows a rebrand (Wood → woodgroup.com). 29 won-work leads.
+- **Hiring now**: careers/ATS discovery **complete** — 348 boards found, 193 none, 44 unreachable, 0 queued. 16 ATS vendors; Workday needs a POST. Crawl: fingerprint → Haiku titles (which also map trades from the source language) → Sonnet bodies, €2/day cap. ~40 open postings, one row per company, sorted by pressure, agencies hidden by default. Job boards are the **secondary** source: poster and employer recorded separately, an unnamed employer stays unnamed, and an advert repeating a company's own page is marked a duplicate.
+- **Campaigns**: batch + required documents; Today shows who is short and shouts inside three weeks. A document counts only when a file of that type is on the candidate.
+- **Verify**: one drop zone, recognises by content. CV card streams Read → Anonymized → Bullets → PDF → Questions, match-aware when a job is selected. Adapters `frosio`, `pcn` live; **cswip, ampp, irata, winda, cisrs, electrical_dk still TODO** (`src/lib/verify/adapters/types.ts`) — confirm selectors against the live site and record them in the file.
+- **Right to work**: `src/lib/right-to-work.ts` is the single rule, keyed on the **lead's** country. EU job → EU/EEA passport. UK job → an EU passport is *not* enough. `unknown` never passes. Search countries follow the job; never Serbia by default.
+- **Screens**: Home (day < 8 lands here, logo always goes Home), Today, Leads (Won work / Hiring now), Verify, Pitch, Candidates, Campaigns, Settings, public `/v/[slug]`.
+- **Chains**: every chained job dispatches the next batch *before* doing its own work. Doing it after means one 300 s timeout kills the run — this has bitten Radar, discovery and the job crawl.
 - **`supabaseAdmin` sends `cache: 'no-store'`.** Next's Data Cache froze a query result across deploys and `/v/<slug>` served "Not found" for a candidate that existed.
 
 ## What is next
-1. Remaining verify adapters (cswip, ampp, irata, winda, cisrs, electrical_dk).
-2. Finish careers discovery for the 208 queued companies; watch the first unattended overnight run.
-3. Per-company cap or grouping refinement on Hiring now if one employer still dominates.
-4. Today: candidates-missing-documents item (campaigns), stat drill-downs, onboarding day gating.
-5. Trade cards, glossary, screening-question storage on the candidate.
-6. Resend inbound webhook → `outreach.reply_at`.
+This list is **not authoritative** — `LeadScout-prompt-queue.txt` is, and it is **not in the repo**. Renumber against it before trusting any number here.
+
+1. Remaining verify adapters: cswip, ampp, irata, winda, cisrs, electrical_dk.
+2. Watch the first unattended overnight run (recheck cron, 00:00 UTC, chains discovery → job posts).
+3. Run the job-board crawl (`/api/jobs/job-boards`) now 0014 is applied, and review poster classification on real adverts.
+4. Trade cards, glossary, screening-question storage on the candidate.
+5. Today: stat drill-downs, onboarding day gating.
+6. Resend inbound webhook → `outreach.reply_at` — **blocked on domain verification**.
 
 Commit to main, two lines per step. Keep files small; one screen per file; no UI libraries. Design tokens live in `tailwind.config.js`.
