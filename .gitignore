@@ -14,3 +14,4 @@ fixtures/
 design/samples/
 .cache/
 prio.txt
+prio-probe.json
