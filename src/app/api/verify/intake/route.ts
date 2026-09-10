@@ -4,6 +4,8 @@ import { extractDocument, parseCv, anonymize } from '@/lib/ai/documents';
 import { claude, MODEL_EXTRACT } from '@/lib/ai/claude';
 import { fileToBase64 } from '@/lib/files';
 import { appearsIn } from '@/lib/ai/claude';
+import { isEea } from '@/lib/right-to-work';
+import { countriesFromText, norm } from '@/lib/geo';
 export const maxDuration = 300;
 
 /**
@@ -80,6 +82,20 @@ export async function POST(req: Request) {
             await db.from('candidates').update({ profile, trade: profile.trade, languages: profile.languages }).eq('id', cand.id);
             cand.profile = profile;
           }
+
+          // What the CV says about right to work — recorded as "per CV" so a passport can
+          // overwrite it later, and never allowed to overwrite a passport that already has.
+          const said: any = {};
+          if (profile.nationality) said.nationality = String(profile.nationality).toUpperCase().slice(0, 2);
+          if (profile.eu_passport !== undefined) { said.eu_passport = profile.eu_passport; said.eu_passport_source = 'cv'; }
+          if (profile.uk_right_to_work !== undefined) { said.uk_right_to_work = profile.uk_right_to_work; said.uk_right_to_work_source = 'cv'; }
+          if (profile.uk_right_to_work_basis) said.uk_right_to_work_basis = profile.uk_right_to_work_basis;
+          if (Object.keys(said).length) {
+            const { data: cur } = await db.from('candidates').select('eu_passport_source, uk_right_to_work_source').eq('id', cand.id).maybeSingle();
+            if (cur?.eu_passport_source === 'passport') { delete said.eu_passport; delete said.eu_passport_source; delete said.nationality; }
+            if (cur?.uk_right_to_work_source === 'passport') { delete said.uk_right_to_work; delete said.uk_right_to_work_source; delete said.uk_right_to_work_basis; }
+            if (Object.keys(said).length) await db.from('candidates').update({ ...said, right_to_work_checked_at: new Date().toISOString() }).eq('id', cand.id);
+          }
           await store(db, me, bytes, f, 'cv', cand.id, { text: cvText.slice(0, 5000) });
           row.candidateId = cand.id; row.reference = cand.reference_code;
           row.profile = anonymize(profile);
@@ -117,6 +133,28 @@ export async function POST(req: Request) {
           const names = (certs ?? []).map((c: any) => c.extracted?.holder).filter(Boolean);
           row.nameMatches = names.length === 0 ? null : names.every((n: string) => normName(n) === normName(ext.holder));
           row.checkedAgainst = names.length;
+
+          // A passport is the evidence for right to work, so it settles it — with the document
+          // recorded, because "EU passport: yes" with nothing behind it is exactly the kind of
+          // claim this system exists to avoid.
+          const issuer = passportCountry(ext);
+          if (issuer) {
+            const eu = isEea(issuer);
+            await db.from('candidates').update({
+              nationality: issuer,
+              eu_passport: eu,
+              eu_passport_source: 'passport',
+              eu_passport_document_id: doc?.id ?? null,
+              // A British passport is UK right to work; nothing else about the UK follows.
+              ...(issuer === 'GB' ? { uk_right_to_work: true, uk_right_to_work_basis: 'citizen', uk_right_to_work_source: 'passport', uk_right_to_work_document_id: doc?.id ?? null } : {}),
+              right_to_work_checked_at: new Date().toISOString(),
+            }).eq('id', cand.id);
+            row.nationality = issuer;
+            row.euPassport = eu;
+            row.rightToWorkNote = eu
+              ? `${issuer} passport — EU/EEA right to work confirmed from the document.`
+              : `${issuer} passport — not EU/EEA. A work permit would be needed for EU sites.`;
+          }
         }
 
         if (cand) touched.set(cand.id, cand);
@@ -144,6 +182,19 @@ export async function POST(req: Request) {
   } catch (e: any) {
     return NextResponse.json({ error: String(e?.message ?? e).slice(0, 300) }, { status: 500 });
   }
+}
+
+/**
+ * The country that issued a passport, from whatever the extraction managed to read.
+ *
+ * Only from the document: the issuer line, or a nationality printed on it. Never from where the
+ * holder has worked, and never guessed from a name.
+ */
+function passportCountry(ext: any): string | undefined {
+  const direct = norm(ext?.nationality ?? ext?.country ?? '');
+  if (direct.length === 2) return direct;
+  const text = [ext?.issuer, ext?.scope, ext?.nationality, ext?.country].filter(Boolean).join(' ');
+  return countriesFromText(text)[0];
 }
 
 const normName = (n?: string | null) => (n ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();

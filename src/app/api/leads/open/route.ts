@@ -27,6 +27,8 @@ export async function GET() {
     return {
       id: l.id,
       kind: l.kind,
+      // The country the work is in — right to work is keyed on it.
+      country: l.country ?? null,
       label: [l.companies?.name, role, where].filter(Boolean).join(' · '),
       fit: l.fit_score,
       // What the scorer actually reads.

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { askJson, claude, MODEL_EXTRACT } from './claude';
+import { checkRightToWork, type Rtw } from '../right-to-work';
 
 export const CertSchema = z.object({
   doc_type: z.enum(['certificate', 'passport', 'cv', 'medical', 'a1', 'test_report', 'contract', 'other']),
@@ -76,6 +77,11 @@ export const ProfileSchema = z.object({
   certificates_claimed: z.array(z.string()).default([]),
   projects: z.array(z.object({ years: z.string(), type: z.string(), country: z.string(), employer: z.string().optional(), rotation: z.string().optional() })).default([]),
   skills: z.array(z.string()).default([]), languages: z.array(z.string()).default([]), availability: z.string().optional(),
+  /** Right to work, only where the CV says so — never inferred from where someone has worked. */
+  nationality: z.string().nullish().transform((v) => v ?? undefined),
+  eu_passport: z.boolean().nullish().transform((v) => (v === null ? undefined : v)),
+  uk_right_to_work: z.boolean().nullish().transform((v) => (v === null ? undefined : v)),
+  uk_right_to_work_basis: z.string().nullish().transform((v) => v ?? undefined),
   pii: z.object({ phone: z.string().optional(), email: z.string().optional(), address: z.string().optional(), dob: z.string().optional() }).default({}),
 });
 export type Profile = z.output<typeof ProfileSchema>;
@@ -92,10 +98,16 @@ Return ONLY this JSON object, using these exact keys and no others:
   "skills": ["skill"],
   "languages": ["language (level)"],
   "availability": "when they are free, as stated",
+  "nationality": "ISO-3166 alpha-2 of the nationality the CV states, e.g. RO",
+  "eu_passport": true or false, only if the CV says so outright,
+  "uk_right_to_work": true or false, only if the CV says so outright,
+  "uk_right_to_work_basis": "settled | pre_settled | work_visa | citizen",
   "pii": { "phone": "", "email": "", "address": "", "dob": "yyyy-mm-dd" }
 }
 
-trade and trade_code are required. Omit any other key the CV does not state. Return the JSON only, with no prose and no markdown fences.`, cvText.slice(0, 30000));
+trade and trade_code are required. Omit any other key the CV does not state.
+
+Right to work is a legal fact, not an inference: state nationality only where the CV names it, and eu_passport or uk_right_to_work only where the CV says so in words. Having worked in Norway does not make someone Norwegian, and an EU passport is never evidence of UK right to work. Return the JSON only, with no prose and no markdown fences.`, cvText.slice(0, 30000));
 
 export const anonymize = (p: Profile) => ({
   trade: p.trade, trades: p.trades, certificates: p.certificates_claimed,
@@ -311,6 +323,24 @@ const listOfText = z.preprocess(
   z.array(z.string()),
 );
 export const ScoreSchema = z.object({ score: z.number().min(0).max(100), fits: listOfText, missing: listOfText, blockers: listOfText });
+/**
+ * Score, with right to work applied as a gate afterwards rather than left to the model.
+ *
+ * A model asked to weigh a passport against ten years of experience will sometimes let the
+ * experience win. It cannot: a candidate who may not legally start is not a candidate for that
+ * job, so the blocker is added in code and the rule is written out for the score card.
+ */
+export async function scoreWithRightToWork(anon: object, verified: object[], jd: string, jobCountry: string | null | undefined, rtw: Rtw) {
+  const score = await scoreAgainstJob(anon, verified, jd);
+  const check = checkRightToWork(jobCountry, rtw);
+  if (check.verdict === 'ok') return { ...score, rightToWork: check };
+  return {
+    ...score,
+    blockers: [check.blocker ?? check.rule, ...score.blockers],
+    rightToWork: check,
+  };
+}
+
 export const scoreAgainstJob = (anon: object, verified: object[], jd: string) =>
   askJson(ScoreSchema, 'Score how well this candidate matches the job (0–100). fits: evidence from the CV. missing: what is absent and what would close it (e.g. "ICATS card — FROSIO accepted by most UK yards, confirm"). blockers: hard requirements not met (passport, required cert level, language). Be strict and specific.', JSON.stringify({ candidate: anon, verified_certificates: verified, job: jd }));
 

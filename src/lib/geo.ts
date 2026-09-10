@@ -12,7 +12,7 @@ export const PRIORITY = ['DK', 'NO', 'SE', 'NL', 'BE', 'DE', 'GB', 'IE', 'ES', '
 /** Ceiling for anything outside Europe — below every Today threshold. */
 export const NON_EUROPE_MAX_FIT = 25;
 
-const norm = (cc?: string | null) => {
+export const norm = (cc?: string | null) => {
   const c = (cc ?? '').trim().toUpperCase();
   return c === 'UK' ? 'GB' : c === 'EL' ? 'GR' : c;
 };

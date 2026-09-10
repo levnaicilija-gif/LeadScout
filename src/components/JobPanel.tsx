@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 
-export type JobChoice = { id: string | null; label: string; jd: string };
+/** country is the country the WORK is in — right to work is keyed on it, not on the candidate. */
+export type JobChoice = { id: string | null; label: string; jd: string; country?: string | null };
 
 /**
  * "Match against a job" — the right-hand panel.
@@ -11,7 +12,7 @@ export type JobChoice = { id: string | null; label: string; jd: string };
  * to every CV in the batch.
  */
 export function JobPanel({ value, onChange }: { value: JobChoice | null; onChange: (v: JobChoice | null) => void }) {
-  const [options, setOptions] = useState<{ id: string; label: string; jd: string; kind: string; fit: number }[]>([]);
+  const [options, setOptions] = useState<{ id: string; label: string; jd: string; kind: string; fit: number; country?: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [pasting, setPasting] = useState(false);
   const [text, setText] = useState('');
@@ -29,7 +30,7 @@ export function JobPanel({ value, onChange }: { value: JobChoice | null; onChang
     if (id === '__paste') { setPasting(true); onChange(text.trim() ? { id: null, label: 'Pasted job description', jd: text } : null); return; }
     const o = options.find((x) => x.id === id);
     setPasting(false);
-    onChange(o ? { id: o.id, label: o.label, jd: o.jd } : null);
+    onChange(o ? { id: o.id, label: o.label, jd: o.jd, country: o.country ?? null } : null);
   };
 
   return (

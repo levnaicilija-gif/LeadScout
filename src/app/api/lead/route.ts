@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { supabaseServer, currentUser } from '@/lib/supabase/server';
-import { jdFromLead, screeningQuestions, draftOutreachChecked, scoreAgainstJob, anonymize } from '@/lib/ai/documents';
+import { jdFromLead, screeningQuestions, draftOutreachChecked, scoreWithRightToWork, anonymize } from '@/lib/ai/documents';
+import { checkRightToWork, searchCountriesFor } from '@/lib/right-to-work';
 import { chooseRecipient } from '@/lib/contact-choice';
-import { xrayCandidatesUrl } from '@/lib/search-urls';
+import { xrayCandidatesUrl, xrayLocalVariantUrl } from '@/lib/search-urls';
 export const maxDuration = 120;
 /** POST { lead_id, action: 'jd' | 'questions' | 'score_pool' | 'xray' | 'draft' | 'confirm' | 'status', ... } */
 export async function POST(req: Request) {
@@ -15,13 +16,44 @@ export async function POST(req: Request) {
     case 'confirm': await sb.from('leads').update({ confirmed_by: me.id, confirmed_at: new Date().toISOString() }).eq('id', lead.id); return NextResponse.json({ ok: true });
     case 'status': await sb.from('leads').update({ status: b.status, updated_at: new Date().toISOString() }).eq('id', lead.id); return NextResponse.json({ ok: true });
     case 'jd': { const jd = await jdFromLead({ company: lead.companies?.name, project: lead.project_name, location: lead.project_location, trades: lead.trades_inferred, employer_type: lead.companies?.employer_type }, articleText); await sb.from('leads').update({ job_description: jd.job_description, jd_version: (lead.jd_version ?? 0) + 1 }).eq('id', lead.id); return NextResponse.json(jd); }
-    case 'questions': return NextResponse.json(await screeningQuestions(lead.job_description ?? `${lead.project_name} — ${lead.trades_inferred?.join(', ')}`));
-    case 'xray': return NextResponse.json({ url: xrayCandidatesUrl({ roles: lead.trades_inferred?.length ? lead.trades_inferred : ['welder'], certs: ['ISO 9606', 'FROSIO', 'PCN', 'IRATA'], sectors: ['offshore', 'shipyard', 'North Sea', 'oil and gas'], countries: ['Serbia', 'Romania', 'Poland', 'Croatia'] }) });
+    case 'questions': {
+      const q = await screeningQuestions(lead.job_description ?? `${lead.project_name} — ${lead.trades_inferred?.join(', ')}`);
+      // Right to work is asked first, because a "no" ends the call and everything else is wasted.
+      const rtw = checkRightToWork(lead.country, {});
+      const questions = rtw.question
+        ? [{ q: rtw.question, good_answer: rtw.rule }, ...q.questions.filter((x: any) => !/passport|right to work|settled status|work visa/i.test(x.q))]
+        : q.questions;
+      return NextResponse.json({ questions, rightToWorkRule: rtw.rule });
+    }
+    case 'xray': {
+      // The countries follow the work, not habit. Serbia was the old default and is wrong for
+      // any EU or UK job: a Serbian welder needs a permit no client sponsors for a short scope.
+      const { data: ws } = await sb.from('workspaces').select('candidate_countries').eq('id', me.workspace_id).maybeSingle();
+      const countries: string[] = b.countries?.length ? b.countries : searchCountriesFor(lead.country, ws?.candidate_countries ?? []);
+      return NextResponse.json({
+        url: xrayCandidatesUrl({
+          roles: lead.trades_inferred?.length ? lead.trades_inferred : ['welder'],
+          certs: ['ISO 9606', 'FROSIO', 'PCN', 'IRATA'],
+          sectors: ['offshore', 'shipyard', 'North Sea', 'oil and gas'],
+          countries,
+        }),
+        localUrl: xrayLocalVariantUrl({ roles: lead.trades_inferred?.length ? lead.trades_inferred : ['welder'], certs: ['ISO 9606', 'FROSIO', 'PCN', 'IRATA'], countries }, lead.country),
+        countries, jobCountry: lead.country ?? null,
+      });
+    }
     case 'score_pool': {
       if (!lead.job_description) return NextResponse.json({ error: 'Create the job description first' }, { status: 400 });
-      const { data: cands } = await sb.from('candidates').select('id, reference_code, profile').eq('workspace_id', me.workspace_id).limit(60);
+      const { data: cands } = await sb.from('candidates')
+        .select('id, reference_code, profile, nationality, eu_passport, uk_right_to_work, uk_right_to_work_basis')
+        .eq('workspace_id', me.workspace_id).limit(60);
       const out = [];
-      for (const c of cands ?? []) { const s = await scoreAgainstJob(anonymize(c.profile as any), [], lead.job_description); await sb.from('scores').insert({ candidate_id: c.id, lead_id: lead.id, jd_version: lead.jd_version, ...s }); out.push({ ...c, ...s }); }
+      for (const c of cands ?? []) {
+        // The blocker is keyed on the LEAD's country: where the work is, not where the person is.
+        const s = await scoreWithRightToWork(anonymize(c.profile as any), [], lead.job_description, lead.country, c as any);
+        const { rightToWork, ...row } = s;
+        await sb.from('scores').insert({ candidate_id: c.id, lead_id: lead.id, jd_version: lead.jd_version, ...row });
+        out.push({ ...c, ...s });
+      }
       return NextResponse.json({ ranked: out.sort((a, b) => (a.blockers.length ? 1 : 0) - (b.blockers.length ? 1 : 0) || b.score - a.score).slice(0, 10) });
     }
     case 'draft': {

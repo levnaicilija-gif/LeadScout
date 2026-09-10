@@ -100,7 +100,7 @@ export function VerifyClient({ senior }: { senior?: boolean }) {
         try {
           Object.assign(cv, await call('/api/anonymize/enrich', {
             method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ candidate_id: c.id, job: job?.jd || undefined }),
+            body: JSON.stringify({ candidate_id: c.id, job: job?.jd || undefined, job_country: job?.country || undefined }),
           }, 150_000), { step: 4 });
         } catch (e: any) { cv.enrichError = e.message; cv.failed = true; }
         refresh();
@@ -112,7 +112,7 @@ export function VerifyClient({ senior }: { senior?: boolean }) {
         try {
           const q = await call('/api/candidate/questions', {
             method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ candidate_id: c.id, job: job?.jd || undefined }),
+            body: JSON.stringify({ candidate_id: c.id, job: job?.jd || undefined, job_country: job?.country || undefined }),
           }, 120_000);
           cv.questions = q.questions; cv.questionsBasedOn = q.basedOn;
           if (q.score && !cv.score) cv.score = q.score;
