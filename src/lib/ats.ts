@@ -1,90 +1,113 @@
 /**
- * Applicant tracking systems.
+ * Applicant tracking systems, and how to read a board without crawling it.
  *
- * A careers page hosted on an ATS almost always has a JSON endpoint behind it. Reading that
- * is far cheaper than crawling the page — no browser, no HTML parsing, and the fields
- * (title, location, posted date, url) come already separated. Detection is by host, because
- * that is what a company's "careers" link actually points at.
+ * Most European industrial companies do not run their own careers page: they embed a board from
+ * one of a dozen ATS vendors, and nearly all of those publish the same list as JSON. Reading the
+ * JSON is free, exact and needs no browser, so recognising the vendor is worth far more than any
+ * amount of cleverness applied to the HTML.
  *
- * `jobsUrl` is only set for providers whose public JSON endpoint is documented and confirmed;
- * for the rest we record the ats_type (still useful — it tells us the page is a job board and
- * how to read it) and fall back to fetching the careers page.
+ * Every pattern here was written from a real board URL. Where a vendor has no public endpoint
+ * the type is still recorded — knowing a company is on Teamtailor is useful even when the list
+ * has to be read from the page.
  */
 export type AtsType =
-  | 'greenhouse' | 'lever' | 'workable' | 'recruitee' | 'teamtailor'
-  | 'smartrecruiters' | 'jobylon' | 'emply' | 'hr-on';
+  | 'greenhouse' | 'lever' | 'workday' | 'smartrecruiters' | 'teamtailor' | 'recruitee'
+  | 'personio' | 'workable' | 'ashby' | 'bamboohr' | 'jobylon' | 'easycruit' | 'reachmee'
+  | 'hr_manager' | 'softgarden' | 'jobvite' | 'taleo' | 'icims' | 'successfactors' | 'oracle_cloud';
 
-type Provider = {
-  type: AtsType;
-  /** Pull the board slug out of a careers URL. */
-  slug: (u: URL) => string | undefined;
-  /** Public JSON listing, when the provider has a confirmed one. */
-  jobsUrl?: (slug: string) => string;
-  /** Read the provider's payload into a common shape. */
-  parse?: (json: any) => AtsJob[];
-};
+type Detector = { type: AtsType; re: RegExp; slug: (m: RegExpMatchArray) => string };
 
-export type AtsJob = { externalId: string; title: string; location?: string; url: string; postedAt?: string; description?: string };
-
-const firstPath = (u: URL) => u.pathname.split('/').filter(Boolean)[0];
-const sub = (u: URL) => u.hostname.split('.')[0];
-const iso = (d: unknown) => { const s = String(d ?? ''); const t = Date.parse(s); return Number.isNaN(t) ? undefined : new Date(t).toISOString().slice(0, 10); };
-
-export const PROVIDERS: Provider[] = [
-  {
-    type: 'greenhouse',
-    slug: (u) => (/(^|\.)greenhouse\.io$/.test(u.hostname) ? firstPath(u) : undefined),
-    jobsUrl: (s) => `https://boards-api.greenhouse.io/v1/boards/${s}/jobs?content=true`,
-    parse: (j) => (j?.jobs ?? []).map((x: any) => ({ externalId: String(x.id), title: x.title, location: x.location?.name, url: x.absolute_url, postedAt: iso(x.updated_at), description: x.content })),
-  },
-  {
-    type: 'lever',
-    slug: (u) => (/(^|\.)lever\.co$/.test(u.hostname) ? firstPath(u) : undefined),
-    jobsUrl: (s) => `https://api.lever.co/v0/postings/${s}?mode=json`,
-    parse: (j) => (Array.isArray(j) ? j : []).map((x: any) => ({ externalId: String(x.id), title: x.text, location: x.categories?.location, url: x.hostedUrl, postedAt: iso(x.createdAt), description: x.descriptionPlain })),
-  },
-  {
-    type: 'recruitee',
-    slug: (u) => (/(^|\.)recruitee\.com$/.test(u.hostname) ? sub(u) : undefined),
-    jobsUrl: (s) => `https://${s}.recruitee.com/api/offers/`,
-    parse: (j) => (j?.offers ?? []).map((x: any) => ({ externalId: String(x.id), title: x.title, location: [x.city, x.country].filter(Boolean).join(', '), url: x.careers_url ?? x.url, postedAt: iso(x.published_at), description: x.description })),
-  },
-  {
-    type: 'smartrecruiters',
-    slug: (u) => (/(^|\.)smartrecruiters\.com$/.test(u.hostname) ? firstPath(u) : undefined),
-    jobsUrl: (s) => `https://api.smartrecruiters.com/v1/companies/${s}/postings?limit=100`,
-    parse: (j) => (j?.content ?? []).map((x: any) => ({ externalId: String(x.id), title: x.name, location: [x.location?.city, x.location?.country].filter(Boolean).join(', '), url: x.ref ?? `https://jobs.smartrecruiters.com/${x.company?.identifier}/${x.id}`, postedAt: iso(x.releasedDate) })),
-  },
-  {
-    type: 'workable',
-    slug: (u) => (/(^|\.)workable\.com$/.test(u.hostname) ? (u.hostname.startsWith('apply.') ? firstPath(u) : sub(u)) : undefined),
-    jobsUrl: (s) => `https://apply.workable.com/api/v1/widget/accounts/${s}?details=true`,
-    parse: (j) => (j?.jobs ?? []).map((x: any) => ({ externalId: String(x.shortcode ?? x.id), title: x.title, location: [x.city, x.country].filter(Boolean).join(', '), url: x.url ?? x.application_url, postedAt: iso(x.published_on ?? x.created_at), description: x.description })),
-  },
-  // Detected but read as HTML: these have no public JSON listing without a per-customer token.
-  { type: 'teamtailor', slug: (u) => (/(^|\.)teamtailor\.com$/.test(u.hostname) ? sub(u) : undefined) },
-  { type: 'jobylon', slug: (u) => (/(^|\.)jobylon\.com$/.test(u.hostname) ? sub(u) : undefined) },
-  { type: 'emply', slug: (u) => (/(^|\.)emply\.(com|net)$/.test(u.hostname) ? sub(u) : undefined) },
-  { type: 'hr-on', slug: (u) => (/(^|\.)hr-on\.com$/.test(u.hostname) ? sub(u) : undefined) },
+/** Ordered: the more specific host patterns first. */
+const DETECTORS: Detector[] = [
+  { type: 'greenhouse', re: /(?:boards|job-boards)\.greenhouse\.io\/(?:embed\/job_board\?for=)?([a-z0-9_-]+)/i, slug: (m) => m[1] },
+  { type: 'lever', re: /jobs\.lever\.co\/([a-z0-9_-]+)/i, slug: (m) => m[1] },
+  { type: 'ashby', re: /jobs\.ashbyhq\.com\/([a-z0-9_-]+)/i, slug: (m) => m[1] },
+  { type: 'workable', re: /apply\.workable\.com\/([a-z0-9_-]+)/i, slug: (m) => m[1] },
+  { type: 'recruitee', re: /([a-z0-9-]+)\.recruitee\.com/i, slug: (m) => m[1] },
+  { type: 'teamtailor', re: /([a-z0-9-]+)\.teamtailor\.com/i, slug: (m) => m[1] },
+  { type: 'personio', re: /([a-z0-9-]+)\.jobs\.personio\.(?:de|com)/i, slug: (m) => m[1] },
+  { type: 'jobylon', re: /([a-z0-9-]+)\.jobylon\.com/i, slug: (m) => m[1] },
+  { type: 'easycruit', re: /([a-z0-9-]+)\.easycruit\.com/i, slug: (m) => m[1] },
+  { type: 'reachmee', re: /([a-z0-9-]+)\.reachmee\.com/i, slug: (m) => m[1] },
+  { type: 'bamboohr', re: /([a-z0-9-]+)\.bamboohr\.com/i, slug: (m) => m[1] },
+  { type: 'smartrecruiters', re: /(?:careers|jobs)\.smartrecruiters\.com\/([A-Za-z0-9_-]+)/i, slug: (m) => m[1] },
+  { type: 'hr_manager', re: /recruitment\.hr-manager\.net\/[^"']*?(?:company|customer)[=/]([A-Za-z0-9_-]+)/i, slug: (m) => m[1] },
+  { type: 'softgarden', re: /([a-z0-9-]+)\.softgarden\.io/i, slug: (m) => m[1] },
+  { type: 'workday', re: /([a-z0-9-]+)\.(wd\d+)\.myworkdayjobs\.com\/([A-Za-z0-9_-]+)/i, slug: (m) => `${m[1]}/${m[2]}/${m[3]}` },
+  { type: 'successfactors', re: /career\d*\.successfactors\.(?:eu|com)\/[^"']*?company=([A-Za-z0-9]+)/i, slug: (m) => m[1] },
+  { type: 'jobvite', re: /jobs\.jobvite\.com\/([a-z0-9_-]+)/i, slug: (m) => m[1] },
+  { type: 'icims', re: /([a-z0-9-]+)\.icims\.com/i, slug: (m) => m[1] },
+  { type: 'taleo', re: /([a-z0-9-]+)\.taleo\.net/i, slug: (m) => m[1] },
+  { type: 'oracle_cloud', re: /([a-z0-9-]+)\.oraclecloud\.com\/hcmUI\/CandidateExperience/i, slug: (m) => m[1] },
 ];
 
-export function detectAts(url: string): { type: AtsType; slug: string } | undefined {
-  let u: URL;
-  try { u = new URL(url); } catch { return undefined; }
-  for (const p of PROVIDERS) {
-    const slug = p.slug(u);
-    if (slug) return { type: p.type, slug };
+/** The first ATS a page's HTML gives away, if any. */
+export function detectAts(html: string): { type: AtsType; slug: string } | null {
+  for (const d of DETECTORS) {
+    const m = html.match(d.re);
+    if (m) {
+      const slug = d.slug(m);
+      // A vendor's own marketing pages match their own pattern; a one-character slug never real.
+      if (slug && slug.length > 1 && !/^(www|jobs|careers|embed|api)$/i.test(slug)) return { type: d.type, slug };
+    }
   }
-  return undefined;
+  return null;
 }
 
-export const providerFor = (type: string) => PROVIDERS.find((p) => p.type === type);
-export const hasJsonFeed = (type: string) => !!providerFor(type)?.jobsUrl;
+export type AtsJob = { title: string; url: string; location?: string; postedAt?: string; description?: string };
 
-/** Careers-link wording across RFBT's countries. */
-export const CAREERS_WORDS = [
-  'career', 'careers', 'jobs', 'job', 'vacancy', 'vacancies', 'work with us', 'working at', 'join us',
-  'karriere', 'karriere', 'stillinger', 'ledige stillinger', 'ledige job', 'jobb', 'lediga jobb',
-  'vacatures', 'werken bij', 'empleo', 'trabaja con nosotros', 'carrière', 'emploi', 'offres',
-  'kariera', 'praca', 'ura', 'avoimet', 'stellenangebote', 'stellen', 'lavoro',
-];
+/** Where a vendor publishes its board as JSON. null means the list has to come from the page. */
+export function atsListUrl(type: AtsType, slug: string): string | null {
+  switch (type) {
+    case 'greenhouse': return `https://boards-api.greenhouse.io/v1/boards/${slug}/jobs?content=true`;
+    case 'lever': return `https://api.lever.co/v0/postings/${slug}?mode=json`;
+    case 'ashby': return `https://api.ashbyhq.com/posting-api/job-board/${slug}?includeCompensation=false`;
+    case 'recruitee': return `https://${slug}.recruitee.com/api/offers/`;
+    case 'workable': return `https://apply.workable.com/api/v1/widget/accounts/${slug}?details=true`;
+    case 'smartrecruiters': return `https://api.smartrecruiters.com/v1/companies/${slug}/postings?limit=100`;
+    case 'personio': return `https://${slug}.jobs.personio.de/xml`;
+    default: return null;
+  }
+}
+
+const str = (v: any) => (typeof v === 'string' ? v : '');
+
+/** Normalise each vendor's own shape into the one this codebase uses. */
+export function parseAtsJobs(type: AtsType, slug: string, body: string): AtsJob[] {
+  // Personio publishes XML, everyone else JSON.
+  if (type === 'personio') {
+    const out: AtsJob[] = [];
+    for (const m of body.matchAll(/<position>([\s\S]*?)<\/position>/gi)) {
+      const block = m[1];
+      const pick = (tag: string) => (block.match(new RegExp(`<${tag}>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`, 'i')) ?? [])[1]?.trim();
+      const id = pick('id');
+      const title = pick('name');
+      if (title && id) out.push({ title, url: `https://${slug}.jobs.personio.de/job/${id}`, location: pick('office'), description: pick('jobDescriptions')?.replace(/<[^>]+>/g, ' ').slice(0, 6000) });
+    }
+    return out;
+  }
+
+  let j: any;
+  try { j = JSON.parse(body); } catch { return []; }
+  const plain = (h: string) => h.replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000);
+
+  switch (type) {
+    case 'greenhouse':
+      return (j.jobs ?? []).map((x: any) => ({ title: str(x.title), url: str(x.absolute_url), location: str(x.location?.name), postedAt: str(x.updated_at), description: x.content ? plain(String(x.content)) : undefined }));
+    case 'lever':
+      return (Array.isArray(j) ? j : []).map((x: any) => ({ title: str(x.text), url: str(x.hostedUrl), location: str(x.categories?.location), postedAt: x.createdAt ? new Date(x.createdAt).toISOString() : undefined, description: x.descriptionPlain ? String(x.descriptionPlain).slice(0, 6000) : undefined }));
+    case 'ashby':
+      return (j.jobs ?? []).map((x: any) => ({ title: str(x.title), url: str(x.jobUrl), location: str(x.location), postedAt: str(x.publishedAt), description: x.descriptionPlain ? String(x.descriptionPlain).slice(0, 6000) : undefined }));
+    case 'recruitee':
+      return (j.offers ?? []).map((x: any) => ({ title: str(x.title), url: str(x.careers_url) || `https://${slug}.recruitee.com/o/${str(x.slug)}`, location: [str(x.city), str(x.country_code)].filter(Boolean).join(', '), postedAt: str(x.published_at), description: x.description ? plain(String(x.description)) : undefined }));
+    case 'workable':
+      return (j.jobs ?? []).map((x: any) => ({ title: str(x.title), url: str(x.url) || str(x.application_url), location: [str(x.city), str(x.country)].filter(Boolean).join(', '), postedAt: str(x.published_on), description: x.description ? plain(String(x.description)) : undefined }));
+    case 'smartrecruiters':
+      return (j.content ?? []).map((x: any) => ({ title: str(x.name), url: `https://jobs.smartrecruiters.com/${slug}/${str(x.id)}`, location: [str(x.location?.city), str(x.location?.country)].filter(Boolean).join(', '), postedAt: str(x.releasedDate) }));
+    default:
+      return [];
+  }
+}
+
+/** Words a careers link uses, in the languages our companies publish in. */
+export const CAREERS_WORDS = /\b(careers?|jobs?|vacanc(?:y|ies)|vacatures?|werken[- ]bij|werkenbij|karriere|karriär|karriere|kariera|jobb|ledige[- ]stillinger|stillinger|lediga[- ]jobb|emplois|carrière|carrieres|offres[- ]d.emploi|empleo|trabaja|lavora[- ]con[- ]noi|posizioni|praca|join[- ]us|work[- ]with[- ]us|work[- ]for[- ]us|open[- ]positions|recruitment)\b/i;
