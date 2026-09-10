@@ -6,6 +6,7 @@ import * as cheerio from 'cheerio';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { httpGet } from '@/lib/http';
+import { fetchPage } from '@/lib/fetch-page';
 import { claude, MODEL_CLASSIFY } from '@/lib/ai/claude';
 import { logModelCall } from '@/lib/cost';
 import { detectEmployerType } from '@/lib/agency-detector';
@@ -17,11 +18,15 @@ export const maxDuration = 300;
  * and marked unverified. So the name has to come from the site: fetch each homepage, read who
  * it says it is, and only then match or create a company.
  *
- *   POST /api/jobs/seed-domains?limit=40&dry=1
+ *   POST /api/jobs/seed-domains?cursor=0&limit=40&dry=1
  *
  * A domain whose page does not identify a company — parked, dead, a directory — is rejected
  * rather than guessed at from the hostname. Staffing agencies and job boards are skipped: this
  * list is for employers.
+ *
+ * `cursor` is an index into the CSV, not a count of successes. Without it a run always started
+ * at the top and spent its whole limit re-trying the same failures, so the list never advanced
+ * past them: 30 domains looked at, 25 of them the same 25 as last time.
  */
 const authorised = (req: Request) => {
   const s = process.env.CRON_SECRET;
@@ -52,6 +57,9 @@ Rules:
 - sector describes what the company DOES. irrelevant covers banks, investors, law firms, consultancies, software, research, media, associations and public bodies.
 - Omit country if the page does not say where the company is based.`;
 
+/** One spelling of a domain: no scheme, no www, no path, lower case. */
+const host = (d: string) => d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
+
 const canonical = (name: string) =>
   name.replace(/\s*\([^)]*\)/g, '')
     .replace(/[,.]?\s*\b(A\/S|ApS|AS|AB|Oy|Oyj|GmbH|mbH|BV|B\.V\.|NV|N\.V\.|Ltd|Limited|LLC|Inc|plc|PLC|S\.A\.|SA|SAS|SpA|Sp\.? z o\.o\.|SL|S\.L\.|AG|KG|Group)\b\.?/gi, '')
@@ -62,6 +70,7 @@ async function run(req: Request) {
   const db = supabaseAdmin();
   const p = new URL(req.url).searchParams;
   const limit = Number(p.get('limit') ?? 40);
+  const cursor = Math.max(0, Number(p.get('cursor') ?? 0));
   const dry = p.get('dry') === '1';
 
   const { data: ws } = await db.from('workspaces').select('id').limit(1).maybeSingle();
@@ -72,9 +81,11 @@ async function run(req: Request) {
   if (!fs.existsSync(csvPath)) return NextResponse.json({ error: 'seeds/company_domains_from_v1.csv not found in the deployment' }, { status: 404 });
   const rows = parse(fs.readFileSync(csvPath), { columns: true, skip_empty_lines: true }) as any[];
 
-  // Skip anything already carrying this domain, so a re-run only does what is left.
+  // Skip anything already carrying this domain, so a re-run only does what is left. Compared
+  // in the same normalised form as the CSV, or a row stored as www.balfourbeatty.com never
+  // matches balfourbeatty.com and the domain is fetched again on every single run.
   const { data: haveRows } = await db.from('companies').select('domain').eq('workspace_id', workspace).not('domain', 'is', null);
-  const have = new Set((haveRows ?? []).map((c) => String(c.domain).toLowerCase()));
+  const have = new Set((haveRows ?? []).map((c) => host(String(c.domain))));
 
   const byName = new Map<string, any>();
   for (let from = 0; ; from += 1000) {
@@ -87,31 +98,43 @@ async function run(req: Request) {
   const { data: agencies } = await db.from('companies').select('name').eq('workspace_id', workspace).eq('employer_type', 'staffing_agency');
   const agencyNames = (agencies ?? []).map((a) => a.name);
 
-  const stats = { looked: 0, matched: 0, created: 0, rejected: 0, skippedAgency: 0, alreadyHad: 0 };
+  const stats = { looked: 0, matched: 0, created: 0, rejected: 0, skippedAgency: 0, alreadyHad: 0, viaBrowser: 0 };
   const rejected: { domain: string; why: string }[] = [];
   const done: any[] = [];
 
-  for (const r of rows) {
-    const domain = String(r.domain ?? '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
+  let index = cursor;
+  for (; index < rows.length && stats.looked < limit; index++) {
+    const domain = host(String(rows[index].domain ?? ''));
     if (!domain) continue;
     if (have.has(domain)) { stats.alreadyHad++; continue; }
     if (JOB_BOARD.test(domain)) { stats.rejected++; rejected.push({ domain, why: 'job board, not an employer' }); continue; }
-    if (stats.looked >= limit) break;
     stats.looked++;
 
     const url = `https://${domain}`;
+    let evidence: string;
     const res = await httpGet(url, {}, 20000);
-    if (!res.ok) { stats.rejected++; rejected.push({ domain, why: res.error ?? `HTTP ${res.status}` }); continue; }
-
-    const $ = cheerio.load(res.body);
-    $('script, style, noscript').remove();
-    const evidence = [
-      `TITLE: ${$('title').first().text().trim()}`,
-      `SITE NAME: ${$('meta[property="og:site_name"]').attr('content') ?? ''}`,
-      `DESCRIPTION: ${$('meta[name="description"]').attr('content') ?? ''}`,
-      `TEXT: ${$('body').text().replace(/\s+/g, ' ').trim().slice(0, 1500)}`,
-      `FOOTER: ${$('footer').text().replace(/\s+/g, ' ').trim().slice(0, 400)}`,
-    ].join('\n');
+    if (res.ok) {
+      const $ = cheerio.load(res.body);
+      $('script, style, noscript').remove();
+      evidence = [
+        `TITLE: ${$('title').first().text().trim()}`,
+        `SITE NAME: ${$('meta[property="og:site_name"]').attr('content') ?? ''}`,
+        `DESCRIPTION: ${$('meta[name="description"]').attr('content') ?? ''}`,
+        `TEXT: ${$('body').text().replace(/\s+/g, ' ').trim().slice(0, 1500)}`,
+        `FOOTER: ${$('footer').text().replace(/\s+/g, ' ').trim().slice(0, 400)}`,
+      ].join('\n');
+    } else {
+      // A plain fetch failing does not mean the company is gone. Bilfinger, Bladt and CS Wind
+      // Offshore all refused our client and were written off as dead; a browser reads them.
+      const rendered = await fetchPage(url, { force: 'browser' });
+      if (rendered.status !== 'live') {
+        stats.rejected++;
+        rejected.push({ domain, why: `${res.error ?? `HTTP ${res.status}`}, and a browser could not read it either — ${rendered.note ?? 'no reason given'}` });
+        continue;
+      }
+      evidence = `TITLE: ${rendered.title}\nTEXT: ${rendered.text.replace(/\s+/g, ' ').slice(0, 1800)}`;
+      stats.viaBrowser++;
+    }
 
     let site: z.output<typeof Site>;
     try {
@@ -137,11 +160,15 @@ async function run(req: Request) {
     const country = (site.country ?? '').toUpperCase().slice(0, 2) || null;
 
     if (hit) {
-      if (!dry) await db.from('companies').update({
-        domain, source_url: url, source: hit.domain ? undefined : 'LeadScout v1 domain list',
-        ...(hit.sector && hit.sector !== 'other' ? {} : { sector: site.sector ?? undefined }),
-        ...(hit.country ? {} : { country, region: regionFor(country), tier: tierFor(country) }),
-      }).eq('id', hit.id);
+      if (!dry) {
+        const { error } = await db.from('companies').update({
+          domain, source_url: url, source: hit.domain ? undefined : 'LeadScout v1 domain list',
+          ...(hit.sector && hit.sector !== 'other' ? {} : { sector: site.sector ?? undefined }),
+          ...(hit.country ? {} : { country, region: regionFor(country), tier: tierFor(country) }),
+        }).eq('id', hit.id);
+        // A failed update used to count as a match, so a run reported work it had not done.
+        if (error) { stats.rejected++; rejected.push({ domain, why: `could not attach to ${hit.name}: ${error.message.slice(0, 80)}` }); continue; }
+      }
       stats.matched++;
       done.push({ domain, company: site.company, action: 'matched', to: hit.name });
     } else {
@@ -160,6 +187,6 @@ async function run(req: Request) {
     byName.set(key, { id: 'new', name: site.company, domain });
   }
 
-  const remaining = rows.length - stats.looked - stats.alreadyHad;
-  return NextResponse.json({ ok: true, dry, total: rows.length, stats, remaining, done, rejected });
+  const nextCursor = index < rows.length ? index : null;
+  return NextResponse.json({ ok: true, dry, total: rows.length, cursor, nextCursor, stats, done, rejected });
 }
