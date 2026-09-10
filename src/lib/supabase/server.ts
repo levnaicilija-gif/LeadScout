@@ -8,9 +8,20 @@ export function supabaseServer() {
     cookies: { get: (n: string) => store.get(n)?.value, set: (n: string, v: string, o: any) => { try { store.set({ name: n, value: v, ...o }); } catch {} }, remove: (n: string, o: any) => { try { store.set({ name: n, value: '', ...o }); } catch {} } },
   });
 }
-/** Service role — server only, for jobs and the public /v page. Never import in client code. */
+/**
+ * Service role — server only, for jobs and the public /v page. Never import in client code.
+ *
+ * Every query goes out with `cache: 'no-store'`. Next caches fetches by default, and supabase-js
+ * runs on fetch, so a query made once got its answer frozen in the Data Cache — which survives
+ * deployments. /v/rfbt-f-0009 kept reporting no client version for that candidate long after one
+ * existed, because the empty answer from before it was created was still being served. Database
+ * reads are not static assets; none of them may come from a cache.
+ */
 export function supabaseAdmin() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+    auth: { persistSession: false },
+    global: { fetch: (url: any, init: any = {}) => fetch(url, { ...init, cache: 'no-store' }) },
+  });
 }
 /**
  * null means "not signed in" and nothing else. If there IS a session but the profile row
