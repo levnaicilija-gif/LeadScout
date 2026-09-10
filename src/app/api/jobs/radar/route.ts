@@ -33,6 +33,13 @@ async function run(req: Request) {
   // `only` aims a run at particular sources (substring of the url) — for tuning Stage 1 on
   // sources that matter rather than whichever rows happen to come back first.
   let q = db.from('sources').select('*').eq('enabled', true);
+  // Cadence. Priority sources are crawled every morning; the rest get a weekly sweep, which
+  // rides the same cron on a Sunday rather than costing a second cron slot. Pass `tier`
+  // explicitly to override. An unclassified source counts as standard — not yet read is not a
+  // reason to ignore it forever.
+  const tier = params.get('tier') ?? (new Date().getUTCDay() === 0 ? 'all' : 'priority');
+  if (tier === 'priority') q = q.eq('tier', 'priority');
+  else if (tier === 'standard') q = q.or('tier.eq.standard,tier.is.null');
   // Comma-separated: aim a run at a set of sources (the RFBT-relevant ones, say).
   const only = params.get('only');
   if (only) {
@@ -55,11 +62,38 @@ async function run(req: Request) {
   const { data: agencies } = await db.from('companies').select('name').eq('employer_type', 'staffing_agency');
   const agencyNames = (agencies ?? []).map((a) => a.name);
 
+  // Hand the next batch to a fresh invocation BEFORE doing this batch's work.
+  //
+  // It used to be dispatched at the end, which meant a batch that hit the 300 s wall took the
+  // whole chain down with it — the 10 September run crawled two sources and stopped. Dispatching
+  // first costs nothing and makes the chain independent of whether this batch finishes.
+  //
+  // The chained request is abandoned on purpose: waiting for it would nest the 300 s budgets.
+  const more = (sources ?? []).length === take && take > 0;
+  let next: string | null = null;
+  if (more && chain && batchesLeft > 1) {
+    const u = new URL(req.url);
+    u.searchParams.set('cursor', String(cursor + take));
+    u.searchParams.set('batch', String(batch));
+    u.searchParams.set('batchesLeft', String(batchesLeft - 1));
+    next = u.toString();
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 1500);
+    await fetch(next, { method: 'POST', headers: { 'x-cron-secret': process.env.CRON_SECRET! }, signal: ac.signal }).catch(() => {});
+  }
+
   const report: any[] = [];
   const tally = { sources: 0, sourcesUnreachable: 0, linksFound: 0, alreadySeen: 0, fetchFailed: 0, tooShort: 0, articlesRead: 0, leads: 0, jobLeads: 0, rejected: 0 };
   const rejected: { url: string; why: string }[] = [];
   /** Which sources the free path could read, and which would need a paid browser. */
   const audit: { source: string; via: string; links: number; note?: string }[] = [];
+
+  // Open the run record now, so a batch killed by the 300 s wall still leaves evidence of what
+  // it was doing. Without this, "why did this morning produce nothing?" has no answer by lunch.
+  const workspaceId = (sources ?? [])[0]?.workspace_id ?? (await db.from('workspaces').select('id').limit(1).maybeSingle()).data?.id ?? null;
+  const { data: runRow } = await db.from('radar_runs')
+    .insert({ workspace_id: workspaceId, tier: only ? `only:${only}` : tier, cursor, batch: take })
+    .select('id').maybeSingle();
 
   for (const src of sources ?? []) {
     tally.sources++;
@@ -125,20 +159,10 @@ async function run(req: Request) {
       await db.from('sources').update({ last_crawled_at: new Date().toISOString() }).eq('id', src.id);
     } catch (e: any) { report.push({ source: src.url, error: e.message }); }
   }
-  // Hand the next batch to a fresh invocation. The chained request is dispatched and then
-  // abandoned on purpose — waiting for it would nest the 300 s budgets and time out. Aborting
-  // our side does not stop the function that has already been started.
-  const more = (sources ?? []).length === take && take > 0;
-  let next: string | null = null;
-  if (more && chain && batchesLeft > 1) {
-    const u = new URL(req.url);
-    u.searchParams.set('cursor', String(cursor + take));
-    u.searchParams.set('batch', String(batch));
-    u.searchParams.set('batchesLeft', String(batchesLeft - 1));
-    next = u.toString();
-    const ac = new AbortController();
-    setTimeout(() => ac.abort(), 1500);
-    await fetch(next, { method: 'POST', headers: { 'x-cron-secret': process.env.CRON_SECRET! }, signal: ac.signal }).catch(() => {});
+  if (runRow) {
+    await db.from('radar_runs').update({
+      finished_at: new Date().toISOString(), tally, rejected, sources_seen: audit,
+    }).eq('id', runRow.id);
   }
 
   // One line per batch, so the daily run is readable in the Vercel logs.
