@@ -41,14 +41,21 @@ After deploying, run `scripts/smoke.ts https://leadscout-rfbt.vercel.app` and re
 - **Chains**: every chained job dispatches the next batch *before* doing its own work. Doing it after means one 300 s timeout kills the run — this has bitten Radar, discovery and the job crawl.
 - **`supabaseAdmin` sends `cache: 'no-store'`.** Next's Data Cache froze a query result across deploys and `/v/<slug>` served "Not found" for a candidate that existed.
 
-## What is next
-This list is **not authoritative** — `LeadScout-prompt-queue.txt` is, and it is **not in the repo**. Renumber against it before trusting any number here.
+## The queue
+`LeadScout-prompt-queue.txt` is authoritative. These numbers are its numbers — never renumber them locally.
 
-1. Remaining verify adapters: cswip, ampp, irata, winda, cisrs, electrical_dk.
-2. Watch the first unattended overnight run (recheck cron, 00:00 UTC, chains discovery → job posts).
-3. Run the job-board crawl (`/api/jobs/job-boards`) now 0014 is applied, and review poster classification on real adverts.
-4. Trade cards, glossary, screening-question storage on the candidate.
-5. Today: stat drill-downs, onboarding day gating.
-6. Resend inbound webhook → `outreach.reply_at` — **blocked on domain verification**.
+| # | Block | State |
+|---|---|---|
+| 1–3 | Domains → careers/ATS → job-post crawl → Hiring now | **done** |
+| 4 | Job boards, secondary crawl | **done** — poster/employer kept separate, duplicates marked. Source list not yet narrowed to the named boards (Jobindex, Finn.no, EURES, Werk.nl, CV-Library, Reed) or pruned of aggregators. |
+| 5 | Match-aware screening questions | **part done** — generated from the score, on the score card and in Verify. Still to do: the "Start screening call" view, answers saved against the candidate, answers feeding back into the score, and storing questions/answers with `lead_id` / `job_post_id` / `jd_version`. |
+| 6 | Re-score + re-crawl | **part done** — DWT and Proserv contacts recovered; Nadara re-read as a Stage 1 false positive (permitting, not an award) and still needs a decision. Still to do: re-score every lead under the geography gate and fixed trade inference, and a "Re-check" action on the lead drawer. |
+| 7 | Replies on the lead (Resend inbound) | **blocked** — waiting on the user's domain verification. |
+| 8 | Campaigns + Today missing documents + expiry alerts | **part done** — campaigns, required documents, Today's missing-documents line, expired vs expiring. Still to do: received/verified/missing per document, "ready to send" count, "Send N packs", group numbers, 60/30/7 alerts with a drafted renewal, and an expired certificate marking a candidate unavailable for roles that require it. |
+| 9 | New-hire path: trade cards, glossary, day gating | **in progress** |
+| 10 | Compounding features — bench forecast, renewal radar, outcome learning | later |
+| — | Design pass (Claude Design MCP) | after real data is on screen |
+
+Also outstanding, outside the queue: the remaining verify adapters (cswip, ampp, irata, winda, cisrs, electrical_dk), and watching the first unattended overnight run of the recheck cron.
 
 Commit to main, two lines per step. Keep files small; one screen per file; no UI libraries. Design tokens live in `tailwind.config.js`.

@@ -42,6 +42,17 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
   }).select().single();
   await admin.from('contacts').insert({ lead_id: lead!.id, company_id: co!.id, name: 'Smoke Person', title: 'Head of Operations', email_status: 'unknown' });
 
+  // A posting anchored on the COMPANY and not on a lead — the shape every careers-page and job
+  // board posting has. Hiring now was empty for every user for days because RLS still keyed on
+  // lead_id, and nothing here noticed: an RLS denial is an empty result, not an error.
+  const { error: jpErr } = await admin.from('job_posts').insert({
+    company_id: co!.id, source_url: `https://example.invalid/smoke-job-${Date.now()}`,
+    title: 'Smoke Welder', role: 'Smoke Welder', trades: ['welder'],
+    location: 'Esbjerg, DK', country: 'DK', status: 'open', via: 'http',
+    is_trade: true, first_seen_at: new Date().toISOString(), last_seen_at: new Date().toISOString(),
+  });
+  if (jpErr) console.log(`  ...  could not seed a job posting: ${jpErr.message}`);
+
   console.log(`smoke test against ${BASE}\n`);
   const browser = await chromium.launch();
   try {
@@ -88,6 +99,17 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     const leads = await bodyOf(page);
     check(/Smoke Offshore AS/.test(leads), 'Leads lists the seeded lead');
 
+    // 4b — Hiring now must show the company-anchored posting. This is the check that was
+    // missing when Hiring now sat empty over forty real rows.
+    await page.goto(`${BASE}/app/radar?tab=hiring`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForTimeout(1500);
+    const hiring = await bodyOf(page);
+    check(/Smoke Welder/.test(hiring), 'Hiring now lists a company-anchored posting');
+    // Any empty state at all is a failure here: one posting was seeded for this workspace, so
+    // the table has something to show. The message varies, so match the shapes it can take.
+    check(!/No trade postings open|No careers pages found yet|Nothing from an employer/.test(hiring),
+      'Hiring now shows the table rather than an empty state');
+
     // 5 — lead drawer: one tool, end to end
     await page.goto(`${BASE}/app/radar?lead=${lead!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForTimeout(2000);
@@ -126,6 +148,7 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     const { data: cands } = await admin.from('candidates').select('id').eq('workspace_id', workspace);
     for (const c of cands ?? []) await admin.from('candidates').delete().eq('id', c.id);
     await admin.from('documents').delete().eq('workspace_id', workspace);
+    await admin.from('job_posts').delete().eq('company_id', co!.id);
     await admin.from('outreach').delete().eq('lead_id', lead!.id);
     await admin.from('contacts').delete().eq('lead_id', lead!.id);
     await admin.from('scores').delete().eq('lead_id', lead!.id);

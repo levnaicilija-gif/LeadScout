@@ -1,0 +1,48 @@
+LEADSCOUT — CLAUDE CODE PROMPT QUEUE
+=====================================
+Paste one block at a time, after the previous one reports done. Each ends with "commit after each step, two lines per step".
+Items 1–3 (domains → careers/ATS → job-post crawl → Hiring now table) are already in the block you sent.
+
+-------------------------------------------------------------------------------
+4. JOB BOARDS — SECONDARY CRAWL
+-------------------------------------------------------------------------------
+Job boards as a secondary source, filtered to companies. Crawl the 41 job-board sources (Jobindex, Finn.no, EURES, Werk.nl, CV-Library and Reed trade sections first; drop pure aggregators like Jooble). For each posting: extract role, trades (our taxonomy), location, country, posted date, certs required, rotation, contact printed on the post. Classify the poster with the agency detector; poster_type=staffing_agency is hidden by default in Hiring now (toggle "show agency posts"). Match postings to `companies` by name; create the company if new (tier by country). Same cost controls as careers pages: fingerprint per board page, Haiku on titles, Sonnet only on trade postings, browser only if the board needs it. Report: boards crawled, postings found, company vs agency split, cost. Commit after each step, two lines per step.
+
+-------------------------------------------------------------------------------
+5. MATCH-AWARE SCREENING QUESTIONS
+-------------------------------------------------------------------------------
+When a candidate is scored against a job post or lead, generate screening questions from that score: one per "missing" item (asking whether they can close it and how), one per doubtful "fit" item (asking for specifics — standard, thickness, process, structure), plus the standard set (availability, passport/A1, rotation, safety training/medical, English on site, rate, conflicts). Each question carries "good answer sounds like". Show them on the score card with a "Start screening call" view: recruiter ticks/notes answers; answers are saved on the candidate and update the score (e.g. confirmed 6G raises fit; no EU passport = blocker). Reuse the lead-drawer questions module; store questions and answers with candidate_id, lead_id/job_post_id, jd_version. Commit after each step, two lines per step.
+
+-------------------------------------------------------------------------------
+6. RE-SCORE + RE-CRAWL
+-------------------------------------------------------------------------------
+Re-score all existing leads with the geography gate and the fixed trade inference; re-crawl the articles for the three leads missing contacts (Nadara, DWT, Proserv) so their contacts are saved with quote_article_id. Then add a small "Re-check" action on the lead drawer that re-fetches the source and re-runs extraction on demand. Show me the updated leads table. Commit, two lines.
+
+-------------------------------------------------------------------------------
+7. REPLIES ON THE LEAD (RESEND INBOUND)
+-------------------------------------------------------------------------------
+Resend is configured with RESEND_API_KEY and RESEND_FROM (domain verified). Implement: (1) outbound send already exists — add a reply-to that routes to a Resend inbound address; (2) Resend inbound webhook at /api/inbound/resend: match the reply to the outreach row by In-Reply-To/References or by sender address, set outreach.reply_at, lead.status=replied, store the reply text on the lead; (3) Today shows "Replied — <company>" at the top with the reply and a "Draft answer" button; (4) unmatched inbound goes to a small "Unmatched replies" list for the senior. Log every inbound. Commit after each step, two lines.
+
+-------------------------------------------------------------------------------
+8. CAMPAIGNS + TODAY MISSING DOCUMENTS + EXPIRY ALERTS
+-------------------------------------------------------------------------------
+Campaigns: a simple screen (senior + recruiter) to create a campaign in 2 minutes — name, client company, start/end dates, required document types (checkboxes: passport, medical, certificate(s), A1, test report, sizes), group numbers. Add candidates to a campaign from Candidates (multi-select). Campaign view: table of candidates × required docs with received/verified/missing, "ready to send" count, "Send N packs to <client>" (only fully verified), "Reveal" logged. Today: add the "candidates on active campaigns missing documents" item (shown, never chased). Expiry: nightly re-check exists — make alerts appear in Today at 60/30/7 days with a drafted renewal message; expired cert marks the candidate unavailable for roles requiring it and shows on Candidates. Commit after each step, two lines.
+
+-------------------------------------------------------------------------------
+9. NEW-HIRE PATH: TRADE CARDS, GLOSSARY, DAY GATING
+-------------------------------------------------------------------------------
+Content tables `trade_cards` and `glossary` (SR/EN), editable by seniors in Settings. Seed trade cards for painter/blaster, welder, pipefitter, NDT, rope access, wind technician, electrician, scaffolder: what the job is, certificate bodies and levels and which clients require which, welding process/position codes explained, what to check on a CV, red flags, typical rates and rotations by country, 5 screening questions with good answers. Seed glossary with ~60 terms (PB, PF, 6G, Sa 2.5, DFT, WFT, A1, RUT, VCA, BOSIET, GWO BST, 2:2, margin-only, all-in, EPC, T&I, O&M, FID…). Render inline: hover/click any term or cert name anywhere in the app shows the card. Onboarding: users.onboarding_day 1–10 unlocks screens per the plan (1–2 Verify/Candidates; 3 screening; 4–5 outreach drafts with senior review; 6–7 sends with review; 8–10 Radar solo); Today shows the day's goal and counts; seniors see a "needs your review" queue for junior sends/outreach. Commit after each step, two lines.
+
+-------------------------------------------------------------------------------
+10. COMPOUNDING FEATURES (LATER)
+-------------------------------------------------------------------------------
+Three features that use data the app already has:
+(a) Bench forecast: from candidates' rotation end dates and availability_from, a timeline of who becomes free when, by trade; match against leads' phase_start; Today gets "N painters free on <date> — <company> needs painters from <date>".
+(b) Renewal radar: framework end dates extracted from articles and client records (e.g. Total–Semco Oct 2027) stored on companies; surface in Today 6 months ahead as "supplier registration window".
+(c) Outcome learning: log outcome per outreach (reply/call/trial/nothing) and per send (approved/rejected); after ≥50 outcomes, a weekly note in Today: which contact titles, quote openers, days and client types get replies; feed the best-performing patterns into the draft prompt with a "why" line.
+Commit after each step, two lines.
+
+-------------------------------------------------------------------------------
+OPTIONAL — DESIGN PASS (after real data is on screen)
+-------------------------------------------------------------------------------
+Use the Claude Design MCP to import the redesigned screens once Eli has produced them in Claude Design; apply within the existing tokens; do not change behaviour. Prioritise: empty and loading states with skeletons, keyboard navigation in tables (j/k, Enter, Esc), ⌘K command bar (candidates, leads, screens), inline status edit, "Radar spent today" line.
