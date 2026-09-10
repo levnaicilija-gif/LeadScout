@@ -8,7 +8,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
     const sb = supabaseBrowser();
     // Hard redirect, not router.push: a full load guarantees the freshly written auth cookie
     // is on the request the middleware and the server layout read.
-    if (mode === 'login') { const { error } = await sb.auth.signInWithPassword({ email: f.email, password: f.password }); if (error) { setErr(error.message); setBusy(false); return; } window.location.href = '/app/today'; return; }
+    if (mode === 'login') { const { error } = await sb.auth.signInWithPassword({ email: f.email, password: f.password }); if (error) { setErr(error.message); setBusy(false); return; } window.location.href = '/app'; return; }
     else { const { error } = await sb.auth.signUp({ email: f.email, password: f.password, options: { data: { name: f.name, agency: f.agency } } }); if (error) setErr(error.message); else setSent(true); }
     setBusy(false);
   };
