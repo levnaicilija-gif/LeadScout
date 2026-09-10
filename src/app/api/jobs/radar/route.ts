@@ -5,6 +5,7 @@ import { browserProvider } from '@/lib/browser';
 import { ruleFor } from '@/lib/source-rules';
 import { extractLead, extractJobPost } from '@/lib/ai/radar-extract';
 import { detectEmployerType } from '@/lib/agency-detector';
+import { findOrCreateCompany } from '@/lib/find-or-create-company';
 import { linkedinSearchUrl, googleSearchUrl } from '@/lib/search-urls';
 import { inferTrades, hasRfbtTrades } from '@/lib/trades';
 import { countryFromText, regionFor, isEuropean, NON_EUROPE_MAX_FIT } from '@/lib/geo';
@@ -194,10 +195,11 @@ function fit(trades: string[], country: string | undefined, employer: string, ti
   return european ? score : Math.min(score, NON_EUROPE_MAX_FIT);
 }
 async function company(db: any, ws: string, name: string, agencyNames: string[]) {
-  const { data: existing } = await db.from('companies').select('*').eq('workspace_id', ws).ilike('name', name).maybeSingle();
-  if (existing) return existing;
-  const det = detectEmployerType(name, agencyNames);
-  const { data } = await db.from('companies').insert({ workspace_id: ws, name, employer_type: det.employerType }).select().single();
+  // One matcher for every job that creates companies. Four of them used to match on their own
+  // `ilike name`, which is how one company became two rows and a unique index would not build.
+  const hit = await findOrCreateCompany(db, { workspaceId: ws, name, agencyNames, source: 'radar article' });
+  if (!hit) return null;
+  const { data } = await db.from('companies').select('*').eq('id', hit.id).maybeSingle();
   return data;
 }
 async function attachPeople(db: any, leadId: string, ws: string, companyName: string) {

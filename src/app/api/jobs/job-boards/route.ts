@@ -7,7 +7,9 @@ import { logModelCall, Budget, DAILY_BUDGET_EUR } from '@/lib/cost';
 import { inferTrades } from '@/lib/trades';
 import { countryFromJobLocation, isEuropean } from '@/lib/geo';
 import { detectEmployerType } from '@/lib/agency-detector';
+import { findOrCreateCompany } from '@/lib/find-or-create-company';
 import { hasJobBoardFields } from '@/lib/schema-features';
+import { cleanTitle } from '@/lib/job-title';
 import { z } from 'zod';
 export const maxDuration = 300;
 
@@ -112,7 +114,7 @@ async function run(req: Request) {
   const byName = new Map((known ?? []).map((c: any) => [canon(c.name), c]));
   const agencyNames = (known ?? []).filter((c: any) => (c.employer_type_override ?? c.employer_type) === 'staffing_agency').map((c: any) => c.name);
 
-  const stats = { boards: 0, linksSeen: 0, alreadyHad: 0, read: 0, notTrade: 0, kept: 0, agencyPosted: 0, employerNamed: 0, outsideEurope: 0, secondary: 0 };
+  const stats = { boards: 0, linksSeen: 0, alreadyHad: 0, read: 0, notTrade: 0, kept: 0, agencyPosted: 0, employerNamed: 0, outsideEurope: 0, secondary: 0, noTitle: 0 };
   const found: any[] = [];
   const problems: string[] = [];
 
@@ -151,7 +153,10 @@ async function run(req: Request) {
           x = Posting.parse(JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? '{}'));
         } catch (e: any) { problems.push(`${url}: ${String(e?.message ?? e).slice(0, 80)}`); continue; }
 
-        if (!x.is_trade_vacancy || !x.role) { stats.notTrade++; continue; }
+        if (!x.is_trade_vacancy) { stats.notTrade++; continue; }
+        // A row without a real title is not a posting anyone can act on.
+        const role = cleanTitle(x.role);
+        if (!role) { stats.noTitle++; continue; }
 
         // The honesty check: a company name must actually be on the page. A model that answers
         // "Aker Solutions" for an advert reading "a leading Norwegian contractor" has guessed.
@@ -171,16 +176,11 @@ async function run(req: Request) {
         let companyId: string | null = null;
         if (x.employer) {
           stats.employerNamed++;
-          const hit = byName.get(canon(x.employer));
-          if (hit) companyId = hit.id;
-          else {
-            const det = detectEmployerType(x.employer, agencyNames);
-            const { data: made } = await db.from('companies').insert({
-              workspace_id: ws.id, name: x.employer, country: country ?? null,
-              employer_type: det.employerType, source: 'job board advert', source_url: url,
-            }).select('id, name, employer_type').single();
-            if (made) { companyId = made.id; byName.set(canon(made.name), made); }
-          }
+          const hit = await findOrCreateCompany(db, {
+            workspaceId: ws.id, name: x.employer, country: country ?? null,
+            agencyNames, source: 'job board advert', sourceUrl: url,
+          });
+          companyId = hit?.id ?? null;
         }
 
         // Secondary to the company's own board: if we already read this employer's careers page
@@ -191,14 +191,14 @@ async function run(req: Request) {
           const { data: direct } = await db.from('job_posts')
             .select('id, role').eq('company_id', companyId).eq('status', 'open')
             .in('via', ['ats', 'http', 'browser']).limit(50);
-          const same = (direct ?? []).find((d: any) => sameRole(d.role, x.role));
+          const same = (direct ?? []).find((d: any) => sameRole(d.role, role));
           if (same) { duplicateOf = same.id; stats.secondary++; }
         }
 
-        const trades = inferTrades(x.trades, x.role, x.location).trades;
+        const trades = inferTrades(x.trades, role, x.location).trades;
         const { error: up } = await db.from('job_posts').upsert({
           company_id: companyId, source_id: src.id, source_url: url,
-          title: x.role, role: x.role, trades,
+          title: role, role, trades,
           location: x.location ?? null, country: country ?? null,
           certs_required: x.certs_required, rotation: x.rotation ?? null,
           contract_type: x.contract_type ?? null, headcount: x.headcount ?? null,
@@ -213,7 +213,7 @@ async function run(req: Request) {
 
         if (up) { problems.push(`${url}: ${up.code ?? ''} ${up.message}`.slice(0, 140)); continue; }
         stats.kept++;
-        found.push({ role: x.role, employer: x.employer ?? '(not named)', poster: x.poster ?? '(not named)', agency: posterIsAgency, where: x.location ?? country, duplicate: !!duplicateOf });
+        found.push({ role, employer: x.employer ?? '(not named)', poster: x.poster ?? '(not named)', agency: posterIsAgency, where: x.location ?? country, duplicate: !!duplicateOf });
       }
 
       await db.from('sources').update({ last_crawled_at: new Date().toISOString() }).eq('id', src.id);

@@ -9,6 +9,7 @@ import { claude, MODEL_CLASSIFY, MODEL_EXTRACT } from '@/lib/ai/claude';
 import { logModelCall, Budget, DAILY_BUDGET_EUR } from '@/lib/cost';
 import { inferTrades } from '@/lib/trades';
 import { countryFromText, countryFromJobLocation, isEuropean } from '@/lib/geo';
+import { cleanTitle, titleFromPage } from '@/lib/job-title';
 import { z } from 'zod';
 export const maxDuration = 300;
 
@@ -131,7 +132,8 @@ function jobLinksFrom(html: string, base: string): AtsJob[] {
     const title = $(el).text().replace(/\s+/g, ' ').trim();
     if (title.length < 4 || title.length > 140) return;
     // Navigation, not a posting.
-    if (/^(apply|read more|les mer|se stilling|more|search|filter|all jobs|alle)$/i.test(title)) return;
+    // Button text, not a title. cleanTitle knows the phrases in every language we crawl.
+    if (!cleanTitle(title)) return;
     let u: URL;
     try { u = new URL(raw, base); } catch { return; }
     if (!/^https?:$/.test(u.protocol)) return;
@@ -227,7 +229,7 @@ async function run(req: Request) {
     chained = true;
   }
 
-  const stats = { companies: 0, unchanged: 0, noBoard: 0, titlesSeen: 0, tradeTitles: 0, postsWritten: 0, detailed: 0, outsideEurope: 0 };
+  const stats = { companies: 0, unchanged: 0, noBoard: 0, titlesSeen: 0, tradeTitles: 0, postsWritten: 0, detailed: 0, outsideEurope: 0, noTitle: 0 };
   const found: any[] = [];
   const writeErrors: string[] = [];
 
@@ -269,9 +271,19 @@ async function run(req: Request) {
       for (const k of keep) {
         const j = board.jobs[k.i];
         seenUrls.push(j.url);
+
+        // The link text is usually the title and sometimes a button. Where it is a button, ask
+        // the posting page what it calls itself; where neither says, drop the row rather than
+        // storing "Bekijk deze vacature" as a trade.
+        let title = cleanTitle(j.title);
+        if (!title) {
+          const page = await httpGet(j.url, {}, 15000);
+          title = page.ok ? titleFromPage(page.body) : null;
+        }
+        if (!title) { stats.noTitle++; continue; }
         // The model read the title in its own language; inferTrades then maps whatever it said
         // onto the taxonomy and drops anything outside it.
-        const trades = inferTrades(k.trades, j.title, j.location).trades;
+        const trades = inferTrades(k.trades, title, j.location).trades;
         const country = countryFromJobLocation(j.location) ?? c.country ?? undefined;
 
         // The geography gate. A Baker Hughes vacancy in the UAE or Brazil is a real posting and
@@ -280,7 +292,7 @@ async function run(req: Request) {
         if (country && !isEuropean(country)) { stats.outsideEurope++; continue; }
 
         const row: any = {
-          company_id: c.id, source_url: j.url, title: j.title, role: j.title,
+          company_id: c.id, source_url: j.url, title, role: title,
           location: j.location ?? null, country: country ?? null, trades, certs_required: k.certs,
           posted_at: postedDate(j.postedAt),
           via: board.via, is_trade: true, classified_at: new Date().toISOString(),
@@ -296,14 +308,14 @@ async function run(req: Request) {
             const detail = await claude.messages.create({
               model: MODEL_EXTRACT, max_tokens: 700,
               system: `Read this job posting and copy what it states. Return JSON with exactly these keys: {"role","trades","location","country","certs_required","rotation","contract_type","headcount","start"}. country is ISO-3166 alpha-2. Omit any key the posting does not state — never guess one. No prose.`,
-              messages: [{ role: 'user', content: `${j.title}\n\n${body}` }],
+              messages: [{ role: 'user', content: `${title}\n\n${body}` }],
             });
-            budget.add(await logModelCall(db, ws.id, MODEL_EXTRACT, `job body ${j.title.slice(0, 40)}`, detail.usage));
+            budget.add(await logModelCall(db, ws.id, MODEL_EXTRACT, `job body ${title.slice(0, 40)}`, detail.usage));
             const dt = detail.content.filter((x) => x.type === 'text').map((x: any) => x.text).join('');
             const d = JobDetail.parse(JSON.parse(dt.match(/\{[\s\S]*\}/)?.[0] ?? '{}'));
             Object.assign(row, {
               role: d.role ?? row.role,
-              trades: d.trades.length ? inferTrades(d.trades, j.title, d.location ?? j.location).trades : row.trades,
+              trades: d.trades.length ? inferTrades(d.trades, title, d.location ?? j.location).trades : row.trades,
               location: d.location ?? row.location,
               country: (d.country && d.country.length === 2 ? d.country.toUpperCase() : countryFromText(d.country)) ?? row.country,
               certs_required: d.certs_required, rotation: d.rotation ?? null,
