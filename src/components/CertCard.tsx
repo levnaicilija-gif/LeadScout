@@ -60,9 +60,7 @@ export function CertCard({ res, busy }: { res: any; busy?: string }) {
           </span>
         </Row>
         <Row k="Covers">
-          {note?.covers?.length
-            ? note.covers.map((t) => <span key={t} className="inline-block text-[12px] px-1.5 py-0.5 rounded bg-line2 text-ink2 mr-1">{t}</span>)
-            : <span className="text-ink3">not mapped to a trade yet</span>}
+          {note?.coversText ?? <span className="text-ink3">not mapped to a role yet</span>}
         </Row>
       </div>
 
