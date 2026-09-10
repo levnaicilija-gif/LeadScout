@@ -8,7 +8,7 @@ import { atsListUrl, parseAtsJobs, fetchWorkday, type AtsJob, type AtsType } fro
 import { claude, MODEL_CLASSIFY, MODEL_EXTRACT } from '@/lib/ai/claude';
 import { logModelCall, Budget, DAILY_BUDGET_EUR } from '@/lib/cost';
 import { inferTrades } from '@/lib/trades';
-import { countryFromText, regionFor } from '@/lib/geo';
+import { countryFromText, isEuropean } from '@/lib/geo';
 import { z } from 'zod';
 export const maxDuration = 300;
 
@@ -36,6 +36,22 @@ export const GET = (req: Request) => run(req);
 export const POST = (req: Request) => run(req);
 
 const fingerprint = (s: string) => crypto.createHash('sha1').update(s).digest('hex');
+
+/**
+ * A date, or nothing. Workday writes "Posted Today" and "Posted 30+ Days Ago" where the other
+ * vendors write a timestamp, and slicing that to ten characters gave Postgres "Posted Tod" —
+ * which it rightly refused, losing the posting.
+ */
+function postedDate(v?: string | null): string | null {
+  if (!v) return null;
+  const s = String(v).trim();
+  const iso = s.match(/\d{4}-\d{2}-\d{2}/);
+  if (iso) return iso[0];
+  if (/^posted\s+today$/i.test(s)) return new Date().toISOString().slice(0, 10);
+  if (/^posted\s+yesterday$/i.test(s)) return new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const t = Date.parse(s);
+  return Number.isNaN(t) ? null : new Date(t).toISOString().slice(0, 10);
+}
 
 const TitleVerdicts = z.object({
   keep: z.array(z.number()).nullish().transform((v) => v ?? []),
@@ -169,7 +185,7 @@ async function run(req: Request) {
   const { data: companies, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const stats = { companies: 0, unchanged: 0, noBoard: 0, titlesSeen: 0, tradeTitles: 0, postsWritten: 0, detailed: 0 };
+  const stats = { companies: 0, unchanged: 0, noBoard: 0, titlesSeen: 0, tradeTitles: 0, postsWritten: 0, detailed: 0, outsideEurope: 0 };
   const found: any[] = [];
   const writeErrors: string[] = [];
 
@@ -214,10 +230,15 @@ async function run(req: Request) {
         const trades = inferTrades([], j.title, j.location).trades;
         const country = countryFromText(j.location) ?? c.country ?? undefined;
 
+        // The geography gate. A Baker Hughes vacancy in the UAE or Brazil is a real posting and
+        // no use to RFBT, who staff Europe; storing it would only crowd out the ones that are.
+        // An unknown country is kept — not knowing is not the same as knowing it is elsewhere.
+        if (country && !isEuropean(country)) { stats.outsideEurope++; continue; }
+
         const row: any = {
           company_id: c.id, source_url: j.url, title: j.title, role: j.title,
           location: j.location ?? null, country: country ?? null, trades,
-          posted_at: j.postedAt ? String(j.postedAt).slice(0, 10) : null,
+          posted_at: postedDate(j.postedAt),
           via: board.via, is_trade: true, classified_at: new Date().toISOString(),
           last_seen_at: new Date().toISOString(), status: 'open',
           poster_type: c.employer_type ?? 'unknown',
