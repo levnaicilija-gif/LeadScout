@@ -28,5 +28,9 @@ export async function hasColumn(sb: SupabaseClient, table: string, column: strin
   return present;
 }
 
+/** Right-to-work fields arrive with migration 0013. */
+export const hasRightToWork = (sb: SupabaseClient) => hasColumn(sb, 'candidates', 'eu_passport');
+export const hasCandidateCountries = (sb: SupabaseClient) => hasColumn(sb, 'workspaces', 'candidate_countries');
+
 /** `employer_type_override` and its companions arrive with migration 0012. */
 export const hasEmployerOverride = (sb: SupabaseClient) => hasColumn(sb, 'companies', 'employer_type_override');

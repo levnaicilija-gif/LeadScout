@@ -6,6 +6,7 @@ import { fileToBase64 } from '@/lib/files';
 import { appearsIn } from '@/lib/ai/claude';
 import { isEea } from '@/lib/right-to-work';
 import { countriesFromText, norm } from '@/lib/geo';
+import { hasRightToWork } from '@/lib/schema-features';
 export const maxDuration = 300;
 
 /**
@@ -32,6 +33,8 @@ export async function POST(req: Request) {
 
     const db = supabaseAdmin();
     const results: any[] = [];
+    // Right to work is stored by migration 0013; until it is applied the rest of intake still works.
+    const rtwReady = await hasRightToWork(db);
 
     // Candidates already in the workspace, for matching a document to a person by name.
     const { data: existing } = await db.from('candidates').select('id, reference_code, full_name, profile, availability_from').eq('workspace_id', me.workspace_id);
@@ -90,7 +93,7 @@ export async function POST(req: Request) {
           if (profile.eu_passport !== undefined) { said.eu_passport = profile.eu_passport; said.eu_passport_source = 'cv'; }
           if (profile.uk_right_to_work !== undefined) { said.uk_right_to_work = profile.uk_right_to_work; said.uk_right_to_work_source = 'cv'; }
           if (profile.uk_right_to_work_basis) said.uk_right_to_work_basis = profile.uk_right_to_work_basis;
-          if (Object.keys(said).length) {
+          if (rtwReady && Object.keys(said).length) {
             const { data: cur } = await db.from('candidates').select('eu_passport_source, uk_right_to_work_source').eq('id', cand.id).maybeSingle();
             if (cur?.eu_passport_source === 'passport') { delete said.eu_passport; delete said.eu_passport_source; delete said.nationality; }
             if (cur?.uk_right_to_work_source === 'passport') { delete said.uk_right_to_work; delete said.uk_right_to_work_source; delete said.uk_right_to_work_basis; }
@@ -138,7 +141,7 @@ export async function POST(req: Request) {
           // recorded, because "EU passport: yes" with nothing behind it is exactly the kind of
           // claim this system exists to avoid.
           const issuer = passportCountry(ext);
-          if (issuer) {
+          if (rtwReady && issuer) {
             const eu = isEea(issuer);
             await db.from('candidates').update({
               nationality: issuer,
