@@ -109,5 +109,51 @@ export function parseAtsJobs(type: AtsType, slug: string, body: string): AtsJob[
   }
 }
 
+/**
+ * Workday needs a POST, so it cannot be expressed as a list URL. It is worth the special case:
+ * it is what most large industrial groups run, and the endpoint returns the whole board.
+ * The slug is stored as "tenant/wdN/site".
+ */
+export function workdayParts(slug: string) {
+  const [tenant, wd, site] = slug.split('/');
+  return tenant && wd && site ? { tenant, wd, site } : null;
+}
+
+export async function fetchWorkday(slug: string, post: (url: string, body: string) => Promise<{ ok: boolean; body: string }>): Promise<AtsJob[]> {
+  const parts = workdayParts(slug);
+  if (!parts) return [];
+  const { tenant, wd, site } = parts;
+  const base = `https://${tenant}.${wd}.myworkdayjobs.com`;
+  const r = await post(`${base}/wday/cxs/${tenant}/${site}/jobs`, JSON.stringify({ appliedFacets: {}, limit: 20, offset: 0, searchText: '' }));
+  if (!r.ok) return [];
+  let j: any;
+  try { j = JSON.parse(r.body); } catch { return []; }
+  return (j.jobPostings ?? []).map((x: any) => ({
+    title: str(x.title),
+    url: `${base}/${site}${str(x.externalPath)}`,
+    location: str(x.locationsText),
+    postedAt: str(x.postedOn),
+  })).filter((x: AtsJob) => x.title);
+}
+
+/** A board's own public address, for a company whose site never linked to it plainly. */
+export function atsHomeUrl(type: AtsType, slug: string): string | null {
+  switch (type) {
+    case 'greenhouse': return `https://boards.greenhouse.io/${slug}`;
+    case 'lever': return `https://jobs.lever.co/${slug}`;
+    case 'ashby': return `https://jobs.ashbyhq.com/${slug}`;
+    case 'workable': return `https://apply.workable.com/${slug}`;
+    case 'recruitee': return `https://${slug}.recruitee.com`;
+    case 'teamtailor': return `https://${slug}.teamtailor.com/jobs`;
+    case 'personio': return `https://${slug}.jobs.personio.de`;
+    case 'jobylon': return `https://${slug}.jobylon.com`;
+    case 'easycruit': return `https://${slug}.easycruit.com`;
+    case 'smartrecruiters': return `https://jobs.smartrecruiters.com/${slug}`;
+    case 'bamboohr': return `https://${slug}.bamboohr.com/careers`;
+    case 'workday': { const p = workdayParts(slug); return p ? `https://${p.tenant}.${p.wd}.myworkdayjobs.com/${p.site}` : null; }
+    default: return null;
+  }
+}
+
 /** Words a careers link uses, in the languages our companies publish in. */
 export const CAREERS_WORDS = /\b(careers?|jobs?|vacanc(?:y|ies)|vacatures?|werken[- ]bij|werkenbij|karriere|karriär|karriere|kariera|jobb|ledige[- ]stillinger|stillinger|lediga[- ]jobb|emplois|carrière|carrieres|offres[- ]d.emploi|empleo|trabaja|lavora[- ]con[- ]noi|posizioni|praca|join[- ]us|work[- ]with[- ]us|work[- ]for[- ]us|open[- ]positions|recruitment)\b/i;

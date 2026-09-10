@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { httpGet } from '@/lib/http';
+import { httpGet, httpPost } from '@/lib/http';
 import { fetchPage } from '@/lib/fetch-page';
-import { detectAts, atsListUrl, parseAtsJobs, CAREERS_WORDS, type AtsType } from '@/lib/ats';
+import { detectAts, atsListUrl, parseAtsJobs, atsHomeUrl, fetchWorkday, CAREERS_WORDS, type AtsType } from '@/lib/ats';
 export const maxDuration = 300;
 
 /**
@@ -86,6 +86,20 @@ async function discover(company: { domain: string }) {
   }
 
   if (ats) {
+    // Workday answers a POST rather than a GET, so it gets its own path. It is worth the
+    // special case: it is what most large industrial groups run.
+    if (ats.type === 'workday') {
+      const jobs = await fetchWorkday(ats.slug, async (u, body) => {
+        const r = await httpPost(u, body, { 'content-type': 'application/json', accept: 'application/json' }, 20000);
+        return { ok: r.ok, body: r.body };
+      });
+      return {
+        careers_url: careersUrl ?? atsHomeUrl(ats.type, ats.slug), ats_type: ats.type, ats_slug: ats.slug,
+        careers_status: 'found' as const, careers_needs_browser: jobs.length === 0 && needsBrowser,
+        note: jobs.length ? `${jobs.length} jobs via Workday JSON` : 'Workday board did not answer — will be read from the page',
+      };
+    }
+
     // Prove the board before recording it: a slug scraped from a stale script tag is worse than
     // no slug, because the crawl would then read an empty board every day and report nothing.
     const list = atsListUrl(ats.type, ats.slug);
@@ -97,7 +111,7 @@ async function discover(company: { domain: string }) {
       }
       return { careers_url: careersUrl ?? list, ats_type: ats.type, ats_slug: ats.slug, careers_status: 'found' as const, careers_needs_browser: false, note: `${jobs.length} jobs via ${ats.type} JSON` };
     }
-    return { careers_url: careersUrl, ats_type: ats.type, ats_slug: ats.slug, careers_status: 'found' as const, careers_needs_browser: needsBrowser, note: `${ats.type}, no public JSON — read from the page` };
+    return { careers_url: careersUrl ?? atsHomeUrl(ats.type, ats.slug), ats_type: ats.type, ats_slug: ats.slug, careers_status: 'found' as const, careers_needs_browser: needsBrowser, note: `${ats.type}, no public JSON — read from the page` };
   }
 
   if (careersUrl) return { careers_url: careersUrl, careers_status: 'found' as const, careers_needs_browser: needsBrowser, note: 'careers page, no recognised ATS' };

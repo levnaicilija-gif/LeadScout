@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import * as cheerio from 'cheerio';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { httpGet } from '@/lib/http';
+import { httpGet, httpPost } from '@/lib/http';
 import { fetchPage } from '@/lib/fetch-page';
-import { atsListUrl, parseAtsJobs, type AtsJob, type AtsType } from '@/lib/ats';
+import { atsListUrl, parseAtsJobs, fetchWorkday, type AtsJob, type AtsType } from '@/lib/ats';
 import { claude, MODEL_CLASSIFY, MODEL_EXTRACT } from '@/lib/ai/claude';
 import { logModelCall, Budget, DAILY_BUDGET_EUR } from '@/lib/cost';
 import { inferTrades } from '@/lib/trades';
@@ -85,6 +85,13 @@ function jobLinksFrom(html: string, base: string): AtsJob[] {
 }
 
 async function boardFor(c: any): Promise<{ jobs: AtsJob[]; via: string; raw: string } | null> {
+  if (c.ats_type === 'workday' && c.ats_slug) {
+    const jobs = await fetchWorkday(c.ats_slug, async (u, body) => {
+      const r = await httpPost(u, body, { 'content-type': 'application/json', accept: 'application/json' }, 20000);
+      return { ok: r.ok, body: r.body };
+    });
+    if (jobs.length) return { jobs, via: 'ats', raw: jobs.map((j) => j.url).join('\n') };
+  }
   if (c.ats_type && c.ats_slug) {
     const list = atsListUrl(c.ats_type as AtsType, c.ats_slug);
     if (list) {
