@@ -77,8 +77,15 @@ export function countriesFromText(text?: string | null): string[] {
  * welders are in Greece. So when several countries appear, the European one wins; the trades
  * follow the yard, not the field.
  */
-/** US states, which is how American job boards write a location and never a country name. */
-const US_STATES = /\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b|\b(alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|ohio|oklahoma|oregon|pennsylvania|tennessee|texas|utah|vermont|virginia|washington|wisconsin|wyoming)\b/i;
+/**
+ * US states, which is how American job boards write a location and never a country name.
+ *
+ * The abbreviations are matched CASE-SENSITIVELY and only after a comma, because half of them
+ * are ordinary words. Matched loosely, "Servicemonteur Elektrotechniek in Veldhoven" is a job
+ * in Indiana, and the geography gate deletes a Dutch vacancy.
+ */
+const US_STATE_CODE = /,\s*(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b/;
+const US_STATE_NAME = /\b(alabama|alaska|arizona|arkansas|california|colorado|connecticut|florida|georgia|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|ohio|oklahoma|oregon|pennsylvania|tennessee|texas|utah|vermont|virginia|wisconsin|wyoming)\b/i;
 
 /**
  * The country a JOB is in — which is not the same question as where a project is.
@@ -103,7 +110,7 @@ export function countryFromJobLocation(text?: string | null): string | undefined
   }
   // "Houston, TX" and "Indianapolis, Indiana" say United States without saying it.
   const named = countriesFromText(s);
-  if (!named.length && US_STATES.test(s)) return 'US';
+  if (!named.length && (US_STATE_CODE.test(s) || US_STATE_NAME.test(s))) return 'US';
   // One address, so the first country named wins — no European preference here.
   return named[0];
 }

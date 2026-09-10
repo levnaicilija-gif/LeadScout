@@ -9,7 +9,7 @@ import { claude, MODEL_CLASSIFY, MODEL_EXTRACT } from '@/lib/ai/claude';
 import { logModelCall, Budget, DAILY_BUDGET_EUR } from '@/lib/cost';
 import { inferTrades } from '@/lib/trades';
 import { countryFromText, countryFromJobLocation, isEuropean } from '@/lib/geo';
-import { cleanTitle, titleFromPage } from '@/lib/job-title';
+import { cleanTitle, titleFromPage, stripFurniture, needsPageTitle } from '@/lib/job-title';
 import { z } from 'zod';
 export const maxDuration = 300;
 
@@ -275,16 +275,20 @@ async function run(req: Request) {
         // The link text is usually the title and sometimes a button. Where it is a button, ask
         // the posting page what it calls itself; where neither says, drop the row rather than
         // storing "Bekijk deze vacature" as a trade.
-        let title = cleanTitle(j.title);
+        // Link text is a title with the page stuck to it: the role, the division, the town,
+        // the hours, sometimes the salary, run together with no spaces. Where it is a button or
+        // carries that furniture, ask the posting page what it calls itself.
+        let title = needsPageTitle(j.title, c.name) ? null : cleanTitle(stripFurniture(j.title, c.name));
         if (!title) {
           const page = await httpGet(j.url, {}, 15000);
           title = page.ok ? titleFromPage(page.body) : null;
+          if (!title) title = cleanTitle(stripFurniture(j.title, c.name));
         }
         if (!title) { stats.noTitle++; continue; }
         // The model read the title in its own language; inferTrades then maps whatever it said
         // onto the taxonomy and drops anything outside it.
         const trades = inferTrades(k.trades, title, j.location).trades;
-        const country = countryFromJobLocation(j.location) ?? c.country ?? undefined;
+        const country = countryFromJobLocation(j.location) ?? countryFromJobLocation(title) ?? c.country ?? undefined;
 
         // The geography gate. A Baker Hughes vacancy in the UAE or Brazil is a real posting and
         // no use to RFBT, who staff Europe; storing it would only crowd out the ones that are.
