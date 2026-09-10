@@ -3,10 +3,30 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 import { fetchPage } from '@/lib/fetch-page';
 import { runLookup } from '@/lib/verify/adapters';
 export const maxDuration = 300;
-/** Nightly 02:00: (1) re-fetch lead source pages → live/stale/not_found; (2) re-check certs expiring ≤ 90 days. */
+/**
+ * Nightly: (1) re-fetch lead source pages → live/stale/not_found; (2) re-check certs expiring
+ * ≤ 90 days; (3) start the careers work.
+ *
+ * Careers discovery and the job-post crawl ride this cron rather than taking cron slots of their
+ * own — the plan allows two, and both are already spoken for. They are dispatched first and
+ * abandoned on purpose: each chains itself onward, and waiting would nest three 300 s budgets.
+ */
+export const GET = (req: Request) => POST(req);
+
 export async function POST(req: Request) {
-  if (req.headers.get('x-cron-secret') !== process.env.CRON_SECRET) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
+  const secret = process.env.CRON_SECRET;
+  const authorised = !!secret && (req.headers.get('x-cron-secret') === secret || req.headers.get('authorization') === `Bearer ${secret}`);
+  if (!authorised) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
   const db = supabaseAdmin();
+
+  const origin = new URL(req.url).origin;
+  const kick = async (path: string) => {
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 1500);
+    await fetch(`${origin}${path}`, { method: 'POST', headers: { 'x-cron-secret': secret! }, signal: ac.signal }).catch(() => {});
+  };
+  await kick('/api/jobs/careers-discovery?batch=25&batchesLeft=30');
+  await kick('/api/jobs/job-posts?batch=10&batchesLeft=30');
   const { data: leads } = await db.from('leads').select('id, source_url, kind, created_at').not('status', 'in', '("stale","not_for_us")').limit(200);
   for (const l of leads ?? []) {
     if (!l.source_url) continue;

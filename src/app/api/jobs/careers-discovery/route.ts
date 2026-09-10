@@ -142,6 +142,18 @@ async function run(req: Request) {
   const { data: companies, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // Dispatched before the work, so a batch killed by the 300 s wall cannot take the rest of
+  // the run with it — the same fault that stopped Radar after two sources.
+  let chained = false;
+  if (chain && !only && !recheck && (companies ?? []).length === batch && batchesLeft > 1) {
+    const u = new URL(req.url);
+    u.searchParams.set('batchesLeft', String(batchesLeft - 1));
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 1500);
+    await fetch(u.toString(), { method: 'POST', headers: { 'x-cron-secret': process.env.CRON_SECRET! }, signal: ac.signal }).catch(() => {});
+    chained = true;
+  }
+
   const stats = { looked: 0, found: 0, ats: 0, noneFound: 0, unreachable: 0 };
   const byAts: Record<string, number> = {};
   const examples: any[] = [];
@@ -168,16 +180,6 @@ async function run(req: Request) {
 
   const { count: remaining } = await db.from('companies').select('id', { count: 'exact', head: true })
     .not('domain', 'is', null).neq('employer_type', 'staffing_agency').is('careers_checked_at', null);
-
-  let chained = false;
-  if (chain && !only && !recheck && (remaining ?? 0) > 0 && batchesLeft > 1) {
-    const u = new URL(req.url);
-    u.searchParams.set('batchesLeft', String(batchesLeft - 1));
-    const ac = new AbortController();
-    setTimeout(() => ac.abort(), 1500);
-    await fetch(u.toString(), { method: 'POST', headers: { 'x-cron-secret': process.env.CRON_SECRET! }, signal: ac.signal }).catch(() => {});
-    chained = true;
-  }
 
   console.log(`[careers-discovery] looked=${stats.looked} found=${stats.found} ats=${stats.ats} none=${stats.noneFound} unreachable=${stats.unreachable} remaining=${remaining}`);
   return NextResponse.json({ ok: true, stats, byAts, remaining, chained, examples: examples.slice(0, 20) });

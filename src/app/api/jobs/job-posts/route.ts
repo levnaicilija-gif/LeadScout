@@ -215,6 +215,18 @@ async function run(req: Request) {
   const { data: companies, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // Dispatched before the work: a batch that hits the 300 s wall must not take the rest of the
+  // night's crawl with it.
+  let chained = false;
+  if (chain && !only && (companies ?? []).length === batch && batchesLeft > 1) {
+    const u = new URL(req.url);
+    u.searchParams.set('batchesLeft', String(batchesLeft - 1));
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 1500);
+    await fetch(u.toString(), { method: 'POST', headers: { 'x-cron-secret': process.env.CRON_SECRET! }, signal: ac.signal }).catch(() => {});
+    chained = true;
+  }
+
   const stats = { companies: 0, unchanged: 0, noBoard: 0, titlesSeen: 0, tradeTitles: 0, postsWritten: 0, detailed: 0, outsideEurope: 0 };
   const found: any[] = [];
   const writeErrors: string[] = [];
@@ -325,16 +337,6 @@ async function run(req: Request) {
     } catch (e: any) {
       await db.from('companies').update({ last_jobs_crawl_at: new Date().toISOString(), jobs_crawl_status: `error: ${String(e?.message ?? e).slice(0, 80)}` }).eq('id', c.id);
     }
-  }
-
-  let chained = false;
-  if (chain && !only && !budget.exhausted && (companies ?? []).length === batch && batchesLeft > 1) {
-    const u = new URL(req.url);
-    u.searchParams.set('batchesLeft', String(batchesLeft - 1));
-    const ac = new AbortController();
-    setTimeout(() => ac.abort(), 1500);
-    await fetch(u.toString(), { method: 'POST', headers: { 'x-cron-secret': process.env.CRON_SECRET! }, signal: ac.signal }).catch(() => {});
-    chained = true;
   }
 
   console.log(`[job-posts] companies=${stats.companies} titles=${stats.titlesSeen} trade=${stats.tradeTitles} written=${stats.postsWritten} spent=EUR${budget.totalToday.toFixed(2)}`);
