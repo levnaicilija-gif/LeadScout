@@ -20,11 +20,12 @@ export type TodayItem = {
 const day = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
 
 export async function todayItems(sb: SupabaseClient): Promise<TodayItem[]> {
-  const [pending, noReply, newLeads, expiring] = await Promise.all([
+  const [pending, noReply, newLeads, expiring, missingDocs] = await Promise.all([
     sb.from('verifications').select('id, issuer_email_sent_at, documents(candidate_id, extracted, candidates(reference_code))').eq('result', 'pending'),
     sb.from('outreach').select('id, sent_at, leads(project_name, companies(name))').eq('status', 'sent').is('reply_at', null).lte('sent_at', day(-3)),
     sb.from('leads').select('id, kind, project_name, fit_score, trades_inferred, companies(name)').eq('status', 'new').gte('created_at', day(-7)).order('fit_score', { ascending: false }).limit(6),
     sb.from('verifications').select('id, valid_until, documents(cert_body, candidates(reference_code))').eq('result', 'valid').lte('valid_until', day(60).slice(0, 10)),
+    campaignsMissingDocs(sb),
   ]);
 
   const items: TodayItem[] = [];
@@ -69,20 +70,83 @@ export async function todayItems(sb: SupabaseClient): Promise<TodayItem[]> {
     });
   }
 
-  // 5 · Certificates expiring within 60 days.
+  // 5 · Certificates expiring within 60 days — and the ones that have already gone.
+  const today = new Date().toISOString().slice(0, 10);
   for (const v of expiring.data ?? []) {
     const doc: any = v.documents;
+    const gone = !!v.valid_until && v.valid_until < today;
+    const days = v.valid_until ? Math.round((Date.parse(v.valid_until) - Date.now()) / 86400000) : null;
     items.push({
-      dot: 'warn',
-      title: `${doc?.candidates?.reference_code ?? 'A candidate'} · ${doc?.cert_body ?? 'certificate'} expires ${v.valid_until}`,
-      sub: 'Renewal message drafted',
+      dot: gone ? 'bad' : 'warn',
+      title: gone
+        ? `${doc?.candidates?.reference_code ?? 'A candidate'} · ${doc?.cert_body?.toUpperCase() ?? 'certificate'} EXPIRED ${v.valid_until}`
+        : `${doc?.candidates?.reference_code ?? 'A candidate'} · ${doc?.cert_body?.toUpperCase() ?? 'certificate'} expires ${v.valid_until}${days !== null ? ` — ${days} day${days === 1 ? '' : 's'}` : ''}`,
+      sub: gone ? 'Cannot be sent to a client until it is renewed' : 'Renewal message drafted',
       href: `/app/candidates?ref=${doc?.candidates?.reference_code ?? ''}`,
-      why: 'An expired certificate found on site means a sent-home worker.',
+      why: 'An expired certificate found on site means a sent-home worker, and a client who stops calling.',
       from: 'verifications valid_until ≤ 60 days',
     });
   }
 
+  // 6 · Campaign candidates missing documents. Last in the list and first in urgency when the
+  // campaign is close: a person cannot travel without their passport, medical and A1.
+  for (const row of missingDocs) {
+    const startsIn = row.starts_on ? Math.ceil((Date.parse(row.starts_on) - Date.now()) / 86400000) : null;
+    const soon = startsIn !== null && startsIn <= 21;
+    items.push({
+      dot: soon ? 'bad' : 'warn',
+      title: `${row.campaign}: ${row.people} candidate${row.people === 1 ? '' : 's'} missing ${row.docs.join(', ')}`,
+      sub: startsIn === null
+        ? 'No start date on the campaign'
+        : startsIn < 0 ? `Started ${-startsIn} day${startsIn === -1 ? '' : 's'} ago`
+          : `Starts in ${startsIn} day${startsIn === 1 ? '' : 's'}${row.company ? ` · ${row.company}` : ''}`,
+      href: `/app/campaigns?id=${row.id}`,
+      why: 'A campaign that starts with documents outstanding is a person who cannot travel.',
+      from: 'campaign candidates whose required documents are not on file',
+    });
+  }
+
+  // Nearest deadline first inside the list, then the fixed query order decides.
   return items;
+}
+
+/** One row per campaign that has anybody short of a required document. */
+export type MissingDocsRow = { id: string; campaign: string; company?: string | null; starts_on: string | null; people: number; docs: string[] };
+
+export async function campaignsMissingDocs(sb: SupabaseClient): Promise<MissingDocsRow[]> {
+  const { data: campaigns, error } = await sb
+    .from('campaigns')
+    .select('id, name, starts_on, required_docs, companies(name), campaign_candidates(candidate_id, candidates(id, reference_code))')
+    .eq('status', 'active');
+  // The table predates its UI; if anything about it is not ready, Today still renders.
+  if (error || !campaigns?.length) return [];
+
+  const rows: MissingDocsRow[] = [];
+  for (const c of campaigns as any[]) {
+    const ids = (c.campaign_candidates ?? []).map((cc: any) => cc.candidate_id).filter(Boolean);
+    const required: string[] = c.required_docs ?? [];
+    if (!ids.length || !required.length) continue;
+
+    const { data: docs } = await sb.from('documents').select('candidate_id, type').in('candidate_id', ids);
+    const held = new Map<string, Set<string>>();
+    for (const d of docs ?? []) {
+      const set = held.get(d.candidate_id) ?? new Set<string>();
+      set.add(d.type);
+      held.set(d.candidate_id, set);
+    }
+
+    const shortOf = new Set<string>();
+    let people = 0;
+    for (const id of ids) {
+      const has = held.get(id) ?? new Set<string>();
+      const missing = required.filter((r) => !has.has(r));
+      if (!missing.length) continue;
+      people++;
+      missing.forEach((m) => shortOf.add(m));
+    }
+    if (people) rows.push({ id: c.id, campaign: c.name, company: c.companies?.name ?? null, starts_on: c.starts_on ?? null, people, docs: [...shortOf] });
+  }
+  return rows.sort((a, b) => (a.starts_on ?? '9999').localeCompare(b.starts_on ?? '9999'));
 }
 
 /** The six queries, in the order they run — shown to the recruiter as "How this list is made". */

@@ -28,6 +28,9 @@ export async function hasColumn(sb: SupabaseClient, table: string, column: strin
   return present;
 }
 
+/** Campaign columns and the doc-type additions arrive with migration 0015. */
+export const hasCampaignFields = (sb: SupabaseClient) => hasColumn(sb, 'campaigns', 'site');
+
 /** Board postings carry a poster of their own, from migration 0014. */
 export const hasJobBoardFields = (sb: SupabaseClient) => hasColumn(sb, 'job_posts', 'poster_name');
 
