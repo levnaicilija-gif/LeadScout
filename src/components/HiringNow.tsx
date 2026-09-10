@@ -25,6 +25,11 @@ export type Posting = {
   first_seen_at: string | null;
   source_url: string;
   via: string | null;
+  /** Board postings only: who placed the advert, which is often not who is hiring. */
+  poster_name?: string | null;
+  poster_type?: string | null;
+  is_secondary?: boolean | null;
+  duplicate_of?: string | null;
   companies: { name: string; employer_type: string | null; country: string | null } | null;
 };
 
@@ -37,6 +42,9 @@ type Group = {
   trades: string[];
   certs: string[];
   places: string[];
+  /** Where the evidence came from: the company itself, or somebody advertising on a board. */
+  fromOwnBoard: boolean;
+  boardPosters: string[];
   newest: string | null;
   pressure: 'high' | 'medium' | 'low';
 };
@@ -73,6 +81,8 @@ export function groupByCompany(postings: Posting[]): Group[] {
       trades: [...new Set(ps.flatMap((p) => p.trades ?? []))],
       certs: [...new Set(ps.flatMap((p) => p.certs_required ?? []))],
       places: [...new Set(ps.map((p) => p.location).filter(Boolean) as string[])],
+      fromOwnBoard: ps.some((p) => p.via !== 'board'),
+      boardPosters: [...new Set(ps.filter((p) => p.via === 'board' && p.poster_name).map((p) => p.poster_name as string))],
       newest,
       // Pressure is volume and recency together: five open trade roles is a campaign, and one
       // advert from March is not.
@@ -92,13 +102,15 @@ const Pressure = ({ p }: { p: Group['pressure'] }) => (
 );
 
 export function HiringNow({
-  postings, crawledAt, companiesWithBoards, showAgencies, hiddenAgencies,
+  postings, crawledAt, companiesWithBoards, showAgencies, hiddenAgencies, duplicates = 0,
 }: {
   postings: Posting[];
   crawledAt?: string | null;
   companiesWithBoards: number;
   showAgencies: boolean;
   hiddenAgencies: number;
+  /** Board adverts that repeat a company's own careers page, dropped from the view. */
+  duplicates?: number;
 }) {
   const groups = groupByCompany(postings);
 
@@ -114,6 +126,7 @@ export function HiringNow({
         {hiddenAgencies > 0
           ? `${hiddenAgencies} ${hiddenAgencies === 1 ? 'agency posting' : 'agency postings'} hidden — competitors' vacancies, not customer demand`
           : 'No agency postings in this list'}
+        {duplicates > 0 && ` · ${duplicates} board advert${duplicates === 1 ? '' : 's'} repeating a company's own page`}
       </span>
     </div>
 
@@ -131,6 +144,7 @@ export function HiringNow({
                   {[g.country, g.employerType?.replace(/_/g, ' ')].filter(Boolean).join(' · ')}
                   {g.employerType === 'staffing_agency' && <span className="text-warn"> · agency</span>}
                 </div>
+                {!g.fromOwnBoard && <div className="text-ink3 text-[12px]">from a job board{g.boardPosters.length ? `, placed by ${g.boardPosters.slice(0, 2).join(', ')}` : ', advertiser not named'}</div>}
               </td>
               <td>
                 <div>{g.roles.slice(0, 4).map((r) => `${r.name}${r.n > 1 ? ` ×${r.n}` : ''}`).join(', ')}</div>

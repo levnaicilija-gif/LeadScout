@@ -28,6 +28,9 @@ export async function hasColumn(sb: SupabaseClient, table: string, column: strin
   return present;
 }
 
+/** Board postings carry a poster of their own, from migration 0014. */
+export const hasJobBoardFields = (sb: SupabaseClient) => hasColumn(sb, 'job_posts', 'poster_name');
+
 /** Right-to-work fields arrive with migration 0013. */
 export const hasRightToWork = (sb: SupabaseClient) => hasColumn(sb, 'candidates', 'eu_passport');
 export const hasCandidateCountries = (sb: SupabaseClient) => hasColumn(sb, 'workspaces', 'candidate_countries');

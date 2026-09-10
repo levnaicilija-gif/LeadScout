@@ -2,7 +2,7 @@ import { supabaseServer } from '@/lib/supabase/server';
 import { Help } from '@/components/Help';
 import { LeadDrawer } from '@/components/LeadDrawer';
 import { HiringNow, HiringHelp } from '@/components/HiringNow';
-import { hasEmployerOverride } from '@/lib/schema-features';
+import { hasEmployerOverride, hasJobBoardFields } from '@/lib/schema-features';
 export const dynamic = 'force-dynamic';
 export default async function Radar({ searchParams }: { searchParams: { tab?: string; lead?: string; agencies?: string } }) {
   const sb = supabaseServer(); const tab = searchParams.tab === 'hiring' ? 'job_post' : 'won_work';
@@ -11,12 +11,14 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // query, so the override is only asked for once it is there.
   const ovr = await hasEmployerOverride(sb);
   const coOverride = ovr ? ", employer_type_override, employer_type_set_at" : "";
+  const boards0014 = await hasJobBoardFields(sb);
+  const jpBoard = boards0014 ? ", poster_name, poster_type, is_secondary, duplicate_of" : "";
 
   // Hiring now reads job_posts directly: a posting on a company's own careers page has no lead
   // behind it, and inventing one to hang it off would be a lead nobody decided to create.
   const { data: postings } = hiring
     ? await sb.from('job_posts')
-      .select(`id, company_id, title, role, location, country, trades, certs_required, rotation, contract_type, headcount, posted_at, first_seen_at, source_url, via, companies!inner(name, employer_type, country, domain${coOverride})`)
+      .select(`id, company_id, title, role, location, country, trades, certs_required, rotation, contract_type, headcount, posted_at, first_seen_at, source_url, via${jpBoard}, companies!inner(name, employer_type, country, domain${coOverride})`)
       .eq('status', 'open').not('company_id', 'is', null)
       .order('posted_at', { ascending: false, nullsFirst: false }).order('first_seen_at', { ascending: false }).limit(400)
     : { data: null };
@@ -33,13 +35,18 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // count of what is hidden stays visible, so the market view is one click away.
   const showAgencies = searchParams.agencies === '1';
   const isAgency = (p: any) => (p.companies?.employer_type_override ?? p.companies?.employer_type) === 'staffing_agency';
-  const agencyPostings = (postings ?? []).filter(isAgency);
+  // A board advert that merely repeats a company's own careers page adds noise, not news.
+  const notDuplicate = (p: any) => !p.duplicate_of;
+  const shown = (postings ?? []).filter(notDuplicate);
+  const duplicates = (postings ?? []).length - shown.length;
+  const agencyPostings = shown.filter(isAgency);
   const hiringProps = {
-    postings: (showAgencies ? (postings ?? []) : (postings ?? []).filter((p: any) => !isAgency(p))) as any,
+    postings: (showAgencies ? shown : shown.filter((p: any) => !isAgency(p))) as any,
     crawledAt: lastJobs?.last_jobs_crawl_at,
     companiesWithBoards: boards ?? 0,
     showAgencies,
     hiddenAgencies: agencyPostings.length,
+    duplicates,
   };
 
   const selected = leads?.find((l) => l.id === searchParams.lead) ?? null;
