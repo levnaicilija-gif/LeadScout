@@ -50,12 +50,21 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     page.on('pageerror', (e) => pageErrors.push(String(e?.message ?? e).slice(0, 200)));
 
     // 1 — sign in
-    await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.fill('input[type=email]', EMAIL);
-    await page.fill('input[type=password]', PASSWORD);
-    await page.click('form button:not([type=button])');
-    await page.waitForURL(/\/app\//, { timeout: 60000 }).catch(() => {});
-    check(/\/app\//.test(page.url()), 'sign in', page.url().replace(BASE, ''));
+    // Supabase rate-limits sign-ins per IP, and a day of probe runs trips it. Report what the
+    // page actually says and back off, rather than calling the product broken.
+    let saidOnPage = '';
+    for (let attempt = 1; attempt <= 4 && !/\/app\//.test(page.url()); attempt++) {
+      await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await page.fill('input[type=email]', EMAIL);
+      await page.fill('input[type=password]', PASSWORD);
+      await page.click('form button:not([type=button])');
+      await page.waitForURL(/\/app\//, { timeout: 60000 }).catch(() => {});
+      if (/\/app\//.test(page.url())) break;
+      saidOnPage = await page.evaluate(() => (document.querySelector('.text-bad') as HTMLElement)?.innerText ?? '(no message shown)');
+      console.log(`  ...  sign-in attempt ${attempt} did not reach /app — page says: ${saidOnPage}`);
+      await page.waitForTimeout(15000 * attempt);
+    }
+    check(/\/app\//.test(page.url()), 'sign in', page.url().replace(BASE, '') + (saidOnPage ? ` · ${saidOnPage}` : ''));
     // A brand-new account is on onboarding day 1, so it must land on Home. Sign-in used to
     // redirect straight to /app/today, which skipped that decision entirely.
     check(/\/app\/home/.test(page.url()), 'a new user lands on Home', page.url().replace(BASE, ''));
