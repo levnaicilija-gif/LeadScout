@@ -328,8 +328,10 @@ export const QuestionsSchema = z.object({ questions: z.array(Question).min(1).ma
 export const screeningQuestions = (jd: string) =>
   askJson(QuestionsSchema, `Write 6–8 screening questions a recruiter asks a candidate for this role: technical (process/positions/standards), certificates and expiry, rotation history, offshore medical/safety training, passport/A1, English on site, rate and start, conflicts. For each, what a good answer sounds like.
 
+"today" is the current date. Any date in the job that is already past is history, not a plan: never ask a candidate whether they can start on a date that has gone. Ask for the earliest date they could mobilise, and about notice period, instead.
+
 Each entry in "questions" is an object with exactly these keys:
-{"q":"the question the recruiter asks","good_answer":"what a good answer sounds like"}`, jd, undefined, 4000);
+{"q":"the question the recruiter asks","good_answer":"what a good answer sounds like"}`, JSON.stringify({ job: jd, today: new Date().toISOString().slice(0, 10) }), undefined, 4000);
 
 /** email and linkedin came back as objects ({subject, body}) rather than the plain text asked for. */
 const flat = (v: any): string => {
@@ -351,6 +353,29 @@ export const OutreachSchema = z.preprocess((v: any) => {
   };
 }, z.object({ subject: z.string(), email: z.string().min(1), linkedin: z.string().max(600), reasoning: z.string() }));
 
+/** Which claims in a drafted email cannot be traced to the data behind it. */
+export const DraftCheckSchema = z.object({
+  unsupported: z.array(z.object({ phrase: z.string(), why: z.string() })).nullish().transform((v) => v ?? []),
+});
+
+export const checkDraft = (draft: { subject: string; email: string; linkedin: string }, source: object) =>
+  askJson(
+    DraftCheckSchema,
+    `You are auditing an outreach email against the ONLY data behind it. This is a factual audit, not editing.
+
+Quote verbatim every phrase in the subject, email or LinkedIn message that states something about OUR candidates which cannot be traced to "pool":
+- a certificate, standard, level or number not in pool.verified_certificates;
+- a count of people not supported by pool.available or pool.candidates_on_file;
+- a trade not in pool.trades;
+- a country, site or project not in pool.projects — a country counts as traceable when it appears in any pool.projects entry;
+- a claim about speed, quality, price or outcome, which is never in the data.
+
+Claims about the CLIENT — their contract, assets, timing, and their own quoted words — come from the lead and are not your concern here.
+
+Return {"unsupported":[{"phrase":"...","why":"..."}]}, empty when everything traces.`,
+    JSON.stringify({ draft, source }),
+  );
+
 export const draftOutreach = (ctx: object) =>
   askJson(OutreachSchema, `Draft an outreach email and a LinkedIn connection message (<300 chars) from a staffing agency to this decision-maker. Open with their own quote or the posting. Ask for one small step. Short. reasoning: one line on why it is written this way.
 
@@ -362,4 +387,25 @@ THE POOL. Everything you say about our candidates must come from "pool" in the d
 
 Everything about THEIR side — the contract, the assets, the timing — comes from the lead and the quote, copied not embroidered.
 
-"subject", "email", "linkedin" and "reasoning" are each PLAIN TEXT, not nested objects. Put the subject line in "subject" and the body in "email".`, JSON.stringify(ctx));
+WHO IT GOES TO. "recipient" is the person to address. "hook" is the person whose words open the email — often not the same person, because newspapers quote chief executives and chief executives do not book trades. Greet the recipient by first name; quote the hook and attribute the words to them by name and title. Never address the hook as though they were the recipient.
+
+DATES. "today" is the current date. Treat any date before it as past: a contract that started in March when it is now September is running, not starting, so ask about the earliest date someone could mobilise rather than about a start that has already happened.
+
+"subject", "email", "linkedin" and "reasoning" are each PLAIN TEXT, not nested objects. Put the subject line in "subject" and the body in "email". Begin "reasoning" with why this recipient was chosen.`, JSON.stringify({ ...ctx, today: new Date().toISOString().slice(0, 10) }));
+
+/**
+ * Draft, then audit what it says about our own people, and give it one chance to correct
+ * itself. A first email that claims a certificate we do not hold ends the relationship.
+ */
+export async function draftOutreachChecked(ctx: any) {
+  let d = await draftOutreach(ctx);
+  const source = { pool: ctx.pool ?? null };
+  const audit = await checkDraft(d, source);
+  if (audit.unsupported.length === 0) return { ...d, unsupported: [] as { phrase: string; why: string }[] };
+
+  const complaint = audit.unsupported.map((u) => `"${u.phrase}" — ${u.why}`).join('; ');
+  d = await draftOutreach({ ...ctx, _correction: `A previous draft claimed things the data does not support. Remove or rewrite exactly these, and change nothing else: ${complaint}` });
+  const second = await checkDraft(d, source);
+  // Still unsupported: hand it over with the phrases named, rather than quietly sending it.
+  return { ...d, unsupported: second.unsupported };
+}

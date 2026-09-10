@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseServer, currentUser } from '@/lib/supabase/server';
-import { jdFromLead, screeningQuestions, draftOutreach, scoreAgainstJob, anonymize } from '@/lib/ai/documents';
+import { jdFromLead, screeningQuestions, draftOutreachChecked, scoreAgainstJob, anonymize } from '@/lib/ai/documents';
+import { chooseRecipient } from '@/lib/contact-choice';
 import { xrayCandidatesUrl } from '@/lib/search-urls';
 export const maxDuration = 120;
 /** POST { lead_id, action: 'jd' | 'questions' | 'score_pool' | 'xray' | 'draft' | 'confirm' | 'status', ... } */
@@ -25,16 +26,28 @@ export async function POST(req: Request) {
     }
     case 'draft': {
       if (!lead.confirmed_at) return NextResponse.json({ error: 'Confirm the source before drafting outreach' }, { status: 400 });
-      const contact = lead.contacts?.[0];
-      const d = await draftOutreach({
-        company: lead.companies?.name, contact, project: lead.project_name, phase: lead.phase,
+      // Who to write to. The quoted person is usually the CEO, and a CEO does not book welders.
+      const contacts = (lead.contacts ?? []) as any[];
+      const quoted = contacts.find((c) => c.quote) ?? contacts[0] ?? null;
+      const { data: attendees } = await sb.from('people')
+        .select('id, name, title, source').eq('workspace_id', me.workspace_id)
+        .ilike('company_name', `%${(lead.companies?.name ?? '').split(' ')[0]}%`).limit(20);
+      const pick = chooseRecipient(quoted, contacts.filter((c) => c !== quoted), attendees ?? []);
+
+      const d = await draftOutreachChecked({
+        company: lead.companies?.name, project: lead.project_name, phase: lead.phase,
         trades: lead.trades_inferred, rfbt_history: lead.companies?.rfbt_history, packs: b.packs ?? [],
+        recipient: { name: pick.to.name, title: pick.to.title },
+        hook: pick.hook ? { name: pick.hook.name, title: pick.hook.title, quote: (pick.hook as any).quote ?? quoted?.quote } : null,
         // What we can actually claim. Without this the draft invents certificates the pool does
         // not hold — "verified welders EN 9606, NDT Level II" against nothing on file.
         pool: await poolEvidence(sb, me.workspace_id),
       });
-      const { data: o } = await sb.from('outreach').insert({ lead_id: lead.id, contact_id: contact?.id, channel: 'email', subject: d.subject, body: d.email, reasoning: d.reasoning, status: 'draft' }).select().single();
-      return NextResponse.json({ ...d, outreach_id: o.id });
+      // The recruiter is told who this is addressed to and why, before the model's own reasoning.
+      const reasoning = `${pick.why} ${d.reasoning ?? ''}`.trim();
+      const contactId = contacts.find((c) => c.name === pick.to.name)?.id ?? quoted?.id ?? null;
+      const { data: o } = await sb.from('outreach').insert({ lead_id: lead.id, contact_id: contactId, channel: 'email', subject: d.subject, body: d.email, reasoning, status: 'draft' }).select().single();
+      return NextResponse.json({ ...d, reasoning, outreach_id: o.id, recipient: pick.to, redirected: pick.redirected });
     }
   }
   return NextResponse.json({ error: 'unknown action' }, { status: 400 });
