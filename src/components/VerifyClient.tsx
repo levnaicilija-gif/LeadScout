@@ -233,7 +233,10 @@ function FileCard({ f, candidate, senior, job, busy }: { f: any; candidate?: any
             </div>
           </div>}
 
-          {f.step === 4 && <AnonymizedPreview x={{ candidate: { id: candidate?.id, reference_code: f.reference }, profile: f.profile, bullets: f.bullets, certificates: f.certificates }} />}
+          {/* The anonymised CV is finished the moment the CV has been read: bullets and register
+              results are additions to it, not preconditions. Gating this on step 4 meant a CV
+              whose enrich step failed showed nothing but the little summary card beside it. */}
+          {f.profile && <AnonymizedPreview x={{ candidate: { id: candidate?.id, reference_code: f.reference }, profile: f.profile, bullets: f.bullets, certificates: f.certificates }} />}
 
           <div className="flex gap-2 mt-3 flex-wrap">
             <DownloadPdf candidateId={candidate?.id} kind="client" label="Download client PDF" disabled={!f.piiPassed} />

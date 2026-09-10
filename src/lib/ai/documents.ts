@@ -179,9 +179,34 @@ export async function piiModelReview(clientFacingText: string, allowed: string[]
   return { findings, clean: findings.length === 0 };
 }
 
-export const BulletsSchema = z.object({ bullets: z.array(z.string()).length(3) });
+/**
+ * The model is asked for {"bullets": [...]} and mostly obliges, but a real CV came back under
+ * some other key and the whole client version was lost to a zod error the recruiter could do
+ * nothing about. Three bullets is the house style, not a fact worth failing over: take what
+ * came back whatever it was called, and let the audit in buildBullets decide what survives.
+ */
+const toBullets = (v: any) => {
+  const strings = (a: any): string[] | null =>
+    Array.isArray(a) && a.length
+      ? a.map((x) => (typeof x === 'string' ? x : x?.text ?? x?.bullet ?? x?.content ?? '')).filter((s: string) => typeof s === 'string' && s.trim())
+      : null;
+  if (Array.isArray(v)) return { bullets: strings(v) ?? [] };
+  if (v && typeof v === 'object') {
+    if (strings(v.bullets)) return { ...v, bullets: strings(v.bullets) };
+    // Named something else: take the first array of strings the object offers.
+    for (const val of Object.values(v)) { const s = strings(val); if (s) return { ...v, bullets: s }; }
+  }
+  return v;
+};
+
+export const BulletsSchema = z.preprocess(toBullets, z.object({
+  bullets: z.array(z.string().trim().min(1)).min(1).max(8).transform((b) => b.slice(0, 3)),
+}));
 
 const BULLETS_SYSTEM = `Write exactly three bullets describing this candidate for a client.
+
+Return JSON in exactly this shape, with exactly this key:
+{"bullets":["first bullet","second bullet","third bullet"]}
 
 State only what the data says: what they hold, what they did, and when they are available.
 Every noun and number must come from the data given to you.
