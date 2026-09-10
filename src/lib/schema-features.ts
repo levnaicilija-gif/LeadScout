@@ -28,6 +28,9 @@ export async function hasColumn(sb: SupabaseClient, table: string, column: strin
   return present;
 }
 
+/** Employer-type evidence arrives with migration 0017. */
+export const hasEmployerEvidence = (sb: SupabaseClient) => hasColumn(sb, 'companies', 'employer_type_evidence');
+
 /** Campaign columns and the doc-type additions arrive with migration 0015. */
 export const hasCampaignFields = (sb: SupabaseClient) => hasColumn(sb, 'campaigns', 'site');
 
