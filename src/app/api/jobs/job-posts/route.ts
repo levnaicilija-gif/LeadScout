@@ -171,6 +171,7 @@ async function run(req: Request) {
 
   const stats = { companies: 0, unchanged: 0, noBoard: 0, titlesSeen: 0, tradeTitles: 0, postsWritten: 0, detailed: 0 };
   const found: any[] = [];
+  const writeErrors: string[] = [];
 
   for (const c of companies ?? []) {
     if (budget.exhausted) break;
@@ -249,7 +250,13 @@ async function run(req: Request) {
         }
 
         const { error: up } = await db.from('job_posts').upsert(row, { onConflict: 'company_id,source_url' });
-        if (!up) { stats.postsWritten++; found.push({ company: c.name, title: row.role, location: row.location, country: row.country, via: board.via }); }
+        if (up) {
+          // A posting that Haiku kept and the database refused is a silent hole in Hiring now.
+          writeErrors.push(`${c.name} · ${row.role}: ${up.code ?? ''} ${up.message}`.slice(0, 200));
+        } else {
+          stats.postsWritten++;
+          found.push({ company: c.name, title: row.role, location: row.location, country: row.country, via: board.via });
+        }
       }
 
       // Anything previously open on this board and not on it now has been filled or pulled.
@@ -282,5 +289,6 @@ async function run(req: Request) {
     ok: true, stats, chained,
     spentToday: Number(budget.totalToday.toFixed(4)), cap, budgetLeft: Number(budget.remaining.toFixed(4)),
     found: found.slice(0, 40),
+    writeErrors: writeErrors.slice(0, 10),
   });
 }
