@@ -1,27 +1,46 @@
 # LeadScout — instructions for Claude Code
 
-Read `LeadScout-build-prompt.txt` (full spec) and open `design/leadscout.html` + `design/leadscout-home.html` (the design to match exactly) before changing UI.
+Read `LeadScout-build-prompt.txt` (full spec) and open the file in `design/` that matches the screen before changing UI: `leadscout.html` (rail screens), `leadscout-home-v2.html` (Home), `verify-v2.html` (Verify).
 
 ## The rule that overrides everything
 Never fabricate. Every contact, email, phone, date or "verified" flag must come from a fetched page (stored with URL + time) or be shown as `pattern` / `unknown`. `src/lib/ai/claude.ts#appearsIn` is the check — keep using it. No Math.random() in data paths. Nothing is emailed except through `/api/outreach`, by a recruiter, to an address attached to a contact/company.
 
-## State of the codebase (what works, what's next)
-- Schema: `supabase/migrations/0001_schema.sql` — complete, with RLS and the sign-up trigger. Apply with `supabase db push` or in the SQL editor.
-- Auth: Supabase email/password + magic link. `/login`, `/signup`, middleware protects `/app`.
-- Radar job: `src/app/api/jobs/radar/route.ts` — fetch → Stage 1 extraction → validation → dedup → contacts/people. Link discovery is a heuristic; ADD per-source RSS/selector rules in `sources.crawl_prompt` or a `link_rule` column. Add `upsert` unique index on `contacts(lead_id,name)` and `leads(source_url)`.
-- Verify: `/api/verify` extraction (Claude vision) + adapters `frosio`, `pcn`. TODO adapters: cswip, ampp, irata, winda, cisrs, electrical_dk (same interface, `src/lib/verify/adapters/types.ts`). Adapter selectors must be confirmed against the live sites on first run — record real selectors in each file.
-- Anonymize: `/api/anonymize` parse → anonymize → bullets → score → ranking. TODO: React-PDF client PDF (`@react-pdf/renderer`) with the layout in `design/leadscout.html` (#pdfwrap) and a Claude PII review pass in addition to `piiRegexHits`.
-- Lead tools: `/api/lead` jd / questions / score_pool / xray / draft / confirm / status. Outreach send: `/api/outreach` (Resend). TODO: Resend inbound webhook → `outreach.reply_at`.
-- Screens: Today, Radar (+drawer), Verify, Pitch, Candidates, Settings, public `/v/[slug]`. Keep the design tokens in `tailwind.config.js`.
-- Jobs: `vercel.json` crons (06:00 CET = 04:00 UTC). Worker (`worker/`) optional for long browser runs.
-- Seeds: `npm run seed -- <workspace_id>` loads `seeds/*.csv`.
+Two corollaries learned the hard way:
+- **A model asked for JSON will answer under different keys.** `askJson` takes the required keys from the schema itself and retries once with the zod complaint fed back. Never add a prompt that describes its shape in prose only.
+- **A claim about our own people needs evidence behind it.** Bullets are audited against the profile (`checkBullets`), draft emails against the pool (`checkDraft`). Both name the offending phrase rather than silently dropping it.
 
-## Build order for remaining work
-1. Apply schema, create a workspace via /signup, run seed, set env. Smoke-test Verify with a real FROSIO cert and a CV.
-2. Fix adapter selectors on live sites; add remaining adapters.
-3. Client PDF + PII model review; Preview button on Verify and Candidates.
-4. Radar: per-source link rules for the top 20 sources; run job; review Stage 1 output quality on 50 articles; tune prompt.
-5. Today: candidates-missing-documents item (campaigns), stat drill-downs, onboarding day gating.
-6. Trade cards, glossary, screening-question storage on candidate.
+## Before every commit, and after every deploy
+Standing instruction from the user:
 
-Commit to main. Keep files small; one screen per file; no UI libraries.
+```
+npm run typecheck && npm run build
+npx next start -p <port>                     # serve the build you are about to commit
+npx tsx --env-file=.env.local scripts/pdf-check.ts
+npx tsx --env-file=.env.local scripts/verify-e2e.ts       http://localhost:<port>
+npx tsx --env-file=.env.local scripts/lead-drawer-e2e.ts  http://localhost:<port>
+npx tsx --env-file=.env.local scripts/smoke.ts            http://localhost:<port>
+```
+
+After deploying, run `scripts/smoke.ts https://leadscout-rfbt.vercel.app` and report pass/fail per flow. If anything regresses, fix it before moving on — never leave production broken to continue a feature. Kill the old `next start` first (`taskkill //PID <pid> //F`): a stale server serves old chunks and produces false failures.
+
+**Migrations are applied by hand by the user, so a deploy can land before its schema.** Never name a new column without guarding it — `src/lib/schema-features.ts#hasColumn` asks once per process. A missing column fails the *whole* query, which has taken Leads, the drawer and Verify down.
+
+## State of the codebase
+- **Migrations 0001–0013 applied.** 0011 source tiers + `radar_runs`, 0012 employer-type override, 0013 right to work + `workspaces.candidate_countries`.
+- **Radar**: 600 sources classified by Haiku into priority (44) / standard (189) / off (366, reason stored). Priority daily, everything on Sundays — same cron. `repair-sources` finds a newsroom again when a URL rots and follows a rebrand (Wood → woodgroup.com). 29 won-work leads.
+- **Hiring now**: careers/ATS discovery over the company universe — 226 boards found, **208 companies still queued** (runs overnight off the recheck cron). 20 ATS vendors; Workday needs a POST. Job-post crawl: fingerprint → Haiku titles (also maps trades from the source language) → Sonnet bodies, €2/day cap. 32 open postings, grouped one row per company, sorted by pressure, agencies hidden by default.
+- **Verify**: one drop zone, recognises by content. CV card streams Read → Anonymized → Bullets → PDF → Questions. Questions are match-aware when a job is selected. Adapters `frosio`, `pcn` live; **cswip, ampp, irata, winda, cisrs, electrical_dk still TODO** (`src/lib/verify/adapters/types.ts`) — confirm selectors against the live site and record them in the file.
+- **Right to work**: `src/lib/right-to-work.ts` is the single rule. Blocker keyed on the **lead's** country. EU job → EU/EEA passport. UK job → an EU passport is *not* enough. `unknown` never passes. LinkedIn search countries follow the job; never Serbia by default.
+- **Screens**: Home (day < 8 lands here, logo always goes Home), Today, Leads (Won work / Hiring now), Verify, Pitch, Candidates, Settings, public `/v/[slug]`.
+- **Chains**: every chained job dispatches the next batch *before* doing its own work. Doing it after means one 300 s timeout kills the whole run — this has bitten Radar, discovery and the job crawl.
+- **`supabaseAdmin` sends `cache: 'no-store'`.** Next's Data Cache froze a query result across deploys and `/v/<slug>` served "Not found" for a candidate that existed.
+
+## What is next
+1. Remaining verify adapters (cswip, ampp, irata, winda, cisrs, electrical_dk).
+2. Finish careers discovery for the 208 queued companies; watch the first unattended overnight run.
+3. Per-company cap or grouping refinement on Hiring now if one employer still dominates.
+4. Today: candidates-missing-documents item (campaigns), stat drill-downs, onboarding day gating.
+5. Trade cards, glossary, screening-question storage on the candidate.
+6. Resend inbound webhook → `outreach.reply_at`.
+
+Commit to main, two lines per step. Keep files small; one screen per file; no UI libraries. Design tokens live in `tailwind.config.js`.
