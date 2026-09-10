@@ -26,10 +26,45 @@ export async function POST(req: Request) {
     case 'draft': {
       if (!lead.confirmed_at) return NextResponse.json({ error: 'Confirm the source before drafting outreach' }, { status: 400 });
       const contact = lead.contacts?.[0];
-      const d = await draftOutreach({ company: lead.companies?.name, contact, project: lead.project_name, phase: lead.phase, trades: lead.trades_inferred, rfbt_history: lead.companies?.rfbt_history, packs: b.packs ?? [] });
+      const d = await draftOutreach({
+        company: lead.companies?.name, contact, project: lead.project_name, phase: lead.phase,
+        trades: lead.trades_inferred, rfbt_history: lead.companies?.rfbt_history, packs: b.packs ?? [],
+        // What we can actually claim. Without this the draft invents certificates the pool does
+        // not hold — "verified welders EN 9606, NDT Level II" against nothing on file.
+        pool: await poolEvidence(sb, me.workspace_id),
+      });
       const { data: o } = await sb.from('outreach').insert({ lead_id: lead.id, contact_id: contact?.id, channel: 'email', subject: d.subject, body: d.email, reasoning: d.reasoning, status: 'draft' }).select().single();
       return NextResponse.json({ ...d, outreach_id: o.id });
     }
   }
   return NextResponse.json({ error: 'unknown action' }, { status: 400 });
+}
+
+/**
+ * What the workspace can honestly say about its own candidates: the certificates actually
+ * confirmed with an issuer, the trades on file, and how many people are free. A draft email is
+ * only allowed to cite these.
+ */
+async function poolEvidence(sb: any, workspaceId: string) {
+  const { data: cands } = await sb.from('candidates')
+    .select('trade, availability_from, profile').eq('workspace_id', workspaceId).limit(200);
+  const { data: verified } = await sb.from('verifications')
+    .select('result, valid_until, documents!inner(workspace_id, cert_body, extracted)')
+    .eq('documents.workspace_id', workspaceId).eq('result', 'valid');
+
+  const today = new Date().toISOString().slice(0, 10);
+  const available = (cands ?? []).filter((c: any) => !c.availability_from || c.availability_from <= today).length;
+  const trades = [...new Set((cands ?? []).flatMap((c: any) => c.profile?.trades ?? [c.trade]).filter(Boolean))];
+  const projects = [...new Set((cands ?? []).flatMap((c: any) => (c.profile?.projects ?? []).map((p: any) => [p.type, p.country].filter(Boolean).join(', '))))].slice(0, 12);
+
+  return {
+    candidates_on_file: (cands ?? []).length,
+    available,
+    trades,
+    projects,
+    verified_certificates: (verified ?? []).map((v: any) => ({
+      body: v.documents?.cert_body, level: v.documents?.extracted?.level ?? null,
+      method: v.documents?.extracted?.method ?? null, valid_until: v.valid_until,
+    })),
+  };
 }

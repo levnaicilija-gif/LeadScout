@@ -301,7 +301,12 @@ export async function buildBullets(anon: object, verified: object[], jobContext?
   return { bullets, dropped };
 }
 
-export const ScoreSchema = z.object({ score: z.number().min(0).max(100), fits: z.array(z.string()), missing: z.array(z.string()), blockers: z.array(z.string()) });
+/** fits/missing/blockers come back as a single string often enough to be worth accepting. */
+const listOfText = z.preprocess(
+  (v: any) => (typeof v === 'string' ? v.split(/\s*[;·•]\s*|\n+/).map((t) => t.trim()).filter(Boolean) : v ?? []),
+  z.array(z.string()),
+);
+export const ScoreSchema = z.object({ score: z.number().min(0).max(100), fits: listOfText, missing: listOfText, blockers: listOfText });
 export const scoreAgainstJob = (anon: object, verified: object[], jd: string) =>
   askJson(ScoreSchema, 'Score how well this candidate matches the job (0–100). fits: evidence from the CV. missing: what is absent and what would close it (e.g. "ICATS card — FROSIO accepted by most UK yards, confirm"). blockers: hard requirements not met (passport, required cert level, language). Be strict and specific.', JSON.stringify({ candidate: anon, verified_certificates: verified, job: jd }));
 
@@ -309,10 +314,52 @@ export const JdSchema = z.object({ job_description: z.string(), assumptions: z.a
 export const jdFromLead = (lead: object, articleText: string) =>
   askJson(JdSchema, 'Write a working job description for a trades staffing agency from this lead. Use only stated facts; where you must assume (typical certs for this company type, rotation), list each assumption separately so the recruiter can confirm on the call.', JSON.stringify({ lead, source_text: articleText.slice(0, 8000) }));
 
-export const QuestionsSchema = z.object({ questions: z.array(z.object({ q: z.string(), good_answer: z.string() })).min(6).max(8) });
-export const screeningQuestions = (jd: string) =>
-  askJson(QuestionsSchema, 'Write 6–8 screening questions a recruiter asks a candidate for this role: technical (process/positions/standards), certificates and expiry, rotation history, offshore medical/safety training, passport/A1, English on site, rate and start, conflicts. For each, what a good answer sounds like.', jd);
+/** The nested keys drift as readily as the top-level ones, and askJson can only name those. */
+const Question = z.preprocess((v: any) => {
+  if (typeof v === 'string') return { q: v, good_answer: '' };
+  if (!v || typeof v !== 'object') return v;
+  return {
+    q: v.q ?? v.question ?? v.text ?? '',
+    good_answer: v.good_answer ?? v.good ?? v.answer ?? v.good_answer_sounds_like ?? v.ideal_answer ?? '',
+  };
+}, z.object({ q: z.string().min(1), good_answer: z.string() }));
 
-export const OutreachSchema = z.object({ subject: z.string(), email: z.string(), linkedin: z.string().max(300), reasoning: z.string() });
+export const QuestionsSchema = z.object({ questions: z.array(Question).min(1).max(12) });
+export const screeningQuestions = (jd: string) =>
+  askJson(QuestionsSchema, `Write 6–8 screening questions a recruiter asks a candidate for this role: technical (process/positions/standards), certificates and expiry, rotation history, offshore medical/safety training, passport/A1, English on site, rate and start, conflicts. For each, what a good answer sounds like.
+
+Each entry in "questions" is an object with exactly these keys:
+{"q":"the question the recruiter asks","good_answer":"what a good answer sounds like"}`, jd, undefined, 4000);
+
+/** email and linkedin came back as objects ({subject, body}) rather than the plain text asked for. */
+const flat = (v: any): string => {
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) return v.map(flat).filter(Boolean).join('\n');
+  if (v && typeof v === 'object') return [v.body, v.text, v.message, v.content].find((x) => typeof x === 'string') ?? Object.values(v).map(flat).filter(Boolean).join('\n');
+  return '';
+};
+
+export const OutreachSchema = z.preprocess((v: any) => {
+  if (!v || typeof v !== 'object') return v;
+  const email = v.email ?? v.body ?? v.message;
+  return {
+    ...v,
+    subject: typeof v.subject === 'string' ? v.subject : (typeof email === 'object' && email ? email.subject ?? '' : ''),
+    email: flat(email),
+    linkedin: flat(v.linkedin ?? v.linkedin_message ?? v.connection_message),
+    reasoning: flat(v.reasoning ?? v.why ?? ''),
+  };
+}, z.object({ subject: z.string(), email: z.string().min(1), linkedin: z.string().max(600), reasoning: z.string() }));
+
 export const draftOutreach = (ctx: object) =>
-  askJson(OutreachSchema, 'Draft an outreach email and a LinkedIn connection message (<300 chars) from a staffing agency to this decision-maker. Open with their own quote or the posting. State proof: verified certs, availability dates, prior relevant projects, contract model. Ask for one small step. Short. reasoning: one line on why it is written this way.', JSON.stringify(ctx));
+  askJson(OutreachSchema, `Draft an outreach email and a LinkedIn connection message (<300 chars) from a staffing agency to this decision-maker. Open with their own quote or the posting. Ask for one small step. Short. reasoning: one line on why it is written this way.
+
+THE POOL. Everything you say about our candidates must come from "pool" in the data below, and nothing else. It lists what we actually hold today.
+- Name a certificate, a standard, a level or a number ONLY if it appears in pool.verified_certificates. That list is what has been checked with the issuer.
+- If pool.verified_certificates is empty, say so plainly — "candidates screened and certificates being verified now" — and do not name a single certificate or standard. An invented "EN 9606" or "NDT Level II" in a first email is a lie to a client and ends the relationship.
+- Give a number of available people only if pool.available says one. Never write "5-6 pre-vetted tradespeople" unless the pool says there are.
+- Prior projects: only those in pool.projects.
+
+Everything about THEIR side — the contract, the assets, the timing — comes from the lead and the quote, copied not embroidered.
+
+"subject", "email", "linkedin" and "reasoning" are each PLAIN TEXT, not nested objects. Put the subject line in "subject" and the body in "email".`, JSON.stringify(ctx));
