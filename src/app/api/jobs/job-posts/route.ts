@@ -53,19 +53,49 @@ function postedDate(v?: string | null): string | null {
   return Number.isNaN(t) ? null : new Date(t).toISOString().slice(0, 10);
 }
 
+/**
+ * The title pass does three jobs at once, because the model is reading the title anyway and a
+ * second call would cost the same again: is this a trade we place, which of our trades is it,
+ * and does the title name a certificate.
+ *
+ * Doing it here is what makes a Norwegian or Dutch board usable. "Industrirørlegger",
+ * "Servicemonteur" and "Stillasbygger" are pipefitter, mechanical fitter and scaffolder, and no
+ * amount of English keyword matching was ever going to find them.
+ */
 const TitleVerdicts = z.object({
-  keep: z.array(z.number()).nullish().transform((v) => v ?? []),
+  keep: z.array(z.object({
+    i: z.number(),
+    trades: z.array(z.string()).nullish().transform((v) => v ?? []),
+    certs: z.array(z.string()).nullish().transform((v) => v ?? []),
+  })).nullish().transform((v) => v ?? []),
 });
 
-const TITLE_SYSTEM = `You are filtering job titles for RFBT, which supplies skilled trades to industry.
+const TITLE_SYSTEM = `You are reading job titles for RFBT, which supplies skilled trades to industry.
 
-RFBT places: welders, pipefitters, platers, plate workers, blasters, painters, coating inspectors, NDT technicians, scaffolders, riggers, rope access technicians, electricians, mechanical fitters, wind turbine technicians, marine crew, HVAC and insulation trades, and the supervisors and QA/QC inspectors directly over them.
+RFBT's taxonomy is exactly these ten words. "trades" may contain nothing else — anything outside this list is discarded downstream, so a more precise word is a lost one:
+welder, painter, blaster, pipefitter, fitter, ndt, rope access, wind technician, electrician, scaffolder
 
-Return the indexes of the titles that are one of those, or a direct supervisor of them.
+Keep a title when it is one of those trades, or a foreman, supervisor or QA/QC inspector directly over them. The titles are in many languages: read them in whatever language they are written, and map to the list above.
 
-NOT wanted: office, sales, marketing, finance, HR, legal, IT, software, data, design, procurement, management consultancy, graduate schemes, internships, apprenticeships, or engineering roles that are desk-based design rather than site trades.
+Worked examples, so the mapping is not guessed at:
+- "Industrirørlegger" (NO) → pipefitter
+- "Servicemonteur", "Monteur Technische Dienst" (NL) → fitter
+- "Stillasbygger", "Lærling i stillasbyggerfaget" (NO) → scaffolder
+- "Serviceelektriker", "operatør innen elektrofag" (NO) → electrician
+- "Windturbine monteur" (NL) → wind technician
+- "Sveiser" (NO) / "Lasser" (NL) → welder
+- "Isolatør" (NO) / "Isoleerder" (NL) → fitter
+- "Overflatebehandler" (NO) → blaster, painter
+- "Fagingeniør Mekanisk" (NO) → fitter
+- "Werkplaatsmedewerker" (NL, workshop hand) → fitter
+- "Rigger", "Kranfører" (NO) → fitter
+- "EKH Keurmeester" (NL, lifting-gear inspector) → ndt
 
-Return {"keep":[0,3,7]} — indexes only, empty when none qualify.`;
+NOT wanted: office, sales, marketing, finance, HR, legal, IT, software, data, design, procurement, consultancy, graduate schemes, internships, or engineering roles that are desk-based design rather than site trades. An apprenticeship in a trade IS wanted.
+
+"certs" holds only a certificate the title itself names (e.g. "EKH Keurmeester" → EKH). Empty otherwise — never infer one from the trade.
+
+Return {"keep":[{"i":0,"trades":["pipefitter"],"certs":[]}]}, empty when none qualify.`;
 
 const JobDetail = z.object({
   role: z.string().nullish().transform((v) => v ?? undefined),
@@ -220,14 +250,16 @@ async function run(req: Request) {
       budget.add(await logModelCall(db, ws.id, MODEL_CLASSIFY, `job titles ${c.name}`, ai.usage));
       const text = ai.content.filter((x) => x.type === 'text').map((x: any) => x.text).join('');
       const keep = TitleVerdicts.parse(JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? '{}')).keep
-        .filter((i) => Number.isInteger(i) && i >= 0 && i < board.jobs.length);
+        .filter((k) => Number.isInteger(k.i) && k.i >= 0 && k.i < board.jobs.length);
       stats.tradeTitles += keep.length;
 
       const seenUrls: string[] = [];
-      for (const idx of keep) {
-        const j = board.jobs[idx];
+      for (const k of keep) {
+        const j = board.jobs[k.i];
         seenUrls.push(j.url);
-        const trades = inferTrades([], j.title, j.location).trades;
+        // The model read the title in its own language; inferTrades then maps whatever it said
+        // onto the taxonomy and drops anything outside it.
+        const trades = inferTrades(k.trades, j.title, j.location).trades;
         const country = countryFromJobLocation(j.location) ?? c.country ?? undefined;
 
         // The geography gate. A Baker Hughes vacancy in the UAE or Brazil is a real posting and
@@ -237,7 +269,7 @@ async function run(req: Request) {
 
         const row: any = {
           company_id: c.id, source_url: j.url, title: j.title, role: j.title,
-          location: j.location ?? null, country: country ?? null, trades,
+          location: j.location ?? null, country: country ?? null, trades, certs_required: k.certs,
           posted_at: postedDate(j.postedAt),
           via: board.via, is_trade: true, classified_at: new Date().toISOString(),
           last_seen_at: new Date().toISOString(), status: 'open',

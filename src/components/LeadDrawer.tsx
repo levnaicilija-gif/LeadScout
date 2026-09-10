@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { EmployerTypeOverride } from './EmployerTypeOverride';
 export function LeadDrawer({ lead }: { lead: any }) {
   const r = useRouter(); const [tool, setTool] = useState<'jd' | 'pool' | 'xray' | 'q'>('jd');
   const [out, setOut] = useState<any>({}); const [busy, setBusy] = useState(''); const [draft, setDraft] = useState<any>(null);
@@ -53,7 +54,10 @@ export function LeadDrawer({ lead }: { lead: any }) {
     <div className="text-[12px] text-ink3 mb-2">Source</div>
     <div className="flex items-center gap-2 text-[13px] mb-4"><span className={`st ${lead.source_fetch_status === 'live' ? 'st-ok' : 'st-bad'}`}>{lead.source_fetch_status}</span><a className="text-accent" href={lead.source_url} target="_blank" rel="noopener">Open source</a>{lead.confirmed_at ? <span className="text-ok">✓ confirmed</span> : <button className="btn" onClick={async () => { await call('confirm'); r.refresh(); }}>Confirm I checked it</button>}</div>
 
-    <div className="text-[12px] text-ink3 mb-2">Decision-maker</div>
+    <div className="text-[12px] text-ink3 mt-4 mb-2">What this company is</div>
+    {lead.company_id && <EmployerTypeOverride companyId={lead.company_id} detected={lead.companies?.employer_type} override={lead.companies?.employer_type_override} setAt={lead.companies?.employer_type_set_at} />}
+
+    <div className="text-[12px] text-ink3 mt-4 mb-2">Decision-maker</div>
     {c ? <div className="border border-line rounded p-3.5 text-[13px]"><b className="block font-semibold">{c.name}</b><div className="text-ink2">{c.title}</div>
       <div className="mt-2 grid gap-1">{c.phone && <span>{c.phone} <em className="not-italic text-ink3 text-[12px]">found · <a href={c.phone_source_url} target="_blank" className="underline">source</a></em></span>}{c.email ? <span>{c.email} <em className={`not-italic text-[12px] ${c.email_status === 'found' ? 'text-ok' : 'text-warn'}`}>{c.email_status}</em></span> : <span className="text-ink3">email unknown — use company address</span>}</div>
       <div className="mt-2 flex gap-2"><a className="btn" href={c.linkedin_search_url} target="_blank" rel="noopener">Find on LinkedIn</a><a className="btn" href={c.google_search_url} target="_blank" rel="noopener">Search name + company</a></div>
