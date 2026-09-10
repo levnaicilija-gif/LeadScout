@@ -12,3 +12,4 @@ fixtures/
 
 # Real candidate documents used for testing — never commit these.
 design/samples/
+.cache/

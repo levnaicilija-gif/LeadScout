@@ -30,22 +30,23 @@ async function run(req: Request) {
   if (!authorised(req)) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
   const db = supabaseAdmin();
   const params = new URL(req.url).searchParams;
-  // `only` aims a run at particular sources (substring of the url) — for tuning Stage 1 on
-  // sources that matter rather than whichever rows happen to come back first.
   let q = db.from('sources').select('*').eq('enabled', true);
-  // Cadence. Priority sources are crawled every morning; the rest get a weekly sweep, which
-  // rides the same cron on a Sunday rather than costing a second cron slot. Pass `tier`
-  // explicitly to override. An unclassified source counts as standard — not yet read is not a
-  // reason to ignore it forever.
-  const tier = params.get('tier') ?? (new Date().getUTCDay() === 0 ? 'all' : 'priority');
-  if (tier === 'priority') q = q.eq('tier', 'priority');
-  else if (tier === 'standard') q = q.or('tier.eq.standard,tier.is.null');
-  // Comma-separated: aim a run at a set of sources (the RFBT-relevant ones, say).
+  // Which sources this run covers, in order of precedence:
+  //
+  //   only=<substrings>  an explicit list, for tuning Stage 1 on the sources that matter
+  //   tier=priority      the morning crawl — sources Haiku scored 70+
+  //   tier=standard      the weekly sweep, which includes anything not yet classified:
+  //                      unread is not a reason to ignore a source forever
+  //
+  // With no parameters it is priority on weekdays and everything on a Sunday, so the weekly
+  // sweep rides the same cron rather than costing a second slot.
   const only = params.get('only');
+  const tier = only ? `only:${only.slice(0, 60)}` : params.get('tier') ?? (new Date().getUTCDay() === 0 ? 'all' : 'priority');
   if (only) {
     const terms = only.split(',').map((t) => t.trim()).filter(Boolean);
     q = terms.length > 1 ? q.or(terms.map((t) => `url.ilike.%${t}%`).join(',')) : q.ilike('url', `%${terms[0]}%`);
-  }
+  } else if (tier === 'priority') q = q.eq('tier', 'priority');
+  else if (tier === 'standard') q = q.or('tier.eq.standard,tier.is.null');
   const auditOnly = params.get('audit') === '1';
   // Chunking: a Vercel function has 300 s, which is not enough for many sources. Each
   // invocation takes `batch` sources from `cursor`, then hands the next batch to a fresh
@@ -92,7 +93,7 @@ async function run(req: Request) {
   // it was doing. Without this, "why did this morning produce nothing?" has no answer by lunch.
   const workspaceId = (sources ?? [])[0]?.workspace_id ?? (await db.from('workspaces').select('id').limit(1).maybeSingle()).data?.id ?? null;
   const { data: runRow } = await db.from('radar_runs')
-    .insert({ workspace_id: workspaceId, tier: only ? `only:${only}` : tier, cursor, batch: take })
+    .insert({ workspace_id: workspaceId, tier, cursor, batch: take })
     .select('id').maybeSingle();
 
   for (const src of sources ?? []) {
