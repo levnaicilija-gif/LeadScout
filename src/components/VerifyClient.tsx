@@ -221,8 +221,8 @@ function FileCard({ f, candidate, senior, job, busy }: { f: any; candidate?: any
       <div className="px-[18px] py-3.5 grid grid-cols-[1fr_auto] gap-4 border-b border-line2 last:border-b-0">
         <div>
           <div className="text-[15px] font-semibold flex items-center gap-2">
-            <span className={`w-2.5 h-2.5 rounded-full ${dot(f.piiHits?.length ? 'bad' : f.step === 4 ? 'ok' : 'none')}`} />
-            CV — {f.trade ?? f.profile?.trade ?? 'trade not stated'} · {f.piiHits?.length ? 'blocked by the PII check' : f.step === 4 ? 'anonymized' : 'reading'} · {f.reference}
+            <span className={`w-2.5 h-2.5 rounded-full ${dot(f.piiHits?.length ? 'bad' : f.step >= 4 ? "ok" : "none")}`} />
+            CV — {f.trade ?? f.profile?.trade ?? 'trade not stated'} · {f.piiHits?.length ? 'blocked by the PII check' : f.step >= 4 ? "anonymized" : "reading"} · {f.reference}
           </div>
           <div className="text-ink3 text-[12px] mt-0.5">{f.file}</div>
           <Steps at={f.step ?? 1} failed={f.failed} />
