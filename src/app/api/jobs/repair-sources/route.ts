@@ -60,6 +60,24 @@ async function candidatesFrom(rootUrl: string, browser = false): Promise<string[
   return out.sort((a, b) => a.length - b.length).slice(0, 12);
 }
 
+/**
+ * The origin a page's own links have moved to, if most of them have. A rebranded site keeps
+ * answering on the old address and points everything at the new one.
+ */
+async function movedTo(url: string, origin: string): Promise<string | null> {
+  const page = await fetchPage(url, { force: 'browser' });
+  if (page.status !== 'live' || page.links.length < 10) return null;
+  const counts = new Map<string, number>();
+  for (const l of page.links) {
+    try { const o = new URL(l).origin; counts.set(o, (counts.get(o) ?? 0) + 1); } catch { /* not a URL */ }
+  }
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+  if (!top) return null;
+  const [best, n] = top;
+  // Overwhelming, not merely present: a footer link to a parent company is not a move.
+  return best !== origin && n >= page.links.length * 0.6 ? best : null;
+}
+
 async function run(req: Request) {
   if (!authorised(req)) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
   const db = supabaseAdmin();
@@ -103,8 +121,17 @@ async function run(req: Request) {
     const blocked = head.status === 403 || head.status === 429 || head.status === 0;
     let origin: string;
     try { origin = new URL(src.url).origin; } catch { origin = ''; }
+
+    // A company that rebrands leaves the old address serving a page whose every link points at
+    // the new one. Wood became woodgroup.com: woodplc.com/news still rendered 122 links and we
+    // read none of them, because they were all "somewhere else". Follow the move.
+    const moved = origin ? await movedTo(src.url, origin) : null;
+    const search = moved ? [moved, origin] : [origin];
+
     let adopted: { url: string; links: number; via: string } | null = null;
-    for (const cand of origin ? await candidatesFrom(origin, blocked) : []) {
+    const candidates: string[] = [];
+    for (const o of search) candidates.push(...await candidatesFrom(o, blocked));
+    for (const cand of candidates) {
       if (cand.replace(/\/$/, '') === src.url.replace(/\/$/, '')) continue;
       const page = await fetchPage(cand, blocked ? { force: 'browser' } : {});
       if (page.status !== 'live') continue;
@@ -115,7 +142,7 @@ async function run(req: Request) {
 
     if (adopted) {
       if (!dry) await db.from('sources').update({ url: adopted.url, ...(adopted.via === 'browser' ? { link_rule: JSON.stringify({ browser: true }) } : {}) }).eq('id', src.id);
-      fixed.push({ url: src.url, action: 'url replaced', now: adopted.url, why: `the old page returned ${head.status || 'no connection'}; the new one carries ${adopted.links} article links, read via ${adopted.via}` });
+      fixed.push({ url: src.url, action: 'url replaced', now: adopted.url, why: `the old page returned ${head.status || 'no connection'}${moved ? `, and the site has moved to ${moved}` : ''}; the new one carries ${adopted.links} article links, read via ${adopted.via}` });
     } else {
       const why = `${src.url} returns ${head.status || `no connection (${head.error ?? 'unknown'})`} and no newsroom on the site carries article links`;
       if (!dry) {
