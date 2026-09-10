@@ -77,6 +77,37 @@ export function countriesFromText(text?: string | null): string[] {
  * welders are in Greece. So when several countries appear, the European one wins; the trades
  * follow the yard, not the field.
  */
+/** US states, which is how American job boards write a location and never a country name. */
+const US_STATES = /\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b|\b(alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|ohio|oklahoma|oregon|pennsylvania|tennessee|texas|utah|vermont|virginia|washington|wisconsin|wyoming)\b/i;
+
+/**
+ * The country a JOB is in — which is not the same question as where a project is.
+ *
+ * A project location names the asset and the yard, and the European one decides who does the
+ * welding. A vacancy has one address, and an ATS usually writes it as an ISO prefix:
+ * "QA-DOHA-RAS LAFFAN", "AE-ABU DHABI-AL GHAIL", "CO-BARRANCABERMEJA". None of those contain a
+ * country name, so the ordinary parser found nothing and four Qatari and Emirati postings were
+ * filed as European.
+ */
+export function countryFromJobLocation(text?: string | null): string | undefined {
+  const s = (text ?? '').trim();
+  if (!s) return undefined;
+  const prefix = s.match(/^([A-Z]{2})[-,\s]/);
+  if (prefix && NAMES[prefix[1].toLowerCase()] !== undefined) return prefix[1].toUpperCase();
+  if (prefix && /^(QA|AE|SA|KW|OM|BH|IQ|IR|EG|NG|AO|ZA|BR|CO|VE|AR|CL|PE|MX|CA|US|IN|CN|JP|KR|SG|MY|ID|TH|VN|PH|AU|NZ|RU|KZ|AZ|TR)$/.test(prefix[1])) return prefix[1].toUpperCase();
+  // The other half write it as a suffix: "Dongen, NL", "Esbjerg, DK".
+  const suffix = s.match(/[,\s]([A-Za-z]{2})$/);
+  if (suffix) {
+    const cc = suffix[1].toUpperCase();
+    if (isEuropean(cc) || /^(QA|AE|SA|KW|OM|BH|IQ|EG|NG|BR|CO|US|CA|IN|CN|SG|AU|NZ|TR|ZA)$/.test(cc)) return cc;
+  }
+  // "Houston, TX" and "Indianapolis, Indiana" say United States without saying it.
+  const named = countriesFromText(s);
+  if (!named.length && US_STATES.test(s)) return 'US';
+  // One address, so the first country named wins — no European preference here.
+  return named[0];
+}
+
 export function countryFromText(text?: string | null): string | undefined {
   const all = countriesFromText(text);
   return all.find((c) => isEuropean(c)) ?? all[0];

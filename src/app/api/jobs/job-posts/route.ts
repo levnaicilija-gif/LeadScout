@@ -8,7 +8,7 @@ import { atsListUrl, parseAtsJobs, fetchWorkday, type AtsJob, type AtsType } fro
 import { claude, MODEL_CLASSIFY, MODEL_EXTRACT } from '@/lib/ai/claude';
 import { logModelCall, Budget, DAILY_BUDGET_EUR } from '@/lib/cost';
 import { inferTrades } from '@/lib/trades';
-import { countryFromText, isEuropean } from '@/lib/geo';
+import { countryFromText, countryFromJobLocation, isEuropean } from '@/lib/geo';
 import { z } from 'zod';
 export const maxDuration = 300;
 
@@ -228,7 +228,7 @@ async function run(req: Request) {
         const j = board.jobs[idx];
         seenUrls.push(j.url);
         const trades = inferTrades([], j.title, j.location).trades;
-        const country = countryFromText(j.location) ?? c.country ?? undefined;
+        const country = countryFromJobLocation(j.location) ?? c.country ?? undefined;
 
         // The geography gate. A Baker Hughes vacancy in the UAE or Brazil is a real posting and
         // no use to RFBT, who staff Europe; storing it would only crowd out the ones that are.
