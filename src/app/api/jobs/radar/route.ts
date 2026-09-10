@@ -139,8 +139,14 @@ async function run(req: Request) {
         tally.articlesRead++;
 
         if (src.type === 'job_board' || src.type === 'company_press') {
-          const job = await extractJobPost(page.text, url);
-          if (job) { await upsertJobLead(db, src.workspace_id, job, url, page.text, shotPath, agencyNames); tally.jobLeads++; }
+          // Ring-fenced: the job-post pass is a bonus on these sources, and it must never cost
+          // the article its won-work extraction. It did — 18 articles in one run.
+          try {
+            const job = await extractJobPost(page.text, url);
+            if (job) { await upsertJobLead(db, src.workspace_id, job, url, page.text, shotPath, agencyNames); tally.jobLeads++; }
+          } catch (e: any) {
+            report.push({ url, jobPostError: String(e?.message ?? e).replace(/\s+/g, ' ').slice(0, 150) });
+          }
         }
         const res = await extractLead(page.text, url);
         if (res.ok) {

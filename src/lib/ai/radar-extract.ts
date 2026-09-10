@@ -88,14 +88,20 @@ export async function extractLead(articleText: string, url: string): Promise<Lea
 }
 
 const JobSchema = z.object({
-  is_job_post: z.boolean(), company: str(), role: str(), trades: arr(z.string()),
+  // The prompt tells the model to omit fields that are not on the page, and on a page that is
+  // not a job post it duly omitted this one — throwing, and taking the article's won-work
+  // extraction down with it. A missing verdict means "no".
+  is_job_post: z.boolean().nullish().transform((v) => v ?? false),
+  company: str(), role: str(), trades: arr(z.string()),
   location: str(), country: str(), posted_at: str(), start: str(),
   rotation: str(), contract_type: str(), headcount: z.number().nullish().transform((v) => v ?? undefined), certs_required: arr(z.string()),
   contact: z.object({ name: str(), title: str(), email: str(), phone: str() }).nullish().transform((v) => v ?? undefined),
 });
 export type JobExtraction = z.output<typeof JobSchema>;
 export async function extractJobPost(pageText: string, url: string): Promise<JobExtraction | null> {
-  const out = await askJson(JobSchema, `You read a job posting page for a trades staffing agency. Copy company, role, location, dates, certs and any printed contact VERBATIM. If a field is not printed on the page, omit it. Never invent an email or phone.`, `URL: ${url}\n\nPAGE:\n${pageText.slice(0, 15000)}`);
+  const out = await askJson(JobSchema, `You read a job posting page for a trades staffing agency. Copy company, role, location, dates, certs and any printed contact VERBATIM. If a field is not printed on the page, omit it. Never invent an email or phone.
+
+Always answer "is_job_post": true or false, even when everything else is omitted — that field is your verdict on the page, not something copied off it.`, `URL: ${url}\n\nPAGE:\n${pageText.slice(0, 15000)}`);
   if (!out.is_job_post || !out.company) return null;
   if (out.contact) {
     if (!appearsIn(pageText, out.contact.name, out.contact.email, out.contact.phone)) out.contact = undefined;

@@ -32,8 +32,8 @@ export const POST = (req: Request) => run(req);
 /** Words a site uses for the page we want, in the languages our sources are written in. */
 const NEWSY = /news|press|media|newsroom|insight|stories|updates|aktuelt|nyheder|nyheter|presse|pressemitteilung|actualite|noticias|tenders|projects/i;
 
-async function candidatesFrom(rootUrl: string): Promise<string[]> {
-  const root = await fetchPage(rootUrl);
+async function candidatesFrom(rootUrl: string, browser = false): Promise<string[]> {
+  const root = await fetchPage(rootUrl, browser ? { force: 'browser' } : {});
   if (root.status !== 'live') return [];
   let origin: string;
   try { origin = new URL(root.url).origin; } catch { return []; }
@@ -46,7 +46,12 @@ async function candidatesFrom(rootUrl: string): Promise<string[]> {
       const path = u.pathname;
       if (!NEWSY.test(path)) continue;
       // A newsroom is near the top of the tree; /news/2019/some-old-story is a story, not the index.
-      if (path.split('/').filter(Boolean).length > 3) continue;
+      const seg = path.split('/').filter(Boolean);
+      if (seg.length > 3) continue;
+      // The LAST segment has to be the index word, or we adopt an item off the index page:
+      // /projects/stegra-0 matched "projects" and would have made one project page the source.
+      const last = (seg[seg.length - 1] ?? '').replace(/\.(html?|php|aspx)$/i, '');
+      if (!NEWSY.test(last)) continue;
       const href = u.toString().replace(/\/$/, '');
       if (!out.includes(href)) out.push(href);
     } catch { /* not a URL */ }
@@ -93,22 +98,24 @@ async function run(req: Request) {
       }
     }
 
-    // Gone: ask the site itself where its newsroom lives now.
+    // Gone, or walled: ask the site itself where its newsroom lives now. A site that refused
+    // the plain fetch will refuse it for the candidates too, so read those through a browser.
+    const blocked = head.status === 403 || head.status === 429 || head.status === 0;
     let origin: string;
     try { origin = new URL(src.url).origin; } catch { origin = ''; }
-    let adopted: { url: string; links: number } | null = null;
-    for (const cand of origin ? await candidatesFrom(origin) : []) {
+    let adopted: { url: string; links: number; via: string } | null = null;
+    for (const cand of origin ? await candidatesFrom(origin, blocked) : []) {
       if (cand.replace(/\/$/, '') === src.url.replace(/\/$/, '')) continue;
-      const page = await fetchPage(cand);
+      const page = await fetchPage(cand, blocked ? { force: 'browser' } : {});
       if (page.status !== 'live') continue;
       const links = articleLinks(page, 15).length;
       // Proof, not a promising name: the page has to carry articles.
-      if (links >= 3) { adopted = { url: cand, links }; break; }
+      if (links >= 3) { adopted = { url: cand, links, via: page.via }; break; }
     }
 
     if (adopted) {
-      if (!dry) await db.from('sources').update({ url: adopted.url }).eq('id', src.id);
-      fixed.push({ url: src.url, action: 'url replaced', now: adopted.url, why: `the old page returned ${head.status || 'no connection'}; the new one carries ${adopted.links} article links` });
+      if (!dry) await db.from('sources').update({ url: adopted.url, ...(adopted.via === 'browser' ? { link_rule: JSON.stringify({ browser: true }) } : {}) }).eq('id', src.id);
+      fixed.push({ url: src.url, action: 'url replaced', now: adopted.url, why: `the old page returned ${head.status || 'no connection'}; the new one carries ${adopted.links} article links, read via ${adopted.via}` });
     } else {
       const why = `${src.url} returns ${head.status || `no connection (${head.error ?? 'unknown'})`} and no newsroom on the site carries article links`;
       if (!dry) {
