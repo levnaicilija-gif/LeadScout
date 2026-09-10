@@ -26,7 +26,7 @@ async function call(url: string, init: RequestInit, timeoutMs = STEP_TIMEOUT_MS)
   } finally { clearTimeout(timer); }
 }
 
-const STEPS = ['Read', 'Anonymized', 'Bullets', 'PDF'];
+const STEPS = ['Read', 'Anonymized', 'Bullets', 'PDF', 'Questions'];
 
 /** Where a CV has got to: ✓ behind, · running, grey ahead. */
 function Steps({ at, failed }: { at: number; failed?: boolean }) {
@@ -88,10 +88,13 @@ export function VerifyClient({ senior }: { senior?: boolean }) {
         refresh();
       }
 
-      // CVs: bullets, score, both PII gates and the client PDF, one candidate at a time.
+      // CVs, in two requests so results appear as each finishes rather than all at the end:
+      // the anonymised profile is already on screen from intake, then bullets and the PDF, then
+      // the screening questions.
       for (const c of state.candidates) {
         const cv = c.files.find((f: any) => f.kind === 'cv');
         if (!cv) continue;
+
         setBusy(`Preparing the client version for ${c.reference_code}…`);
         cv.step = 2; refresh();
         try {
@@ -101,6 +104,21 @@ export function VerifyClient({ senior }: { senior?: boolean }) {
           }, 150_000), { step: 4 });
         } catch (e: any) { cv.enrichError = e.message; cv.failed = true; }
         refresh();
+
+        // Questions last: they are useful on their own, so a failure here must not undo the
+        // client version that has already been produced.
+        setBusy(`Writing screening questions for ${c.reference_code}…`);
+        cv.questionsBusy = true; refresh();
+        try {
+          const q = await call('/api/candidate/questions', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ candidate_id: c.id, job: job?.jd || undefined }),
+          }, 120_000);
+          cv.questions = q.questions; cv.questionsBasedOn = q.basedOn;
+          if (q.score && !cv.score) cv.score = q.score;
+          cv.step = 5;
+        } catch (e: any) { cv.questionsError = e.message; }
+        cv.questionsBusy = false; refresh();
       }
     } catch (e: any) {
       setErr(e?.message ?? String(e));
@@ -238,10 +256,29 @@ function FileCard({ f, candidate, senior, job, busy }: { f: any; candidate?: any
               whose enrich step failed showed nothing but the little summary card beside it. */}
           {f.profile && <AnonymizedPreview x={{ candidate: { id: candidate?.id, reference_code: f.reference }, profile: f.profile, bullets: f.bullets, certificates: f.certificates }} />}
 
+          {/* Screening questions — the call to make once the pack is ready. */}
+          {(f.questionsBusy || f.questions?.length > 0 || f.questionsError) && (
+            <div className="border border-line rounded bg-[#FAFBFC] p-3 mt-3">
+              <div className="flex items-baseline justify-between">
+                <b className="text-[13px] font-semibold">Screening questions</b>
+                <span className="text-ink3 text-[12px]">{f.questionsBusy ? 'writing…' : f.questionsBasedOn ? `from ${f.questionsBasedOn}` : ''}</span>
+              </div>
+              {f.questionsError && <div className="text-warn text-[13px] mt-1">The questions could not be written. <details className="inline"><summary className="cursor-pointer inline text-ink3">detail</summary><pre className="whitespace-pre-wrap mt-1 text-[12px]">{f.questionsError}</pre></details></div>}
+              {f.questions?.length > 0 && (
+                <ol className="list-decimal pl-[18px] mt-2 text-[13px]">
+                  {f.questions.map((q: any, i: number) => (
+                    <li key={i} className="mb-2"><b className="font-medium block">{q.q}</b>{q.good_answer && <small className="text-ink3">Good answer sounds like: {q.good_answer}</small>}</li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-2 mt-3 flex-wrap">
             <DownloadPdf candidateId={candidate?.id} kind="client" label="Download client PDF" disabled={!f.piiPassed} />
             {f.bullets && <button className="btn" onClick={() => navigator.clipboard.writeText(f.bullets.join('\n'))}>Copy bullets</button>}
             <a className="btn" href={`/v/${String(f.reference ?? '').toLowerCase()}`} target="_blank" rel="noopener">Preview verification page</a>
+            {f.questions?.length > 0 && <button className="btn" onClick={() => navigator.clipboard.writeText(f.questions.map((q: any, i: number) => `${i + 1}. ${q.q}\n   Good: ${q.good_answer}`).join('\n\n'))}>Copy questions</button>}
             <PreviewPdf candidateId={candidate?.id} disabled={!f.piiPassed} />
             <DownloadPdf candidateId={candidate?.id} kind="internal" label="Internal PDF" senior={senior} />
           </div>

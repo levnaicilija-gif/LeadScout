@@ -97,9 +97,13 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     else {
       await page.goto(`${BASE}/app/verify`, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await page.waitForTimeout(1500);
-      await page.locator('input[type=file]').first().setInputFiles([CV]);
+      // A deploy swapping mid-run can serve a page without the input for a moment; one
+      // reload distinguishes that from the page genuinely being broken.
+      const fileInput = page.locator('input[type=file]').first();
+      if (!(await fileInput.count())) { await page.reload({ waitUntil: 'domcontentloaded' }); await page.waitForTimeout(3000); }
+      await page.locator('input[type=file]').first().setInputFiles([CV]).catch(async (e) => { check(false, 'Verify drop zone present', String(e?.message ?? e).slice(0, 80)); throw e; });
       await page.waitForFunction(
-        () => /recognised and handled/.test(document.body.innerText) && !/Reading |Checking |Preparing /.test(document.body.innerText),
+        () => /recognised and handled/.test(document.body.innerText) && !/Reading |Checking |Preparing |Writing /.test(document.body.innerText),
         undefined, { timeout: 280000 },
       ).catch(() => {});
       const verify = await bodyOf(page);

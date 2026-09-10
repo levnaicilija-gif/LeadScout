@@ -172,7 +172,11 @@ export const PiiReviewSchema = z.object({
 export async function piiModelReview(clientFacingText: string, allowed: string[] = []) {
   const r = await askJson(
     PiiReviewSchema,
-    'This text is about to be sent to a client as an ANONYMISED candidate summary. It must not identify the candidate or their current/previous employers. Find anything that does: personal names, employer or agency names, phone numbers, emails, addresses, dates of birth, passport/licence/ID numbers, social or portfolio links, a named vessel/site/project so specific it identifies the person, or an unusually small home town. Certificate numbers, certifying bodies (FROSIO, BINDT, IRATA...), countries, years, trades, rotations and languages are all FINE and must not be reported. Quote each offending span verbatim in `text`. clean = true only when you find nothing.',
+    `This text is about to be sent to a client as an ANONYMISED candidate summary. It must not identify the candidate or their current/previous employers. Find anything that does: personal names, employer or agency names, phone numbers, emails, addresses, dates of birth, passport/licence/ID numbers, social or portfolio links, a named vessel/site/project so specific it identifies the person, or an unusually small home town. Certificate numbers, certifying bodies (FROSIO, BINDT, IRATA...), countries, years, trades, rotations and languages are all FINE and must not be reported.
+
+A named project counts only when it would single this person out — a small crew, a rare role, one vessel. Large works that employ hundreds or thousands (a bridge, a motorway, a refinery turnaround, a wind farm, a shipyard) identify nobody and must NOT be reported: saying what the candidate has worked on is the point of the summary.
+
+Quote each offending span verbatim in "text". clean = true only when you find nothing.`,
     clientFacingText.slice(0, 20000),
   );
   const findings = r.findings.filter((f) => !!f.text.trim() && !isAllowedSpan(f.text, allowed));
@@ -340,6 +344,27 @@ const flat = (v: any): string => {
   if (v && typeof v === 'object') return [v.body, v.text, v.message, v.content].find((x) => typeof x === 'string') ?? Object.values(v).map(flat).filter(Boolean).join('\n');
   return '';
 };
+
+/**
+ * Screening questions for one candidate rather than for a job in the abstract.
+ *
+ * With a job attached they are generated from the score: the first questions go straight at the
+ * blockers and the gaps, because those are what decide whether this person can be put forward.
+ * Without one they cover the trade — processes, certificates, rotation, safety, right to work.
+ */
+export const candidateScreening = (candidate: object, verified: object[], job?: string | null, score?: object | null) =>
+  askJson(QuestionsSchema, `Write 6-8 screening questions a recruiter asks THIS candidate, in the order they should be asked.
+
+${job ? `A job is attached, and so is the score against it. Lead with the score: every blocker gets a question, then every item in "missing". Ask what would close the gap, not whether it exists — the recruiter can already see that it does. Only then ask the general trade questions.` : 'No job is attached, so cover the trade: processes, positions and standards; certificates and expiry; rotation history; offshore medical and safety training; passport, A1 and right to work; English on site; rate and earliest mobilisation.'}
+
+Ground every question in what the candidate's own data says. A certificate in verified_certificates has been confirmed — do not ask whether they hold it; ask about scope, expiry or renewal. A certificate the CV claims but nothing confirms is exactly what to ask for evidence of.
+
+"today" is the current date: never ask about a start date that has already passed — ask for the earliest date they could mobilise.
+
+Each entry in "questions" is an object with exactly these keys:
+{"q":"the question the recruiter asks","good_answer":"what a good answer sounds like"}`,
+    JSON.stringify({ candidate, verified_certificates: verified, job: job ?? null, score: score ?? null, today: new Date().toISOString().slice(0, 10) }),
+    undefined, 4000);
 
 export const OutreachSchema = z.preprocess((v: any) => {
   if (!v || typeof v !== 'object') return v;

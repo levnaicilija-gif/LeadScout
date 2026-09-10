@@ -69,8 +69,22 @@ export const clientCvText = (d: ClientCvData) =>
  * Values we deliberately print and that must never block the PDF: certificate names and
  * numbers (both alone and as the line they appear on), the agency line, the public URL.
  */
+/**
+ * What this document deliberately prints, so the PII gate does not flag our own content.
+ *
+ * The experience lines belong here: they are the anonymised profile's own project descriptions,
+ * already stripped of employers, and are the point of the summary. Without them the review
+ * blocked a real candidate's PDF over "Danube Bridge infrastructure work in Romania" — a public
+ * works project employing thousands, which identifies nobody.
+ */
 export const clientCvAllowed = (d: ClientCvData) => [
   ...d.certificates.flatMap((c) => [c.name, c.number ?? '', `${c.name} ${c.number ?? ''}`.trim()]),
+  // Not the bullets: those are written by the model and are exactly where a leaked name would
+  // show, so they stay subject to the check.
+  ...d.experience.flatMap((e) => [e.what, `${e.what} ${e.years ?? ''}`.trim(), e.years ?? '']),
+  ...d.skills,
+  ...d.languages,
+  d.trade,
   d.agencyLine,
   d.publicUrl,
 ].filter(Boolean);

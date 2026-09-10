@@ -68,7 +68,7 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SU
     ]);
     const started = Date.now();
     await page.waitForFunction(
-      () => /recognised and handled/.test(document.body.innerText) && !/Reading |Checking |Preparing /.test(document.body.innerText),
+      () => /recognised and handled/.test(document.body.innerText) && !/Reading |Checking |Preparing |Writing /.test(document.body.innerText),
       undefined, { timeout: 280000 },
     ).catch(() => console.log('   (still working after 280s)'));
     console.log(`   settled in ${Math.round((Date.now() - started) / 1000)}s`);
