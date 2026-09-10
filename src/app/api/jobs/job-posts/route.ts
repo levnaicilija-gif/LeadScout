@@ -63,19 +63,43 @@ const JobDetail = z.object({
   start: z.string().nullish().transform((v) => v ?? undefined),
 });
 
-/** Job links on a careers page we could not read as JSON. */
+/**
+ * Job links on a careers page we could not read as JSON.
+ *
+ * Two tests, because boards do not agree on a URL shape. Either the path says what it is —
+ * /jobs/, /stillinger/, /vacatures/ — or it sits one level below the careers page itself and
+ * looks like an item rather than another section: /career/hydraulic-technician-offshore.
+ * The first pass alone missed Aibel, Vard, DOF and most of the Nordic boards.
+ */
 function jobLinksFrom(html: string, base: string): AtsJob[] {
   const $ = cheerio.load(html);
   const out: AtsJob[] = [];
   const seen = new Set<string>();
+
+  let root = '';
+  try { const b = new URL(base); root = b.pathname.replace(/\/+$/, ''); } catch { /* base is not a URL */ }
+  const SAYS_JOB = /\/(job|jobs|vacancy|vacancies|vacature|vacatures|stilling|stillinger|ledige|stelle|stellen|offre|offres|position|positions|opening|openings|karriere|career|careers|jobb|lediga|praca|empleo|o|j)\//i;
+
   $('a[href]').each((_, el) => {
     const raw = $(el).attr('href') ?? '';
     const title = $(el).text().replace(/\s+/g, ' ').trim();
     if (title.length < 4 || title.length > 140) return;
+    // Navigation, not a posting.
+    if (/^(apply|read more|les mer|se stilling|more|search|filter|all jobs|alle)$/i.test(title)) return;
     let u: URL;
     try { u = new URL(raw, base); } catch { return; }
-    if (!/\/(job|jobs|vacancy|vacancies|vacature|vacatures|stilling|stillinger|stelle|stellen|offre|position|opening)s?\//i.test(u.pathname)) return;
-    u.hash = '';
+    if (!/^https?:$/.test(u.protocol)) return;
+
+    const path = u.pathname.replace(/\/+$/, '');
+    const seg = path.split('/').filter(Boolean);
+    const last = seg[seg.length - 1] ?? '';
+    // An item page: a slug of real words, or an id, not a one-word section.
+    const looksLikeItem = seg.length > 0 && (/[-_]/.test(last) || /\d{2,}/.test(last)) && last.length > 6;
+    const underCareers = !!root && path.startsWith(root) && path !== root;
+
+    if (!(SAYS_JOB.test(u.pathname) && looksLikeItem) && !(underCareers && looksLikeItem)) return;
+
+    u.hash = ''; u.search = '';
     const href = u.toString();
     if (seen.has(href)) return;
     seen.add(href);
@@ -108,10 +132,14 @@ async function boardFor(c: any): Promise<{ jobs: AtsJob[]; via: string; raw: str
     const jobs = jobLinksFrom(r.body, c.careers_url);
     if (jobs.length) return { jobs, via: 'http', raw: r.body };
   }
-  if (!c.careers_needs_browser) return null;
+  // Nothing in the HTML: the list is very likely rendered in the browser. Worth one attempt —
+  // this is where most Nordic careers pages actually keep their vacancies.
   const rendered = await fetchPage(c.careers_url, { force: 'browser' });
   if (rendered.status !== 'live') return null;
-  const jobs = jobLinksFrom(rendered.links.map((l) => `<a href="${l}">${l.split('/').pop()?.replace(/[-_]/g, ' ')}</a>`).join(''), c.careers_url);
+  const asHtml = rendered.links
+    .map((l) => `<a href="${l}">${decodeURIComponent(l.split('/').filter(Boolean).pop() ?? '').replace(/[-_]+/g, ' ')}</a>`)
+    .join('');
+  const jobs = jobLinksFrom(asHtml, c.careers_url);
   return jobs.length ? { jobs, via: 'browser', raw: rendered.links.join('\n') } : null;
 }
 

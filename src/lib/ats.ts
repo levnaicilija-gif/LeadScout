@@ -13,7 +13,8 @@
 export type AtsType =
   | 'greenhouse' | 'lever' | 'workday' | 'smartrecruiters' | 'teamtailor' | 'recruitee'
   | 'personio' | 'workable' | 'ashby' | 'bamboohr' | 'jobylon' | 'easycruit' | 'reachmee'
-  | 'hr_manager' | 'softgarden' | 'jobvite' | 'taleo' | 'icims' | 'successfactors' | 'oracle_cloud';
+  | 'hr_manager' | 'softgarden' | 'jobvite' | 'taleo' | 'icims' | 'successfactors' | 'oracle_cloud'
+  | 'talentech' | 'varbi' | 'emply';
 
 type Detector = { type: AtsType; re: RegExp; slug: (m: RegExpMatchArray) => string };
 
@@ -31,6 +32,9 @@ const DETECTORS: Detector[] = [
   { type: 'reachmee', re: /([a-z0-9-]+)\.reachmee\.com/i, slug: (m) => m[1] },
   { type: 'bamboohr', re: /([a-z0-9-]+)\.bamboohr\.com/i, slug: (m) => m[1] },
   { type: 'smartrecruiters', re: /(?:careers|jobs)\.smartrecruiters\.com\/([A-Za-z0-9_-]+)/i, slug: (m) => m[1] },
+  { type: 'talentech', re: /jobs\.talentech\.com\/([A-Za-z0-9_-]+)/i, slug: (m) => m[1] },
+  { type: 'varbi', re: /([a-z0-9-]+)\.varbi\.com/i, slug: (m) => m[1] },
+  { type: 'emply', re: /([a-z0-9-]+)\.emply\.(?:net|com)/i, slug: (m) => m[1] },
   { type: 'hr_manager', re: /recruitment\.hr-manager\.net\/[^"']*?(?:company|customer)[=/]([A-Za-z0-9_-]+)/i, slug: (m) => m[1] },
   { type: 'softgarden', re: /([a-z0-9-]+)\.softgarden\.io/i, slug: (m) => m[1] },
   { type: 'workday', re: /([a-z0-9-]+)\.(wd\d+)\.myworkdayjobs\.com\/([A-Za-z0-9_-]+)/i, slug: (m) => `${m[1]}/${m[2]}/${m[3]}` },
