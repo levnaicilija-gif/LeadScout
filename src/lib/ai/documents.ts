@@ -113,7 +113,7 @@ A named asset is not removed, it is DESCRIBED. "Jotun A" becomes "offshore platf
 
 EVERY dated period in the CV gets its own entry, including the earliest one. Do not merge two roles into one, and do not stop at the recent ones: a CV showing work from 2005 must produce an entry starting 2005.
 
-Right to work is a legal fact, not an inference: state nationality only where the CV names it, and eu_passport or uk_right_to_work only where the CV says so in words. Having worked in Norway does not make someone Norwegian, and an EU passport is never evidence of UK right to work. Return the JSON only, with no prose and no markdown fences.`, cvText.slice(0, 30000));
+Right to work is a legal fact, not an inference: state nationality only where the CV names it, and eu_passport or uk_right_to_work only where the CV says so in words. Having worked in Norway does not make someone Norwegian, and an EU passport is never evidence of UK right to work. Return the JSON only, with no prose and no markdown fences.`, cvText.slice(0, 30000), undefined, 8000);
 
 /**
  * Remove an employer's name from text that is going to a client.

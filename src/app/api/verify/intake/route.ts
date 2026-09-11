@@ -163,8 +163,12 @@ export async function POST(req: Request) {
         if (cand) touched.set(cand.id, cand);
         results.push(row);
       } catch (e: any) {
-        row.kind = row.kind ?? 'unreadable';
-        row.why = String(e?.message ?? e).slice(0, 200);
+        // A CV that was recognised and then failed — parseCv threw, the candidate was never
+        // created — used to keep kind 'cv' and render as a blank card with no reference and no
+        // error anywhere. Whatever it was, it failed, and the card must say so.
+        row.failed = true;
+        row.why = String(e?.message ?? e).slice(0, 300);
+        if (row.kind !== 'cv') row.kind = 'unreadable';
         results.push(row);
       }
     }

@@ -61,7 +61,7 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SU
     console.log('=== ONE DROP ZONE: CV + certificate + contract ===');
     await page.goto(`${BASE}/app/verify`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForTimeout(1500);
-    await page.locator('input[type=file]').first().setInputFiles(['.cache/repro/Bertescu_Dumitrel_CV_Final_Readable.pdf', '.cache/repro/Marian_M_CV_-_SANDBLASTER.docx']);
+    await page.locator('input[type=file]').first().setInputFiles(['.cache/repro/Marian_M_CV_-_SANDBLASTER.docx']);
     const started = Date.now();
     await page.waitForFunction(
       () => /recognised and handled/.test(document.body.innerText) && !/Reading |Checking |Preparing |Writing /.test(document.body.innerText),

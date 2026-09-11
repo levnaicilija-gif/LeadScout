@@ -235,7 +235,7 @@ function FileCard({ f, candidate, senior, job, busy }: { f: any; candidate?: any
 
           {f.piiHits?.length > 0 && <div className="mt-2 text-[13px] text-bad">Blocked: {f.piiHits.join(', ')}</div>}
           {f.droppedBullets?.length > 0 && <div className="mt-2 text-[12px] text-warn">Dropped {f.droppedBullets.length} bullet(s) that could not be traced to the CV.</div>}
-          {f.enrichError && <div className="mt-2 text-[13px] text-warn">The CV was read and the candidate saved, but the client version could not be prepared. <details className="inline"><summary className="cursor-pointer inline text-ink3">detail</summary><pre className="whitespace-pre-wrap mt-1 text-[12px]">{f.enrichError}</pre></details></div>}
+          {f.why && <div className="mt-2 text-[13px] text-bad">This CV could not be read into a candidate. <details className="inline"><summary className="cursor-pointer inline text-ink3">detail</summary><pre className="whitespace-pre-wrap mt-1 text-[12px]">{f.why}</pre></details></div>}{f.enrichError && <div className="mt-2 text-[13px] text-warn">The CV was read and the candidate saved, but the client version could not be prepared. <details className="inline"><summary className="cursor-pointer inline text-ink3">detail</summary><pre className="whitespace-pre-wrap mt-1 text-[12px]">{f.enrichError}</pre></details></div>}
 
           {f.score && <div className="border border-line rounded px-3 py-2.5 mt-3 grid grid-cols-[auto_1fr] gap-3.5 text-[13px] leading-relaxed">
             <b className="text-[26px] font-semibold text-accent leading-none">{f.score.score}</b>
