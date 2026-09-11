@@ -78,16 +78,17 @@ export const clientCvText = (d: ClientCvData) =>
 /**
  * What this document deliberately prints, so the PII gate does not flag our own content.
  *
- * The experience lines belong here: they are the anonymised profile's own project descriptions,
- * already stripped of employers, and are the point of the summary. Without them the review
- * blocked a real candidate's PDF over "Danube Bridge infrastructure work in Romania" — a public
- * works project employing thousands, which identifies nobody.
+ * The experience lines are deliberately NOT here any more. They were added to stop the review
+ * blocking "Danube Bridge infrastructure work in Romania", but the parser now replaces a named
+ * asset with a description, so a name in a scope line is a fault rather than something to
+ * tolerate — and allow-listing the line would have carried it straight past the check meant to
+ * catch it. A scope line that trips the review is a scope line to fix.
  */
 export const clientCvAllowed = (d: ClientCvData) => [
   ...d.certificates.flatMap((c) => [c.name, c.number ?? '', `${c.name} ${c.number ?? ''}`.trim()]),
-  // Not the bullets: those are written by the model and are exactly where a leaked name would
-  // show, so they stay subject to the check.
-  ...d.experience.flatMap((e) => [e.what, e.scope ?? '', `${e.what} ${e.years ?? ''}`.trim(), e.years ?? '']),
+  // Neither the bullets nor the experience lines: both are written by the model and are exactly
+  // where a leaked name shows, so both stay subject to the check.
+  ...d.experience.map((e) => e.years ?? ''),
   ...d.skills,
   ...d.languages,
   d.trade,

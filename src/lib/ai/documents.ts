@@ -111,6 +111,8 @@ trade and trade_code are required. Omit any other key the CV does not state.
 
 A named asset is not removed, it is DESCRIBED. "Jotun A" becomes "offshore platform, Norwegian North Sea"; "Grand Bahama Shipyard" becomes "shipyard, Bahamas"; "Danube Bridge" becomes "road bridge over a major river, Romania". A client needs to know the person has worked on an offshore platform — deleting that costs them the scope, which is the opposite of what anonymising is for.
 
+The descriptor REPLACES the name. It never annotates it. Do not write "offshore platform, Norwegian North Sea (Rosenberg yard, Stavanger)", do not put the name in brackets, quotes, a dash or an aside, and do not write "a shipyard (Grand Bahama)". If the name appears anywhere in "type" or "scope", in any form, the entry is wrong. The town is part of the name where it identifies the site: "Stavanger" beside a yard is the yard.
+
 EVERY dated period in the CV gets its own entry, including the earliest one. Do not merge two roles into one, and do not stop at the recent ones: a CV showing work from 2005 must produce an entry starting 2005.
 
 Right to work is a legal fact, not an inference: state nationality only where the CV names it, and eu_passport or uk_right_to_work only where the CV says so in words. Having worked in Norway does not make someone Norwegian, and an EU passport is never evidence of UK right to work. Return the JSON only, with no prose and no markdown fences.`, cvText.slice(0, 30000), undefined, 8000);
@@ -309,7 +311,15 @@ export async function piiModelReview(clientFacingText: string, allowed: string[]
     PiiReviewSchema,
     `This text is about to be sent to a client as an ANONYMISED candidate summary. It must not identify the candidate or their current/previous employers. Find anything that does: personal names, employer or agency names, phone numbers, emails, addresses, dates of birth, passport/licence/ID numbers, social or portfolio links, a named vessel/site/project so specific it identifies the person, or an unusually small home town. Certificate numbers, certifying bodies (FROSIO, BINDT, IRATA...), countries, years, trades, rotations and languages are all FINE and must not be reported.
 
-A named project counts only when it would single this person out — a small crew, a rare role, one vessel. Large works that employ hundreds or thousands (a bridge, a motorway, a refinery turnaround, a wind farm, a shipyard) identify nobody and must NOT be reported: saying what the candidate has worked on is the point of the summary.
+NAMED ASSETS. This summary is written from a profile where every yard, vessel, platform, rig, field, project and company is supposed to have been replaced by a description. So a NAME appearing here is a failure, and you must report it:
+- a shipyard or fabrication yard by name, with or without its town;
+- a vessel, rig, platform or field by name;
+- a named project or contract;
+- any company name at all, including one in brackets, quotes or after a dash.
+
+A DESCRIPTION is what should be there and is always fine: "offshore platform, Norwegian North Sea", "shipyard, Bahamas", "road bridge, Romania", "refinery turnaround, Netherlands". Do not report those — they are the point of the summary. Report the name, not the description beside it.
+
+A town on its own is fine. A town next to a yard or a platform is part of its name: report it.
 
 Quote each offending span verbatim in "text". clean = true only when you find nothing.`,
     clientFacingText.slice(0, 20000),
