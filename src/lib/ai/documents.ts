@@ -94,7 +94,7 @@ Return ONLY this JSON object, using these exact keys and no others:
   "trade_code": "P painter/blaster | W welder | F fitter/pipefitter | N NDT | R rope access | E electrician/wind tech | O other",
   "trades": ["every trade the CV supports, lower case, e.g. painter, blaster, insulator, scaffolder — not just the headline one"],
   "certificates_claimed": ["each certificate named on the CV, as printed"],
-  "projects": [{ "years": "2025-26", "type": "what the work was", "country": "country", "employer": "employer name", "rotation": "e.g. 8:2", "scope": "one line of WHAT THE WORK WAS — structures, systems, methods, materials, standards. NEVER a company, client, yard, vessel, platform or project name, even when the CV gives one: those belong in employer and nowhere else. ONLY where the CV says; omit otherwise" }],
+  "projects": [{ "years": "2025-26", "type": "what the work was", "country": "country", "employer": "employer name", "rotation": "e.g. 8:2", "scope": "one line of WHAT THE WORK WAS — structures, systems, methods, materials, standards. Where the CV names a project, platform, vessel or yard, DESCRIBE it instead of naming it: 'offshore platform, Norwegian North Sea', 'shipyard, Bahamas', 'road bridge, Romania'. The scope must still say what they worked on. ONLY where the CV says; omit otherwise" }],
   "skills": ["skill"],
   "languages": ["language (level)"],
   "availability": "when they are free, as stated",
@@ -107,7 +107,11 @@ Return ONLY this JSON object, using these exact keys and no others:
 
 trade and trade_code are required. Omit any other key the CV does not state.
 
-"type" and "scope" are read by a client who must never learn where the candidate worked. Put every company, client, yard, vessel and platform name in "employer" only — including second companies the CV mentions in passing, such as a partner or a site operator. If a description would lose its meaning without the company name, drop the name and keep the work.
+"type" and "scope" are read by a client who must never learn where the candidate worked. Put every company name in "employer" only — including second companies the CV mentions in passing, such as a partner or a site operator.
+
+A named asset is not removed, it is DESCRIBED. "Jotun A" becomes "offshore platform, Norwegian North Sea"; "Grand Bahama Shipyard" becomes "shipyard, Bahamas"; "Danube Bridge" becomes "road bridge over a major river, Romania". A client needs to know the person has worked on an offshore platform — deleting that costs them the scope, which is the opposite of what anonymising is for.
+
+EVERY dated period in the CV gets its own entry, including the earliest one. Do not merge two roles into one, and do not stop at the recent ones: a CV showing work from 2005 must produce an entry starting 2005.
 
 Right to work is a legal fact, not an inference: state nationality only where the CV names it, and eu_passport or uk_right_to_work only where the CV says so in words. Having worked in Norway does not make someone Norwegian, and an EU passport is never evidence of UK right to work. Return the JSON only, with no prose and no markdown fences.`, cvText.slice(0, 30000));
 
@@ -188,6 +192,27 @@ export const anonymize = (p: Profile) => {
  * Years are as printed: "2021-2024", "2025", "2017 - 2020". Anything unparseable is skipped
  * rather than guessed at.
  */
+/**
+ * How long they have actually been in the trade, counted in code.
+ *
+ * The model was asked to add this up and said "16 years (2008-2024)" for a CV whose earliest
+ * role began in December 2005. Arithmetic over a list is not a thing to delegate — the summary
+ * is given the answer and told to use it.
+ */
+export function experienceSpan(projects: { years?: string | null }[]): { from: number; to: number; years: number } | null {
+  const years: number[] = [];
+  for (const p of projects) {
+    for (const m of String(p.years ?? '').matchAll(/\b(19|20)\d{2}\b/g)) {
+      const n = Number(m[0]);
+      if (n >= 1960 && n <= 2100) years.push(n);
+    }
+  }
+  if (!years.length) return null;
+  const from = Math.min(...years);
+  const to = Math.max(...years);
+  return { from, to, years: Math.max(1, to - from) };
+}
+
 export function employmentGaps(projects: { years?: string | null }[]): { from: string; to: string; months: number }[] {
   const spans: { start: number; end: number }[] = [];
   for (const p of projects) {
@@ -329,7 +354,7 @@ export const SummarySchema = z.object({ summary: z.array(z.string()).min(1).max(
 export const clientSummary = (anon: any, verified: object[]) =>
   askJson(SummarySchema, `Write a two-line professional summary of this candidate for a client, from the data given and nothing else.
 
-Line 1: what they are and how long — total years in the trade (count from the earliest project to the latest), the trade, and the heaviest or most relevant type of work they have done.
+Line 1: what they are and how long — use "years_in_trade" from the data, which is already counted from the earliest project to the latest. Do not count it yourself. Then the trade, and the heaviest or most relevant type of work.
 Line 2: where and on what — countries, kinds of structure or system, and any standards or methods actually named in the data.
 
 Rules:
@@ -340,6 +365,7 @@ Rules:
 - Two lines maximum, one sentence each, no more than 30 words per line.
 
 Return JSON: {"summary":["line one","line two"]}`, JSON.stringify({
+    years_in_trade: experienceSpan(anon?.projects ?? []),
     candidate: { ...anon, certificates: undefined },
     verified_certificates: verified,
     claimed_certificates: anon?.certificates ?? [],
@@ -352,7 +378,16 @@ ORDER AND SUBSTANCE. Lead with the strongest fact, not the earliest date. A clie
 - Bullet 2: the next strongest.
 - Bullet 3: what is left that a client would want to know — availability, languages, breadth.
 
-QUANTIFY. Every bullet should carry a number or a named standard where the data has one: years in the trade, how many countries, which standard, which method, which structure type. "Eight years of plate fitting on shipyard and offshore structures across four countries" is useful. "Experienced plate fitter with a strong background" is not, and is banned.
+WHAT COUNTS AS STRONG, in this order:
+  1. offshore and heavy-industry experience — platforms, subsea, shipyards, refineries, turnarounds;
+  2. years in the trade, using "years_in_trade" from the data, which is already counted for you;
+  3. named standards, methods, processes, positions, classes and materials;
+  4. verified certificates;
+  5. breadth — countries, structure types, systems.
+
+QUANTIFY. Every bullet carries a number or a named standard where the data has one. "Eight years of plate fitting on shipyard and offshore structures across four countries" is useful. "Experienced plate fitter with a strong background" is not, and is banned.
+
+NEVER A BULLET. Languages, driving licences, forklift/telehandler/Bobcat tickets and computer skills are Profile facts. They are listed elsewhere on the same page and must not take one of three bullets from something that would win the placement.
 
 NOT CHRONOLOGY. Do not walk through the CV job by job. Group and total instead: if four projects were sandblasting and painting, that is one fact with a number on it, not four bullets' worth of dates.
 
@@ -387,6 +422,7 @@ No name. No employer names. Max 28 words each.`;
 
 export const clientBullets = (anon: any, verified: object[], jobContext?: string) =>
   askJson(BulletsSchema, BULLETS_SYSTEM, JSON.stringify({
+    years_in_trade: experienceSpan(anon?.projects ?? []),
     candidate: { ...anon, certificates: undefined },
     verified_certificates: verified,
     claimed_certificates: anon?.certificates ?? [],
@@ -429,27 +465,42 @@ export async function buildBullets(anon: object, verified: object[], jobContext?
   let bullets = (await clientBullets(anon, verified, jobContext)).bullets;
   const dropped: string[] = [];
 
-  for (let attempt = 0; attempt < 2; attempt++) {
+  /**
+   * Three bullets, or as close as the facts allow.
+   *
+   * Dropping an untraceable bullet and leaving two was the safe half of the job: a client sees
+   * three lines or they see a gap, and the third fact usually exists — it was simply written
+   * badly. So a dropped bullet is replaced, not just removed, and only after a replacement has
+   * also failed does the card go short.
+   */
+  for (let attempt = 0; attempt < 3; attempt++) {
     const { results } = await checkBullets(bullets, source);
     const bad = results.filter((r) => !r.supported);
-    if (bad.length === 0) return { bullets, dropped };
+    if (bad.length === 0) return { bullets: bullets.slice(0, 3), dropped };
 
-    if (attempt === 0) {
+    if (attempt < 2) {
       // Name the exact phrases and ask again, rather than throwing the whole set away.
       const complaint = bad.map((r) => `bullet ${r.i + 1}: remove ${r.unsupported.map((u) => `"${u}"`).join(', ')}`).join('; ');
+      const kept = bullets.filter((_, i) => !bad.some((b) => b.i === i));
       bullets = (await askJson(
         BulletsSchema,
-        `${BULLETS_SYSTEM}\n\nA previous attempt failed the factual audit. Fix exactly these problems and change nothing else: ${complaint}`,
+        `${BULLETS_SYSTEM}
+
+A previous attempt failed the factual audit. Fix exactly these problems and change nothing else: ${complaint}
+
+These bullets already passed and must be returned unchanged: ${JSON.stringify(kept)}
+Replace only the failing ones, with a different fact from the data — do not return two bullets where three were asked for.`,
         JSON.stringify({ candidate: anon, verified_certificates: verified, job: jobContext ?? null }),
       )).bullets;
       continue;
     }
-    // Still unsupported after the retry: drop those bullets. Two true bullets beat three with a lie.
+
+    // Still unsupported after two attempts: drop those. Two true bullets beat three with a lie.
     const badIdx = new Set(bad.map((r) => r.i));
     dropped.push(...bullets.filter((_, i) => badIdx.has(i)));
     bullets = bullets.filter((_, i) => !badIdx.has(i));
   }
-  return { bullets, dropped };
+  return { bullets: bullets.slice(0, 3), dropped };
 }
 
 /** fits/missing/blockers come back as a single string often enough to be worth accepting. */
@@ -457,6 +508,7 @@ const listOfText = z.preprocess(
   (v: any) => (typeof v === 'string' ? v.split(/\s*[;·•]\s*|\n+/).map((t) => t.trim()).filter(Boolean) : v ?? []),
   z.array(z.string()),
 );
+
 export const ScoreSchema = z.object({ score: z.number().min(0).max(100), fits: listOfText, missing: listOfText, blockers: listOfText });
 /**
  * Score, with right to work applied as a gate afterwards rather than left to the model.
