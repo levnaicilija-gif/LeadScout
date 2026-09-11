@@ -19,6 +19,9 @@ const s = StyleSheet.create({
   ref: { fontSize: 8.5, color: C.ink3, marginTop: 3 },
   mark: { width: 26, height: 26, borderRadius: 4, backgroundColor: C.rail, color: '#FFFFFF', fontSize: 12, fontFamily: 'Helvetica-Bold', textAlign: 'center', paddingTop: 7 },
 
+  summary: { marginBottom: 10 },
+  summaryLine: { fontSize: 9.5, marginBottom: 2 },
+  scope: { fontSize: 7.5, color: C.ink3, marginTop: 1 },
   bullets: { marginBottom: 12 },
   bullet: { flexDirection: 'row', marginBottom: 3 },
   dot: { width: 10, color: C.ink3 },
@@ -43,10 +46,13 @@ export type ClientCvData = {
   referenceCode: string;
   trade: string;
   preparedOn: string;
+  /** Two lines at the top: what they are, how long, and where. */
+  summary: string[];
   bullets: string[];
+  gaps: { from: string; to: string; months: number }[];
   certificates: { name: string; number?: string | null; checkedWhere?: string | null; checkedAt?: string | null; validUntil?: string | null; result: string }[];
   /** Employer names are already stripped — type + country only. */
-  experience: { years: string; what: string; rotation?: string | null }[];
+  experience: { years: string; what: string; scope?: string | null; rotation?: string | null }[];
   skills: string[];
   languages: string[];
   availability?: string | null;
@@ -58,7 +64,7 @@ export type ClientCvData = {
 export const clientCvText = (d: ClientCvData) =>
   [
     d.bullets.join('\n'),
-    d.experience.map((e) => `${e.years} ${e.what} ${e.rotation ?? ''}`.trim()).join('\n'),
+    d.experience.map((e) => `${e.years} ${e.what} ${e.scope ?? ''} ${e.rotation ?? ''}`.trim()).join('\n'),
     d.skills.join(', '),
     d.languages.join(', '),
     d.availability ?? '',
@@ -81,7 +87,7 @@ export const clientCvAllowed = (d: ClientCvData) => [
   ...d.certificates.flatMap((c) => [c.name, c.number ?? '', `${c.name} ${c.number ?? ''}`.trim()]),
   // Not the bullets: those are written by the model and are exactly where a leaked name would
   // show, so they stay subject to the check.
-  ...d.experience.flatMap((e) => [e.what, `${e.what} ${e.years ?? ''}`.trim(), e.years ?? '']),
+  ...d.experience.flatMap((e) => [e.what, e.scope ?? '', `${e.what} ${e.years ?? ''}`.trim(), e.years ?? '']),
   ...d.skills,
   ...d.languages,
   d.trade,
@@ -106,6 +112,12 @@ export function ClientCv(d: ClientCvData) {
           </View>
           <Text style={s.mark}>R</Text>
         </View>
+
+        {d.summary.length > 0 && (
+          <View style={s.summary}>
+            {d.summary.map((line, i) => <Text key={i} style={s.summaryLine}>{line}</Text>)}
+          </View>
+        )}
 
         {d.bullets.length > 0 && (
           <View style={s.bullets}>
@@ -141,13 +153,25 @@ export function ClientCv(d: ClientCvData) {
         <View style={s.tableGap} />
 
         <Text style={s.h}>Experience</Text>
+        {d.experience.length === 0 && <Text style={[s.td, { paddingVertical: 4 }]}>No work history on file — ask the candidate.</Text>}
         {d.experience.map((e, i) => (
           <View key={i} style={s.row} wrap={false}>
             <Cell w="14%">{e.years}</Cell>
-            <Cell w="72%">{e.what}</Cell>
-            <Cell w="14%">{e.rotation || '—'}</Cell>
+            <View style={{ width: '72%' }}>
+              <Text style={s.td}>{e.what}</Text>
+              {e.scope ? <Text style={s.scope}>{e.scope}</Text> : null}
+            </View>
+            <Cell w="14%">{e.rotation || 'not stated'}</Cell>
           </View>
         ))}
+
+        {d.gaps.length > 0 && (
+          <View style={{ marginTop: 6 }}>
+            <Text style={s.scope}>
+              Not accounted for on the CV: {d.gaps.map((g) => `${g.from}–${g.to}`).join(', ')} — asked at screening.
+            </Text>
+          </View>
+        )}
         <View style={s.tableGap} />
 
         <Text style={s.h}>Profile</Text>

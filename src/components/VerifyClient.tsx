@@ -237,11 +237,6 @@ function FileCard({ f, candidate, senior, job, busy }: { f: any; candidate?: any
           {f.droppedBullets?.length > 0 && <div className="mt-2 text-[12px] text-warn">Dropped {f.droppedBullets.length} bullet(s) that could not be traced to the CV.</div>}
           {f.enrichError && <div className="mt-2 text-[13px] text-warn">The CV was read and the candidate saved, but the client version could not be prepared. <details className="inline"><summary className="cursor-pointer inline text-ink3">detail</summary><pre className="whitespace-pre-wrap mt-1 text-[12px]">{f.enrichError}</pre></details></div>}
 
-          {f.bullets?.length > 0 && <>
-            <div className="text-[12px] text-ink3 mt-2.5">Three bullets for the client — facts only</div>
-            <ul className="list-disc pl-[18px] text-[13px] mt-1">{f.bullets.map((b: string, i: number) => <li key={i} className="mb-0.5">{b}</li>)}</ul>
-          </>}
-
           {f.score && <div className="border border-line rounded px-3 py-2.5 mt-3 grid grid-cols-[auto_1fr] gap-3.5 text-[13px] leading-relaxed">
             <b className="text-[26px] font-semibold text-accent leading-none">{f.score.score}</b>
             <div>
@@ -254,7 +249,7 @@ function FileCard({ f, candidate, senior, job, busy }: { f: any; candidate?: any
           {/* The anonymised CV is finished the moment the CV has been read: bullets and register
               results are additions to it, not preconditions. Gating this on step 4 meant a CV
               whose enrich step failed showed nothing but the little summary card beside it. */}
-          {f.profile && <AnonymizedPreview x={{ candidate: { id: candidate?.id, reference_code: f.reference }, profile: f.profile, bullets: f.bullets, certificates: f.certificates }} />}
+          {f.profile && <AnonymizedPreview x={{ candidate: { id: candidate?.id, reference_code: f.reference }, profile: f.profile, summary: f.summary, bullets: f.bullets, gaps: f.gaps, certificates: f.certificates, availabilityFrom: f.availabilitySet }} />}
 
           {/* Screening questions — the call to make once the pack is ready. */}
           {(f.questionsBusy || f.questions?.length > 0 || f.questionsError) && (

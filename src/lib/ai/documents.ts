@@ -75,7 +75,7 @@ export const ProfileSchema = z.object({
    *  must still match an insulation job, so the secondary trades are kept alongside it. */
   trades: z.array(z.string()).nullish().transform((v) => v ?? []),
   certificates_claimed: z.array(z.string()).default([]),
-  projects: z.array(z.object({ years: z.string(), type: z.string(), country: z.string(), employer: z.string().optional(), rotation: z.string().optional() })).default([]),
+  projects: z.array(z.object({ years: z.string(), type: z.string(), country: z.string(), employer: z.string().optional(), rotation: z.string().optional(), scope: z.string().optional() })).default([]),
   skills: z.array(z.string()).default([]), languages: z.array(z.string()).default([]), availability: z.string().optional(),
   /** Right to work, only where the CV says so — never inferred from where someone has worked. */
   nationality: z.string().nullish().transform((v) => v ?? undefined),
@@ -94,7 +94,7 @@ Return ONLY this JSON object, using these exact keys and no others:
   "trade_code": "P painter/blaster | W welder | F fitter/pipefitter | N NDT | R rope access | E electrician/wind tech | O other",
   "trades": ["every trade the CV supports, lower case, e.g. painter, blaster, insulator, scaffolder — not just the headline one"],
   "certificates_claimed": ["each certificate named on the CV, as printed"],
-  "projects": [{ "years": "2025-26", "type": "what the work was", "country": "country", "employer": "employer name", "rotation": "e.g. 8:2" }],
+  "projects": [{ "years": "2025-26", "type": "what the work was", "country": "country", "employer": "employer name", "rotation": "e.g. 8:2", "scope": "one line of what they actually worked on — structures, systems, methods, standards — ONLY where the CV says; omit otherwise" }],
   "skills": ["skill"],
   "languages": ["language (level)"],
   "availability": "when they are free, as stated",
@@ -109,11 +109,104 @@ trade and trade_code are required. Omit any other key the CV does not state.
 
 Right to work is a legal fact, not an inference: state nationality only where the CV names it, and eu_passport or uk_right_to_work only where the CV says so in words. Having worked in Norway does not make someone Norwegian, and an EU passport is never evidence of UK right to work. Return the JSON only, with no prose and no markdown fences.`, cvText.slice(0, 30000));
 
-export const anonymize = (p: Profile) => ({
-  trade: p.trade, trades: p.trades, certificates: p.certificates_claimed,
-  projects: p.projects.map(({ years, type, country, rotation }) => ({ years, type, country, rotation })), // employer dropped
-  skills: p.skills, languages: p.languages, availability: p.availability,
-});
+/**
+ * Remove an employer's name from text that is going to a client.
+ *
+ * Dropping the `employer` field is not enough on its own. The model writes the work description
+ * itself, and nothing stops it putting the employer into it — "Sandblasting at Grand Bahama
+ * Shipyard" is a leak even though the employer column was discarded. That became sharper when
+ * experience lines were added to the PII allow-list: an employer that reached `type` would be
+ * allow-listed past the very gate meant to catch it.
+ *
+ * Matched whole-word and without legal form, so "Vard Brăila" also catches "VARD".
+ */
+/** Legal form, in the languages our CVs come in. Leading ones count: "SC Vard Brăila SA". */
+const LEGAL_TOKEN = /\b(a\/s|aps|as|asa|ab|oy|oyj|gmbh|mbh|bv|b\.v\.|nv|n\.v\.|ltd|ltda|limited|llc|inc|plc|sa|s\.a\.|sc|s\.c\.|srl|s\.r\.l\.|sas|spa|s\.p\.a\.|sl|s\.l\.|kft|doo|d\.o\.o\.|ooo|zao|pao|ag|kg|int|international|group|holding|holdings)\b\.?/gi;
+
+export function scrubEmployers(text: string | undefined, employers: string[]): string | undefined {
+  if (!text) return text;
+  let out = text;
+
+  const patterns = new Set<string>();
+  for (const raw of employers) {
+    for (const part of String(raw ?? '').split(/[/,|]| - /)) {
+      const full = part.trim();
+      if (full.length >= 3) patterns.add(full);
+      // The distinctive core, so "SC Vard Brăila SA" also catches a CV that writes "VARD Brăila".
+      const core = full.replace(LEGAL_TOKEN, ' ').replace(/\s{2,}/g, ' ').trim();
+      if (core.length >= 4) patterns.add(core);
+    }
+  }
+
+  for (const e of [...patterns].sort((a, b) => b.length - a.length)) {
+    const esc = e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    out = out.replace(new RegExp(`\\b${esc}\\b`, 'gi'), ' ');
+  }
+
+  // A legal form left standing on its own is the tail of a name we just removed.
+  out = out.replace(/(^|[\s,;/|-])(A\/S|ApS|AS|ASA|AB|Oy|GmbH|BV|NV|Ltd|LTD|Limited|LLC|Inc|PLC|SA|SC|SRL|SAS|SpA|SL|KFT|DOO|OOO|AG|KG)\b\.?/g, '$1');
+
+  return out
+    // "…repairs at , Denmark" — the preposition belonged to the name that has gone. Only when
+    // nothing follows it: "Plate fitting in Denmark" must keep its "in".
+    .replace(/\s+\b(at|for|with|by|on|in|från|hos|voor|bij|til)\b\s*(?=[,;.]|$)/gi, '')
+    .replace(/\s*[,;/|-]\s*(?=[,;/|-]|$)/g, '')
+    .replace(/\s+([,;.])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[\s,;/|.-]+|[\s,;/|-]+$/g, '')
+    .trim() || undefined;
+}
+
+export const anonymize = (p: Profile) => {
+  const employers = (p.projects ?? []).map((x) => x.employer ?? '').filter(Boolean) as string[];
+  return {
+    trade: p.trade, trades: p.trades, certificates: p.certificates_claimed,
+    // employer dropped — and scrubbed out of the text the model wrote, which is the part that
+    // actually reaches a client.
+    projects: p.projects.map(({ years, type, country, rotation, scope }: any) => ({
+      years, country, rotation,
+      type: scrubEmployers(type, employers),
+      scope: scrubEmployers(scope, employers),
+    })),
+    skills: p.skills, languages: p.languages, availability: p.availability,
+    gaps: employmentGaps(p.projects ?? []),
+  };
+};
+
+/**
+ * Months a CV does not account for.
+ *
+ * A gap is not a problem — people take time off, and a rotation worker is home half the year.
+ * An unexplained gap that a client notices before the recruiter did is a problem, so they are
+ * listed and asked about rather than hidden.
+ *
+ * Years are as printed: "2021-2024", "2025", "2017 - 2020". Anything unparseable is skipped
+ * rather than guessed at.
+ */
+export function employmentGaps(projects: { years?: string | null }[]): { from: string; to: string; months: number }[] {
+  const spans: { start: number; end: number }[] = [];
+  for (const p of projects) {
+    const m = String(p.years ?? '').match(/(\d{4})\s*(?:[-–—]\s*(\d{4}|present|now|nu|nå))?/i);
+    if (!m) continue;
+    const start = Number(m[1]);
+    const endRaw = m[2];
+    const end = !endRaw ? start : /^\d{4}$/.test(endRaw) ? Number(endRaw) : new Date().getFullYear();
+    if (start < 1960 || start > 2100) continue;
+    spans.push({ start, end: Math.max(start, end) });
+  }
+  if (spans.length < 2) return [];
+  spans.sort((a, b) => a.start - b.start);
+
+  const gaps: { from: string; to: string; months: number }[] = [];
+  let reach = spans[0].end;
+  for (const s of spans.slice(1)) {
+    // Years only, so a gap is counted in whole years and only reported from one year clear —
+    // "2012 to 2014" is a real gap, "2012 to 2013" is just two consecutive jobs.
+    if (s.start > reach + 1) gaps.push({ from: String(reach), to: String(s.start), months: (s.start - reach) * 12 });
+    reach = Math.max(reach, s.end);
+  }
+  return gaps.filter((g) => g.months > 6);
+}
 
 /** PII check on the client-facing text. Regex first, then a model review. */
 /**
@@ -219,7 +312,44 @@ export const BulletsSchema = z.preprocess(toBullets, z.object({
   bullets: z.array(z.string().trim().min(1)).min(1).max(8).transform((b) => b.slice(0, 3)),
 }));
 
+/**
+ * Two lines at the top of the client version.
+ *
+ * A client reads the first two lines and decides whether to read the rest. Chronology is not a
+ * summary: "shipyard work 2015-2017, then Italy 2017-2020" tells them nothing they can act on.
+ * Years in the trade, the heaviest work, and where — that is a summary.
+ */
+export const SummarySchema = z.object({ summary: z.array(z.string()).min(1).max(2) });
+
+export const clientSummary = (anon: any, verified: object[]) =>
+  askJson(SummarySchema, `Write a two-line professional summary of this candidate for a client, from the data given and nothing else.
+
+Line 1: what they are and how long — total years in the trade (count from the earliest project to the latest), the trade, and the heaviest or most relevant type of work they have done.
+Line 2: where and on what — countries, kinds of structure or system, and any standards or methods actually named in the data.
+
+Rules:
+- Every number and noun must be traceable to the data. If the projects run 2005 to 2024, "nearly twenty years" is fine; "extensive experience" is not, because it says nothing.
+- Never name an employer, a person, a vessel or a client.
+- A certificate may only appear if it is in verified_certificates. One in claimed_certificates may be mentioned only as "per CV, not yet verified".
+- No adjectives of quality: not "highly skilled", "proven", "reliable", "excellent".
+- Two lines maximum, one sentence each, no more than 30 words per line.
+
+Return JSON: {"summary":["line one","line two"]}`, JSON.stringify({
+    candidate: { ...anon, certificates: undefined },
+    verified_certificates: verified,
+    claimed_certificates: anon?.certificates ?? [],
+  }));
+
 const BULLETS_SYSTEM = `Write exactly three bullets describing this candidate for a client.
+
+ORDER AND SUBSTANCE. Lead with the strongest fact, not the earliest date. A client scanning three bullets should meet the best reason to take the call in the first one.
+- Bullet 1: the single strongest thing about this candidate — a verified certificate at a level that matters, the scarcest skill, or the deepest experience.
+- Bullet 2: the next strongest.
+- Bullet 3: what is left that a client would want to know — availability, languages, breadth.
+
+QUANTIFY. Every bullet should carry a number or a named standard where the data has one: years in the trade, how many countries, which standard, which method, which structure type. "Eight years of plate fitting on shipyard and offshore structures across four countries" is useful. "Experienced plate fitter with a strong background" is not, and is banned.
+
+NOT CHRONOLOGY. Do not walk through the CV job by job. Group and total instead: if four projects were sandblasting and painting, that is one fact with a number on it, not four bullets' worth of dates.
 
 Return JSON in exactly this shape, with exactly this key:
 {"bullets":["first bullet","second bullet","third bullet"]}
@@ -386,6 +516,8 @@ export const candidateScreening = (candidate: object, verified: object[], job?: 
   askJson(QuestionsSchema, `Write 6-8 screening questions a recruiter asks THIS candidate, in the order they should be asked.
 
 ${job ? `A job is attached, and so is the score against it. Lead with the score: every blocker gets a question, then every item in "missing". Ask what would close the gap, not whether it exists — the recruiter can already see that it does. Only then ask the general trade questions.` : 'No job is attached, so cover the trade: processes, positions and standards; certificates and expiry; rotation history; offshore medical and safety training; passport, A1 and right to work; English on site; rate and earliest mobilisation.'}
+
+GAPS. "candidate.gaps" lists stretches the CV does not account for. If there are any, ONE question must ask about the largest — plainly and without accusation: people take time off, and a rotation worker is home half the year. What matters is that the recruiter hears it before a client asks.
 
 Ground every question in what the candidate's own data says. A certificate in verified_certificates has been confirmed — do not ask whether they hold it; ask about scope, expiry or renewal. A certificate the CV claims but nothing confirms is exactly what to ask for evidence of.
 

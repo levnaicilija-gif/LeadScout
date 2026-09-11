@@ -40,6 +40,11 @@ const Row = ({ k, v }: { k: string; v: React.ReactNode }) => (
 export function AnonymizedPreview({ x }: { x: any }) {
   const p = x.profile ?? {};
   const certs: any[] = x.certificates ?? [];
+  const summary: string[] = x.summary ?? [];
+  const bullets: string[] = x.bullets ?? [];
+  const gaps: { from: string; to: string }[] = p.gaps ?? x.gaps ?? [];
+  // An empty field that says "—" tells a recruiter nothing. Say what to do about it.
+  const missing = (what: string) => <span className="text-warn">{what}</span>;
   return (
     <div className="border border-line rounded bg-[#FAFBFC] p-4 mt-3 text-[13px]">
       <div className="flex items-baseline justify-between border-b-2 border-ink pb-2 mb-2">
@@ -50,10 +55,22 @@ export function AnonymizedPreview({ x }: { x: any }) {
         <span className="w-7 h-7 rounded bg-rail text-white grid place-items-center font-bold text-[12px]">R</span>
       </div>
 
-      {x.bullets?.length > 0 && <ul className="list-disc pl-5 mb-3">{x.bullets.map((b: string, i: number) => <li key={i}>{b}</li>)}</ul>}
+      {summary.length > 0 && (
+        <div className="mb-2.5 text-[13.5px] leading-relaxed">
+          {summary.map((line, i) => <p key={i} className="mb-0.5">{line}</p>)}
+        </div>
+      )}
+
+      {bullets.length > 0 && <ul className="list-disc pl-5 mb-3">{bullets.map((b, i) => <li key={i}>{b}</li>)}</ul>}
 
       <b className="block mt-2">Certificates</b>
-      {certs.length === 0 && <div className="text-ink3">None verified yet — claimed on the CV: {(p.certificates ?? []).join('; ') || '—'}</div>}
+      {certs.length === 0 && (
+        <div className="text-[13px]">
+          {(p.certificates ?? []).length > 0
+            ? <>Claimed on the CV, none verified yet: {(p.certificates ?? []).join('; ')} — <span className="text-warn">ask for copies</span></>
+            : missing('None on file — ask the candidate what they hold')}
+        </div>
+      )}
       {certs.map((c, i) => (
         <div key={i} className="grid grid-cols-[1fr_auto] gap-2 border-t border-line2 py-1">
           <span>{c.name}{c.number ? ` · ${c.number}` : ''}</span>
@@ -62,17 +79,29 @@ export function AnonymizedPreview({ x }: { x: any }) {
       ))}
 
       <b className="block mt-3">Experience</b>
+      {(p.projects ?? []).length === 0 && <div className="text-[13px]">{missing('No work history on file — ask the candidate')}</div>}
       {(p.projects ?? []).map((e: any, i: number) => (
         <div key={i} className="grid grid-cols-[70px_1fr_60px] gap-2 border-t border-line2 py-1">
-          <span className="text-ink3">{e.years}</span><span>{[e.type, e.country].filter(Boolean).join(', ')}</span><span className="text-ink3">{e.rotation ?? '—'}</span>
+          <span className="text-ink3">{e.years}</span>
+          <span>
+            {[e.type, e.country].filter(Boolean).join(', ')}
+            {e.scope && <span className="block text-ink3 text-[12px]">{e.scope}</span>}
+          </span>
+          <span className="text-ink3">{e.rotation ?? 'not stated'}</span>
         </div>
       ))}
 
+      {gaps.length > 0 && (
+        <div className="mt-2 text-[12px] text-warn">
+          Not accounted for on the CV: {gaps.map((g) => `${g.from}–${g.to}`).join(', ')} — asked at screening.
+        </div>
+      )}
+
       <b className="block mt-3">Profile</b>
-      <Row k="Trades" v={(p.trades ?? []).join(', ') || p.trade} />
-      <Row k="Skills" v={(p.skills ?? []).join(', ') || '—'} />
-      <Row k="Languages" v={(p.languages ?? []).join(', ') || '—'} />
-      <Row k="Availability" v={p.availability ?? '—'} />
+      <Row k="Trades" v={(p.trades ?? []).join(', ') || p.trade || missing('not stated — confirm')} />
+      <Row k="Skills" v={(p.skills ?? []).join(', ') || missing('none listed — ask the candidate')} />
+      <Row k="Languages" v={(p.languages ?? []).join(', ') || missing('not stated — confirm on the call')} />
+      <Row k="Availability" v={p.availability || x.availabilityFrom || missing('not stated — confirm, or take it from a contract')} />
 
       <div className="flex justify-between text-[11px] text-ink3 border-t border-line pt-2 mt-3">
         <span>Employer names, contact details and date of birth are removed from this version.</span>

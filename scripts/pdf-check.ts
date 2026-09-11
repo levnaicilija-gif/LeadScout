@@ -12,6 +12,8 @@ const clean: ClientCvData = {
   referenceCode: 'RFBT-P-0231',
   trade: 'Industrial painter / blaster',
   preparedOn: new Date().toISOString(),
+  summary: [],
+  gaps: [],
   bullets: [
     'FROSIO Level II, verified 7 Sep 2026, valid to March 2028 — no re-qualification needed for a 12-month project.',
     'Coated offshore substations in Spain (2025–26) and monopiles in Denmark (2024): airless spray and Sa 2.5 blasting.',

@@ -1,0 +1,346 @@
+[
+  {
+    "trade": "welder",
+    "title": "Welder",
+    "what_it_is": "Joins steel to a written procedure. On a yard that is plate, sections and structures; on pipe it is spools and tie-ins, often in positions where the pipe cannot be turned. The qualification is not a general licence — it covers one process, one position range, one material group and one thickness range, and a welder outside that range is unqualified however experienced.",
+    "certificates": [
+      { "body": "ISO 9606", "levels": "By process, position, material and thickness range", "who_requires_it": "Every European yard and offshore client. Usually needs a six-monthly employer endorsement to stay valid." },
+      { "body": "ASME IX", "levels": "By procedure", "who_requires_it": "US-influenced and oil & gas fabrication scopes." },
+      { "body": "NORSOK M-101", "levels": "Fabrication standard the WPS follows", "who_requires_it": "Norwegian Continental Shelf work." }
+    ],
+    "codes": [
+      { "code": "6G", "means": "Pipe fixed at 45°, cannot be turned. The hardest standard position; usually covers the easier ones." },
+      { "code": "5G", "means": "Pipe fixed horizontally — vertical and overhead welding, no tilt." },
+      { "code": "PF", "means": "Vertical up. Slow and controlled; most structural work asks for it." },
+      { "code": "PG", "means": "Vertical down. Faster, thinner material; not a substitute for PF." },
+      { "code": "141", "means": "TIG — root runs on pipe, stainless and duplex." },
+      { "code": "111", "means": "MMA / stick — portable, wind-tolerant, common offshore." },
+      { "code": "136", "means": "Flux-cored MAG — heavy structural deposition." }
+    ],
+    "check_on_cv": [
+      "Which process numbers, and does the certificate range cover the work you are placing them on",
+      "Position: 6G and 5G are pipe; PF and PC are plate and structure",
+      "Material group — carbon steel does not qualify anyone for duplex or aluminium",
+      "Thickness range printed on the certificate",
+      "Date of the last employer endorsement, not just the issue date",
+      "Whether the test was witnessed by a third party, and which"
+    ],
+    "red_flags": [
+      "\"All positions, all processes\" with no certificate numbers",
+      "A certificate more than six months old with no endorsement",
+      "Duplex or super duplex claimed with a carbon steel qualification",
+      "Years of experience given instead of a qualification range"
+    ],
+    "questions": [
+      { "q": "Which processes and positions are you certified in right now, to which standard, and what thickness and material range does the certificate cover?", "good_answer": "Names the process numbers, the position, the standard and the range without hesitating — e.g. 141 and 111, 6G, EN ISO 9606-1, carbon steel 8–20 mm — and offers to send the certificate." },
+      { "q": "When was your qualification last endorsed, and by whom?", "good_answer": "Gives a date inside the last six months and names the employer or test house that signed it." },
+      { "q": "Talk me through a root run on 6G pipe: what do you set, and what goes wrong?", "good_answer": "Describes purge, gap and land, heat input, and the failure they watch for — lack of fusion at the 6 o'clock, or oxidation from a lost purge." },
+      { "q": "Have you welded duplex or stainless, and what changes?", "good_answer": "Talks about heat input control and interpass temperature rather than saying it is the same as carbon steel." },
+      { "q": "What NDT has been applied to your welds, and have you had repairs?", "good_answer": "Knows their repair rate, does not claim zero, and can say what the defect was and what they changed." }
+    ]
+  },
+  {
+    "trade": "pipefitter",
+    "title": "Pipefitter",
+    "what_it_is": "Takes an isometric drawing and turns it into pipework: measures, cuts, bevels, fits and aligns spools ready for the welder, then bolts up flanges to torque. On offshore modifications the fitting is the slow part — the welding is quick once the fit-up is right.",
+    "certificates": [
+      { "body": "Trade certificate or apprenticeship", "levels": "National — e.g. Norwegian fagbrev, Danish svendebrev", "who_requires_it": "Nordic yards often ask for the national trade certificate by name." },
+      { "body": "Flange management / torque-bolting", "levels": "Client or vendor scheme", "who_requires_it": "Most offshore operators before anyone breaks or makes a joint." }
+    ],
+    "codes": [
+      { "code": "iso", "means": "Isometric drawing — the single-line pipe drawing a fitter works from." },
+      { "code": "spool", "means": "A prefabricated length of pipe with its fittings, made in the shop and installed as one piece." },
+      { "code": "tie-in", "means": "The joint connecting new pipework to an existing live system. Usually the permit-heavy part." },
+      { "code": "hot work", "means": "Cutting, grinding or welding — needs a permit and often a fire watch." }
+    ],
+    "check_on_cv": [
+      "Can they read isometrics — ask, do not assume",
+      "Whether the experience is shop spooling or site tie-ins; they are different jobs",
+      "Flange management or torque certification, and when it expires",
+      "Which materials: carbon, stainless, duplex, GRE",
+      "Whether they have worked to a permit system offshore"
+    ],
+    "red_flags": [
+      "\"Pipefitter/welder\" with no welding qualification and no fitting detail",
+      "Only shop experience offered for a live tie-in scope",
+      "No mention of drawings anywhere in the CV"
+    ],
+    "questions": [
+      { "q": "Walk me through fitting a spool from the isometric to the point the welder starts.", "good_answer": "Describes reading the iso, marking, cutting and bevelling, checking gap and alignment, and tacking — in that order, with tolerances." },
+      { "q": "How do you set root gap and alignment on a butt joint, and what tools do you use?", "good_answer": "Names hi-lo gauge, wraparound, levels; gives a gap in millimetres consistent with the process." },
+      { "q": "Have you done tie-ins on a live system, and what does the permit process look like?", "good_answer": "Talks about isolation, permit, gas testing and the standby, not just the mechanical work." },
+      { "q": "Do you hold flange-management or torque-bolting certification, and when does it expire?", "good_answer": "Names the scheme and a date, and offers the certificate." },
+      { "q": "What is the difference in fitting stainless or duplex compared with carbon steel?", "good_answer": "Mentions separate tooling and avoiding carbon contamination rather than saying there is no difference." }
+    ]
+  },
+  {
+    "trade": "blaster",
+    "title": "Blaster",
+    "what_it_is": "Prepares steel so a coating will hold: abrasive blasting to a cleanliness grade and a surface profile, then keeping the surface clean until the painter reaches it. The whole coating system depends on this being right, and it cannot be inspected once painted over.",
+    "certificates": [
+      { "body": "FROSIO", "levels": "Inspector I–III — for inspecting, not for blasting", "who_requires_it": "Norwegian and North Sea work where inspection is required." },
+      { "body": "AMPP (NACE/SSPC)", "levels": "Coating inspector levels", "who_requires_it": "International and oil & gas coating scopes." }
+    ],
+    "codes": [
+      { "code": "Sa 2.5", "means": "Near-white blast to ISO 8501-1 — the usual offshore requirement." },
+      { "code": "Sa 3", "means": "White metal — the highest grade." },
+      { "code": "profile", "means": "The roughness left by the abrasive, measured in microns. Too smooth and the coating fails to key." },
+      { "code": "soluble salts", "means": "Contamination measured before coating; over the limit and the surface must be washed and reblasted." }
+    ],
+    "check_on_cv": [
+      "Which cleanliness grades they have worked to, by standard",
+      "Whether they have worked in a cabinet, in a yard, or on site with containment",
+      "Experience with soluble salt testing and dew point control",
+      "Confined space training if the work is tanks or ballast compartments"
+    ],
+    "red_flags": [
+      "Grades quoted without a standard",
+      "No mention of dew point or humidity anywhere",
+      "Blasting and painting used interchangeably in the CV"
+    ],
+    "questions": [
+      { "q": "What cleanliness grade and surface profile do you normally work to, and how is each checked?", "good_answer": "Names Sa 2.5 to ISO 8501-1, a profile in microns, and describes visual comparators and a profile gauge or tape." },
+      { "q": "What conditions stop you blasting or coating?", "good_answer": "Talks about steel temperature against dew point, relative humidity, and waiting rather than proceeding." },
+      { "q": "How do you handle soluble salts?", "good_answer": "Describes testing, the limit, and washing and reblasting when it fails." },
+      { "q": "Have you worked in confined spaces, and what changes?", "good_answer": "Mentions permit, ventilation, standby man and air-fed breathing equipment." },
+      { "q": "What happens if the coating goes on over a surface that has flash-rusted?", "good_answer": "Says it fails and has to be reblasted, rather than treating it as acceptable." }
+    ]
+  },
+  {
+    "trade": "painter",
+    "title": "Industrial painter",
+    "what_it_is": "Applies coating systems to specification: primer, intermediate and topcoat, each to a thickness range, in conditions the specification allows. Usually airless spray, sometimes brush and roller for stripe coats on edges and welds.",
+    "certificates": [
+      { "body": "FROSIO", "levels": "Inspector I–III", "who_requires_it": "Where inspection sign-off is required — the applicator may work under an inspector rather than hold it." },
+      { "body": "AMPP (NACE/SSPC)", "levels": "Coating inspector levels", "who_requires_it": "International coating scopes." }
+    ],
+    "codes": [
+      { "code": "DFT", "means": "Dry film thickness in microns — what gets measured and signed off." },
+      { "code": "WFT", "means": "Wet film thickness — checked with a comb during application." },
+      { "code": "stripe coat", "means": "An extra brush coat on edges, welds and bolts, where spray goes thin." },
+      { "code": "NORSOK M-501", "means": "The Norwegian coating standard; its systems are referenced by number." }
+    ],
+    "check_on_cv": [
+      "Which coating systems and standards, by name",
+      "Airless spray experience and the equipment used",
+      "Whether they do stripe coats — its absence tells you a lot",
+      "Offshore or yard, and whether under containment"
+    ],
+    "red_flags": [
+      "\"Painter\" with only decorating or marine topside cosmetic work",
+      "No thickness figures anywhere in the CV",
+      "Cannot name a coating manufacturer or system"
+    ],
+    "questions": [
+      { "q": "Which coating systems have you applied, and to what standard?", "good_answer": "Names a standard such as NORSOK M-501, a manufacturer, and a system with coats and thicknesses." },
+      { "q": "How do you control and check film thickness?", "good_answer": "WFT comb during application, DFT gauge after cure, and knows the specified range and what happens outside it." },
+      { "q": "When do you apply a stripe coat and why?", "good_answer": "Edges, welds, bolts and corners, because sprayed film thins there and those are where failure starts." },
+      { "q": "What conditions would stop you spraying?", "good_answer": "Dew point margin, humidity, wind and overspray risk — and says they stop rather than continue." },
+      { "q": "What is the recoat window, and what if you miss it?", "good_answer": "Knows it varies by product, and that overrunning means sweeping or abrading for adhesion." }
+    ]
+  },
+  {
+    "trade": "ndt",
+    "title": "NDT technician",
+    "what_it_is": "Checks welds and materials without cutting them, and writes what they found. The level matters: a level 2 performs and reports to a written procedure, a level 3 writes the procedure and carries technical responsibility for the method.",
+    "certificates": [
+      { "body": "PCN (BINDT)", "levels": "1, 2, 3 per method", "who_requires_it": "UK and much of the North Sea." },
+      { "body": "ISO 9712", "levels": "1, 2, 3 per method", "who_requires_it": "The international standard PCN and others certify to." },
+      { "body": "CSWIP", "levels": "3.0 visual, 3.1 welding inspector, 3.2 senior", "who_requires_it": "Weld inspection rather than NDT method work." }
+    ],
+    "codes": [
+      { "code": "UT", "means": "Ultrasonic testing — internal flaws." },
+      { "code": "PAUT", "means": "Phased array UT — steered beam, cross-sectional image; often replaces radiography." },
+      { "code": "TOFD", "means": "Time of flight diffraction — accurate flaw sizing, usually paired with PAUT." },
+      { "code": "MT", "means": "Magnetic particle — surface cracks in ferrous material." },
+      { "code": "PT", "means": "Dye penetrant — surface-breaking cracks, any material." },
+      { "code": "RT", "means": "Radiography — needs exclusion zones, so often night work." }
+    ],
+    "check_on_cv": [
+      "Which methods, at which level, and the expiry of each — they expire separately",
+      "Whether the certificate is PCN, ISO 9712 or an employer scheme",
+      "Vision test date, which lapses more often than people expect",
+      "PAUT and TOFD experience specifically, if the scope needs them"
+    ],
+    "red_flags": [
+      "\"NDT Level 2\" with no methods named",
+      "One expiry date offered for several methods",
+      "Radiography claimed with no mention of source handling or exclusion zones"
+    ],
+    "questions": [
+      { "q": "Which methods are you certified in, at what level, under which scheme, and when does each expire?", "good_answer": "Lists them separately with dates — e.g. UT level 2 PCN to March 2028, MT and PT level 2 to a different date." },
+      { "q": "When was your last vision test?", "good_answer": "Gives a date within the last twelve months and knows it is a requirement." },
+      { "q": "Talk me through setting up for a PAUT scan on a butt weld.", "good_answer": "Calibration blocks, wedge and probe choice, scan plan, encoder setup, and reference sensitivity." },
+      { "q": "How do you report a defect you are not certain about?", "good_answer": "Records what was seen, refers to the acceptance criteria and escalates to level 3 rather than deciding alone." },
+      { "q": "Which acceptance standard do you usually work to?", "good_answer": "Names one — ISO 5817, ASME VIII, a client spec — rather than saying 'the client's'." }
+    ]
+  },
+  {
+    "trade": "scaffolder",
+    "title": "Scaffolder",
+    "what_it_is": "Builds the access everyone else works from, and signs it off. Offshore it is often suspended or hanging scaffold in awkward geometry, under a permit, with a load and a wind case that matter.",
+    "certificates": [
+      { "body": "CISRS", "levels": "Part 1, Part 2, Advanced, Supervisor", "who_requires_it": "UK sites almost without exception." },
+      { "body": "National trade certificate", "levels": "e.g. Norwegian stillasbygger course by height class", "who_requires_it": "Norwegian and Danish sites, by the height they are certified to." }
+    ],
+    "codes": [
+      { "code": "scafftag", "means": "The tag on a scaffold saying who inspected it and when. No tag, no access." },
+      { "code": "hanging scaffold", "means": "Suspended from structure rather than built from the ground — common offshore." },
+      { "code": "handover", "means": "The formal sign-off transferring a completed scaffold to the trades using it." }
+    ],
+    "check_on_cv": [
+      "Card level and expiry, and whether it is CISRS or a national scheme",
+      "The height class they are certified to, in Nordic schemes",
+      "Offshore or onshore, and suspended experience specifically",
+      "Whether they have inspected and tagged, not only built"
+    ],
+    "red_flags": [
+      "Card claimed but no number or expiry",
+      "\"Scaffolder\" with only labouring or dismantling experience",
+      "No mention of inspection or tagging for a supervisor role"
+    ],
+    "questions": [
+      { "q": "Which card do you hold, at what level, and when does it expire?", "good_answer": "Names the scheme, the grade and a date, and can give the card number." },
+      { "q": "Have you built suspended or hanging scaffold offshore?", "good_answer": "Describes the anchoring, the load case and the permit, not just that they have done it." },
+      { "q": "Who may tag a scaffold, and what does the tag mean to someone using it?", "good_answer": "Only a competent inspector; the tag says it has been checked and is safe to use, with a date." },
+      { "q": "What do you do if you are asked to modify someone else's scaffold?", "good_answer": "Does not modify without authorisation, removes or changes the tag, and re-inspects." },
+      { "q": "What stops work at height on a given day?", "good_answer": "Wind speed against the limit, ice, lightning — and names the limit." }
+    ]
+  },
+  {
+    "trade": "rope access",
+    "title": "Rope access technician",
+    "what_it_is": "Reaches work that scaffolding cannot economically reach — blades, splash zones, flare tips, confined structures — using two independent ropes. The trade underneath matters as much as the rope skill: a level 1 who is also a welder is worth more than a level 1 alone.",
+    "certificates": [
+      { "body": "IRATA", "levels": "1, 2, 3 — a level 3 must be on site to supervise and hold the rescue plan", "who_requires_it": "European offshore and wind work, nearly universally." },
+      { "body": "SPRAT", "levels": "1, 2, 3", "who_requires_it": "North America; not always accepted in Europe — check with the client." },
+      { "body": "GWO BST", "levels": "Working at heights module", "who_requires_it": "Wind sites, alongside IRATA." }
+    ],
+    "codes": [
+      { "code": "level 3", "means": "The supervisor who runs the team and the rescue plan. No level 3, no rope team." },
+      { "code": "rescue plan", "means": "The written plan for getting a casualty off the rope. Required before anyone goes over the edge." },
+      { "code": "logbook", "means": "The record of hours on rope, needed for revalidation and often asked for by clients." }
+    ],
+    "check_on_cv": [
+      "IRATA level and expiry — three years, and revalidation needs logged hours",
+      "The trade underneath the rope: welding, NDT, coating, blade repair",
+      "Logged hours, and whether the logbook is up to date",
+      "Offshore medical and safety training, which rope access does not replace"
+    ],
+    "red_flags": [
+      "IRATA claimed with no level or number",
+      "Rope access as the only skill for a scope that needs a trade",
+      "A lapsed certificate offered as current"
+    ],
+    "questions": [
+      { "q": "What IRATA level do you hold, what is your number, and when does it expire?", "good_answer": "Gives level, number and date, and knows revalidation is three-yearly with logged hours." },
+      { "q": "How many hours are in your logbook, and when did you last log?", "good_answer": "Gives a figure and a recent date rather than a vague answer." },
+      { "q": "What trade do you do on the rope?", "good_answer": "Names it and can talk about it in the same detail as a ground-based tradesman." },
+      { "q": "Who writes the rescue plan and what is in it?", "good_answer": "The level 3 supervisor; describes casualty recovery and that it exists before work starts." },
+      { "q": "What would stop you going on the rope?", "good_answer": "Wind, lightning, sea state, no level 3 on site, or damaged equipment — and says they refuse." }
+    ]
+  },
+  {
+    "trade": "wind technician",
+    "title": "Wind turbine technician",
+    "what_it_is": "Installs, commissions and maintains turbines — mechanical, electrical and hydraulic work inside a nacelle or up a tower, offshore often on a 2:2 rotation. Safety training is the entry ticket and is checked in a database before anyone travels.",
+    "certificates": [
+      { "body": "GWO BST", "levels": "First aid, manual handling, fire awareness, working at heights; sea survival offshore", "who_requires_it": "Every wind client. Recorded in WINDA and checked by ID." },
+      { "body": "GWO BTT", "levels": "Basic Technical Training — mechanical, electrical, hydraulic", "who_requires_it": "Often asked for alongside BST for technician roles." },
+      { "body": "Offshore medical", "levels": "OGUK or national equivalent", "who_requires_it": "Offshore wind." }
+    ],
+    "codes": [
+      { "code": "WINDA", "means": "The GWO training database. A WINDA ID is how a client verifies the training." },
+      { "code": "nacelle", "means": "The housing at the top of the tower containing the drivetrain." },
+      { "code": "commissioning", "means": "Bringing a turbine into service after installation — testing and sign-off." },
+      { "code": "2:2", "means": "Two weeks on, two off — the common offshore rotation." }
+    ],
+    "check_on_cv": [
+      "A WINDA ID, not just the words \"GWO trained\"",
+      "Which GWO modules and their expiry — two years for most",
+      "Whether the experience is installation, commissioning or service; they are different",
+      "Electrical qualification if the role is E&I rather than mechanical"
+    ],
+    "red_flags": [
+      "\"GWO certified\" with no WINDA ID and no modules named",
+      "Onshore-only experience offered for an offshore rotation",
+      "No offshore medical for an offshore role"
+    ],
+    "questions": [
+      { "q": "What is your WINDA ID, which GWO modules do you hold and when do they expire?", "good_answer": "Gives the ID, lists the modules and gives dates — and knows sea survival is separate." },
+      { "q": "Is your experience installation, commissioning or service?", "good_answer": "Says which, and describes the work in terms specific to it." },
+      { "q": "Which turbine platforms have you worked on?", "good_answer": "Names manufacturers and models rather than saying 'all of them'." },
+      { "q": "What is your offshore medical status and when does it expire?", "good_answer": "Names the type and a date, and knows it is required to travel." },
+      { "q": "Describe a fault you diagnosed in a nacelle and how you found it.", "good_answer": "Walks through the symptom, what they checked and what it turned out to be, using the right terms." }
+    ]
+  },
+  {
+    "trade": "electrician",
+    "title": "Electrician",
+    "what_it_is": "Installs, terminates and tests electrical systems — cable pulling, glanding and termination, panels, instrumentation, and testing before energising. Offshore and in hazardous areas the Ex qualification is a separate thing from being an electrician.",
+    "certificates": [
+      { "body": "National trade certificate", "levels": "e.g. Norwegian fagbrev elektriker, Danish elektriker", "who_requires_it": "Nordic sites, by name. Note the authorisation itself usually sits with the employing company, not the individual." },
+      { "body": "Ex / ATEX (IECEx CoPC)", "levels": "By unit — installation, inspection, maintenance", "who_requires_it": "Hazardous areas: oil & gas, chemical, some offshore wind." },
+      { "body": "VCA / SCC", "levels": "Basis or VOL", "who_requires_it": "Benelux sites." }
+    ],
+    "codes": [
+      { "code": "Ex", "means": "Equipment and practice for explosive atmospheres. A separate qualification from the trade." },
+      { "code": "glanding", "means": "Terminating a cable into equipment with the correct gland and seal — the part Ex inspection scrutinises." },
+      { "code": "E&I", "means": "Electrical and Instrumentation, usually treated as one discipline offshore." },
+      { "code": "LV / HV", "means": "Low and high voltage. HV needs separate authorisation and switching competence." }
+    ],
+    "check_on_cv": [
+      "The national trade certificate, and which country issued it",
+      "Ex/ATEX units held and expiry, separately from the trade certificate",
+      "LV or HV, and whether they have switching authorisation",
+      "Instrumentation experience if the role is E&I",
+      "Whether they have worked to a permit system"
+    ],
+    "red_flags": [
+      "\"Ex certified\" with no scheme or units named",
+      "HV claimed with no switching authorisation",
+      "Domestic or commercial installation experience offered for industrial work"
+    ],
+    "questions": [
+      { "q": "Which trade certificate do you hold and from which country?", "good_answer": "Names it precisely and can produce it; understands that authorisation may sit with the employer." },
+      { "q": "Do you hold Ex or ATEX certification — which units, and when do they expire?", "good_answer": "Names the scheme and units rather than saying 'yes, Ex'." },
+      { "q": "Talk me through glanding a cable into an Ex e enclosure.", "good_answer": "Describes gland selection, sealing, thread engagement and what an inspector would fail it for." },
+      { "q": "Have you worked LV or HV, and do you hold switching authorisation?", "good_answer": "Is clear about which, and does not claim HV switching without authorisation." },
+      { "q": "What testing do you do before energising?", "good_answer": "Continuity, insulation resistance, polarity and earth checks, and records them." }
+    ]
+  },
+  {
+    "trade": "fitter",
+    "title": "Mechanical fitter",
+    "what_it_is": "Installs, aligns, maintains and overhauls rotating and static mechanical equipment — pumps, gearboxes, valves, hydraulics — and takes it apart and back together on shutdowns. On a yard it is also structural fitting: plate, sections and assemblies made ready for welding.",
+    "certificates": [
+      { "body": "National trade certificate", "levels": "e.g. Norwegian fagbrev industrimekaniker, Danish industrimekaniker", "who_requires_it": "Nordic yards and industrial sites." },
+      { "body": "Flange management / torque-bolting", "levels": "Client or vendor scheme", "who_requires_it": "Offshore operators, before breaking or making joints." },
+      { "body": "Rigging / slinging", "levels": "National or client scheme", "who_requires_it": "Anywhere loads are moved, which is most of the job." }
+    ],
+    "codes": [
+      { "code": "alignment", "means": "Setting two shafts true, usually with dial gauges or laser. The measurable part of the job." },
+      { "code": "shutdown", "means": "A planned stop for work that cannot be done running. Short, intense, and where fitters earn their money." },
+      { "code": "torque", "means": "Bolt tightening to a specified figure and sequence — recorded and signed." }
+    ],
+    "check_on_cv": [
+      "Rotating equipment or structural fitting — they are different trades in practice",
+      "Which equipment types and manufacturers",
+      "Alignment method: dial gauge, laser, or 'by eye'",
+      "Torque and flange-management certification",
+      "Shutdown and turnaround experience specifically"
+    ],
+    "red_flags": [
+      "\"Mechanic\" with only automotive experience",
+      "Alignment described without any measurement",
+      "No mention of drawings or torque figures"
+    ],
+    "questions": [
+      { "q": "Is your experience rotating equipment, structural fitting, or both?", "good_answer": "Says which and gives examples with equipment types or structures." },
+      { "q": "How do you align a pump and motor, and what tolerance do you work to?", "good_answer": "Names dial indicators or laser, describes soft foot checks, and gives a tolerance figure." },
+      { "q": "Do you hold torque or flange-management certification?", "good_answer": "Names the scheme and expiry, and describes the sequence and recording." },
+      { "q": "Describe a shutdown you worked and what your scope was.", "good_answer": "Gives the plant, the duration, the specific equipment and what went wrong." },
+      { "q": "What rigging and lifting are you certified for?", "good_answer": "Names the certificate and is clear about what they may and may not sling." }
+    ]
+  }
+]

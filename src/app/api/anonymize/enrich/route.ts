@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
-import { anonymize, buildBullets, scoreAgainstJob, piiRegexHits, piiModelReview } from '@/lib/ai/documents';
+import { anonymize, buildBullets, clientSummary, scoreAgainstJob, piiRegexHits, piiModelReview } from '@/lib/ai/documents';
 import { renderClientCv, clientCvText, clientCvAllowed, type ClientCvData } from '@/lib/pdf/render';
 export const maxDuration = 120;
 
@@ -36,10 +36,12 @@ export async function POST(req: Request) {
       .eq('documents.candidate_id', candidateId);
 
     const { bullets, dropped: droppedBullets } = await buildBullets(anon, verified ?? [], job);
+    // Two lines a client reads before deciding whether to read the rest.
+    const summary = await clientSummary(anon, verified ?? []).then((r) => r.summary).catch(() => [] as string[]);
     const score = job ? await scoreAgainstJob(anon, verified ?? [], job) : null;
     if (score) await db.from('scores').insert({ candidate_id: candidateId, ...score });
 
-    const pdfData = clientCvData(code, profile, anon, verified ?? [], bullets, slug, ws?.name);
+    const pdfData = clientCvData(code, profile, anon, verified ?? [], bullets, summary, slug, ws?.name);
     const clientText = clientCvText(pdfData);
     const employers = (profile.projects ?? []).map((p: any) => p.employer ?? '').filter(Boolean);
 
@@ -69,7 +71,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       candidate: { id: candidateId, reference_code: code },
-      bullets, droppedBullets, score, piiHits, piiPassed: passed, pdfPath,
+      bullets, summary, gaps: anon.gaps ?? [], droppedBullets, score, piiHits, piiPassed: passed, pdfPath,
       // The card renders the same certificate rows the PDF does.
       certificates: pdfData.certificates,
       crossCheck: { claimed: (profile.certificates_claimed ?? []).length, verified: (verified ?? []).length },
@@ -80,7 +82,7 @@ export async function POST(req: Request) {
 }
 
 /** Shapes the anonymised profile for the PDF. Employer names never reach it — anonymize() drops them. */
-function clientCvData(code: string, profile: any, anon: any, verified: any[], bullets: string[], slug: string, agency?: string): ClientCvData {
+function clientCvData(code: string, profile: any, anon: any, verified: any[], bullets: string[], summary: string[], slug: string, agency?: string): ClientCvData {
   const certs = verified.map((v: any) => ({
     name: [v.documents?.cert_body?.toUpperCase(), v.documents?.extracted?.level && `Level ${v.documents.extracted.level}`].filter(Boolean).join(' ') || 'Certificate',
     number: v.documents?.extracted?.number ?? null,
@@ -93,9 +95,11 @@ function clientCvData(code: string, profile: any, anon: any, verified: any[], bu
     referenceCode: code,
     trade: profile.trade ?? 'Trade not stated',
     preparedOn: new Date().toISOString(),
+    summary,
     bullets,
+    gaps: anon.gaps ?? [],
     certificates: certs,
-    experience: (anon.projects ?? []).map((p: any) => ({ years: p.years, what: [p.type, p.country].filter(Boolean).join(', '), rotation: p.rotation ?? null })),
+    experience: (anon.projects ?? []).map((p: any) => ({ years: p.years, what: [p.type, p.country].filter(Boolean).join(', '), scope: p.scope ?? null, rotation: p.rotation ?? null })),
     skills: anon.skills ?? [],
     languages: anon.languages ?? [],
     availability: anon.availability ?? null,

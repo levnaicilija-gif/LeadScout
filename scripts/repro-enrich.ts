@@ -46,6 +46,8 @@ const stage = async <T>(name: string, fn: () => Promise<T> | T): Promise<T> => {
     referenceCode: cand.reference_code,
     trade: profile.trade ?? 'Trade not stated',
     preparedOn: new Date().toISOString(),
+    summary: [],
+    gaps: [],
     bullets,
     certificates: (verified ?? []).map((v: any) => ({
       name: [v.documents?.cert_body?.toUpperCase(), v.documents?.extracted?.level && `Level ${v.documents.extracted.level}`].filter(Boolean).join(' ') || 'Certificate',
