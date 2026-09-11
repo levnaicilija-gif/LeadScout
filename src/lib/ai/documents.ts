@@ -94,7 +94,7 @@ Return ONLY this JSON object, using these exact keys and no others:
   "trade_code": "P painter/blaster | W welder | F fitter/pipefitter | N NDT | R rope access | E electrician/wind tech | O other",
   "trades": ["every trade the CV supports, lower case, e.g. painter, blaster, insulator, scaffolder — not just the headline one"],
   "certificates_claimed": ["each certificate named on the CV, as printed"],
-  "projects": [{ "years": "2025-26", "type": "what the work was", "country": "country", "employer": "employer name", "rotation": "e.g. 8:2", "scope": "one line of what they actually worked on — structures, systems, methods, standards — ONLY where the CV says; omit otherwise" }],
+  "projects": [{ "years": "2025-26", "type": "what the work was", "country": "country", "employer": "employer name", "rotation": "e.g. 8:2", "scope": "one line of WHAT THE WORK WAS — structures, systems, methods, materials, standards. NEVER a company, client, yard, vessel, platform or project name, even when the CV gives one: those belong in employer and nowhere else. ONLY where the CV says; omit otherwise" }],
   "skills": ["skill"],
   "languages": ["language (level)"],
   "availability": "when they are free, as stated",
@@ -106,6 +106,8 @@ Return ONLY this JSON object, using these exact keys and no others:
 }
 
 trade and trade_code are required. Omit any other key the CV does not state.
+
+"type" and "scope" are read by a client who must never learn where the candidate worked. Put every company, client, yard, vessel and platform name in "employer" only — including second companies the CV mentions in passing, such as a partner or a site operator. If a description would lose its meaning without the company name, drop the name and keep the work.
 
 Right to work is a legal fact, not an inference: state nationality only where the CV names it, and eu_passport or uk_right_to_work only where the CV says so in words. Having worked in Norway does not make someone Norwegian, and an EU passport is never evidence of UK right to work. Return the JSON only, with no prose and no markdown fences.`, cvText.slice(0, 30000));
 
@@ -137,6 +139,9 @@ export function scrubEmployers(text: string | undefined, employers: string[]): s
       if (core.length >= 4) patterns.add(core);
     }
   }
+
+  // A domain is never a description of work — it is a company, wherever it came from.
+  out = out.replace(/[a-z0-9-]{3,}.(nl|be|no|dk|se|fi|de|com|net|eu|ro|it|es|pl|co.uk)/gi, ' ');
 
   for (const e of [...patterns].sort((a, b) => b.length - a.length)) {
     const esc = e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
