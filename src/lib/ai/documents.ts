@@ -111,7 +111,14 @@ trade and trade_code are required. Omit any other key the CV does not state.
 
 A named asset is not removed, it is DESCRIBED. "Jotun A" becomes "offshore platform, Norwegian North Sea"; "Grand Bahama Shipyard" becomes "shipyard, Bahamas"; "Danube Bridge" becomes "road bridge over a major river, Romania". A client needs to know the person has worked on an offshore platform — deleting that costs them the scope, which is the opposite of what anonymising is for.
 
-The descriptor REPLACES the name. It never annotates it. Do not write "offshore platform, Norwegian North Sea (Rosenberg yard, Stavanger)", do not put the name in brackets, quotes, a dash or an aside, and do not write "a shipyard (Grand Bahama)". If the name appears anywhere in "type" or "scope", in any form, the entry is wrong. The town is part of the name where it identifies the site: "Stavanger" beside a yard is the yard.
+The descriptor REPLACES the name. It never annotates it, and it never adds the town back.
+
+  right:  "spray painting of modules for an offshore platform, Norwegian North Sea"
+  wrong:  "... (Rosenberg yard, Stavanger)"        — the name in brackets
+  wrong:  "... at a fabrication yard in Stavanger" — the town names the yard just as well
+  wrong:  "... at a shipyard (Grand Bahama)"       — the name in any form
+
+A facility — yard, shipyard, fabrication hall, dock, plant, refinery — is described by TYPE and by SEA or COUNTRY, never by town: "a shipyard, Bahamas", "a fabrication yard, Norway", "an offshore platform, Norwegian North Sea". A town on its own, as a work location with no facility attached, is fine. Put the town next to a facility and you have named the employer.
 
 EVERY dated period in the CV gets its own entry, including the earliest one. Do not merge two roles into one, and do not stop at the recent ones: a CV showing work from 2005 must produce an entry starting 2005.
 
@@ -372,6 +379,8 @@ Rules:
 - Never name an employer, a person, a vessel or a client.
 - A certificate may only appear if it is in verified_certificates. One in claimed_certificates may be mentioned only as "per CV, not yet verified".
 - No adjectives of quality: not "highly skilled", "proven", "reliable", "excellent".
+- No languages, driving licences or forklift/telehandler/Bobcat tickets: they are Profile facts, listed elsewhere on the same page, and they are never among the two strongest things about a tradesman.
+- No yard, vessel, platform, field, project or company name, and no town beside a facility — describe the facility by type and country instead.
 - Two lines maximum, one sentence each, no more than 30 words per line.
 
 Return JSON: {"summary":["line one","line two"]}`, JSON.stringify({
