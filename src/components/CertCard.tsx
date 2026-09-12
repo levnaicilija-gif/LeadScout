@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { levelNote, expiryTone } from '@/lib/trade-cards';
 import { STATE_LABEL, STATE_TONE, type CertState } from '@/lib/verify/routes';
+import { CertExplanation } from './CertExplanation';
 
 const tone = (t: 'ok' | 'warn' | 'bad' | 'none') => (t === 'ok' ? 'text-ok' : t === 'warn' ? 'text-warn' : t === 'bad' ? 'text-bad' : 'text-ink2');
 
@@ -63,6 +64,17 @@ export function CertCard({ res, busy }: { res: any; busy?: string }) {
           {note?.coversText ?? <span className="text-ink3">not mapped to a role yet</span>}
         </Row>
       </div>
+
+      {/* Decoded from tables, never from a model. Unrecognised says so rather than showing
+          nothing, which would read as though there were nothing to say. */}
+      <CertExplanation
+        body={ext.cert_body ?? res?.certBody?.key}
+        level={ext.level}
+        scope={ext.scope}
+        position={ext.position}
+        process={ext.process}
+        documentId={res?.documentId}
+      />
 
       <div className="mt-3">
         <div className="text-[12px] text-ink3 uppercase tracking-wide">Confirmation</div>

@@ -46,3 +46,19 @@ Commit after each step, two lines.
 OPTIONAL — DESIGN PASS (after real data is on screen)
 -------------------------------------------------------------------------------
 Use the Claude Design MCP to import the redesigned screens once Eli has produced them in Claude Design; apply within the existing tokens; do not change behaviour. Prioritise: empty and loading states with skeletons, keyboard navigation in tables (j/k, Enter, Esc), ⌘K command bar (candidates, leads, screens), inline status edit, "Radar spent today" line.
+
+-------------------------------------------------------------------------------
+11. TALENTMATCH THREE
+-------------------------------------------------------------------------------
+(1) "Previously worked for this client": when scoring a candidate against a lead or
+job post, match the CV's employers, yards and sites against the lead company and its
+known sites; badge on the score card — "knows the site" or "possible non-compete /
+rehire — ask" — plus one screening question. (2) "Why this score": collapsible
+paragraph under the score citing the JD's requirements and what in the CV met or
+missed each; facts from the CV only. (3) Daily scorecard, generated not typed: per
+recruiter, counts from LeadScout data (packs sent, outreach sent, verifications,
+leads confirmed, calls logged, candidates added) against targets a senior sets in
+Settings; recruiter adds three lines at end of day; senior sees it in the review
+queue and can reply; shown in Today after 16:00 and on Home as "yesterday's
+scorecard". Migration guarded until applied. Commit after each step, two lines per
+step.

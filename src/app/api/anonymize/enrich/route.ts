@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { anonymize, buildBullets, clientSummary, scoreAgainstJob, piiRegexHits, piiModelReview } from '@/lib/ai/documents';
 import { renderClientCv, clientCvText, clientCvAllowed, type ClientCvData } from '@/lib/pdf/render';
+import { explainCert, clientLine } from '@/lib/certs/explain';
+import { loadLibrary } from '@/lib/certs/library';
+import { hasCertLibrary } from '@/lib/schema-features';
 export const maxDuration = 120;
 
 /**
@@ -34,6 +37,23 @@ export async function POST(req: Request) {
     const { data: verified } = await db.from('verifications')
       .select('result, valid_until, checked_where, checked_at, documents!inner(candidate_id, cert_body, extracted)')
       .eq('documents.candidate_id', candidateId);
+
+    // What each certificate means, in one line, from the certificate tables and the ISO 9606
+    // decoder. Pure lookup — no model call — so the client pack says the same thing every time
+    // it is generated, and an unrecognised certificate gets no line rather than a guessed one.
+    const bodies = (verified ?? []).map((v: any) => v.documents?.cert_body).filter(Boolean);
+    const library = (await hasCertLibrary(db)) ? await loadLibrary(db, me.workspace_id, bodies) : [];
+    for (const v of (verified ?? []) as any[]) {
+      const e = explainCert({
+        body: v.documents?.cert_body,
+        level: v.documents?.extracted?.level,
+        scope: v.documents?.extracted?.scope,
+        position: v.documents?.extracted?.position,
+        process: v.documents?.extracted?.process,
+        library,
+      });
+      v.means = clientLine(e, v.valid_until);
+    }
 
     const { bullets, dropped: droppedBullets } = await buildBullets(anon, verified ?? [], job);
     // Two lines a client reads before deciding whether to read the rest.
@@ -90,6 +110,9 @@ function clientCvData(code: string, profile: any, anon: any, verified: any[], bu
     checkedAt: v.checked_at ?? null,
     validUntil: v.valid_until ?? null,
     result: v.result,
+    // One plain-English line from the certificate tables. A client reads "6G pipe, no upper
+    // thickness limit"; "138/136 T BW … H-L045 ssnb" tells them nothing. Decoded in code.
+    means: v.means ?? null,
   }));
   return {
     referenceCode: code,

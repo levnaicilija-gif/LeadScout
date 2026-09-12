@@ -50,7 +50,7 @@ export type ClientCvData = {
   summary: string[];
   bullets: string[];
   gaps: { from: string; to: string; months: number }[];
-  certificates: { name: string; number?: string | null; checkedWhere?: string | null; checkedAt?: string | null; validUntil?: string | null; result: string }[];
+  certificates: { name: string; number?: string | null; checkedWhere?: string | null; checkedAt?: string | null; validUntil?: string | null; result: string; means?: string | null }[];
   /** Employer names are already stripped — type + country only. */
   experience: { years: string; what: string; scope?: string | null; rotation?: string | null }[];
   skills: string[];
@@ -85,7 +85,7 @@ export const clientCvText = (d: ClientCvData) =>
  * catch it. A scope line that trips the review is a scope line to fix.
  */
 export const clientCvAllowed = (d: ClientCvData) => [
-  ...d.certificates.flatMap((c) => [c.name, c.number ?? '', `${c.name} ${c.number ?? ''}`.trim()]),
+  ...d.certificates.flatMap((c) => [c.name, c.number ?? '', `${c.name} ${c.number ?? ''}`.trim(), c.means ?? '']),
   // Neither the bullets nor the experience lines: both are written by the model and are exactly
   // where a leaked name shows, so both stay subject to the check.
   ...d.experience.map((e) => e.years ?? ''),
@@ -142,13 +142,18 @@ export function ClientCv(d: ClientCvData) {
         </View>
         {d.certificates.length === 0 && <Text style={[s.td, { paddingVertical: 4 }] as any}>No verified certificates on file.</Text>}
         {d.certificates.map((c, i) => (
-          <View key={i} style={s.row} wrap={false}>
+          <View key={i} wrap={false}>
+          <View style={s.row}>
             <Cell w="26%">{c.name}</Cell>
             <Cell w="15%">{c.number || '—'}</Cell>
             <Cell w="24%">{c.checkedWhere ? new URL(c.checkedWhere).hostname.replace(/^www\./, '') : 'Document on file'}</Cell>
             <Cell w="13%">{date(c.checkedAt)}</Cell>
             <Cell w="13%">{date(c.validUntil)}</Cell>
             <Cell w="9%" colour={statusColour(c.result)}>{statusLabel(c.result)}</Cell>
+          </View>
+          {/* One plain-English line, so a buyer does not have to know what "138/136 T BW
+              H-L045 ss nb" means. Written from our certificate tables, never by a model. */}
+          {c.means ? <Text style={s.scope}>{c.means}</Text> : null}
           </View>
         ))}
         <View style={s.tableGap} />
