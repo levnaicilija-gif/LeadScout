@@ -15,11 +15,18 @@ export const maxDuration = 300;
  * page that has already been fetched, and `contactFromPosting` throws away anything that is not
  * literally on that page. A company where nobody is found stays a company where nobody is found.
  *
- * Chained: the next batch is dispatched BEFORE this one does its work, because doing it after
- * means one 300 s timeout kills the whole run — which has already happened to Radar, careers
- * discovery and the job crawl.
+ * One timed pass, not a chain. The first version dispatched the next batch with a
+ * fire-and-forget fetch before doing its own work; on the first real run it reported
+ * "more: true" and the next batch never ran, and nine of seventeen companies had to be driven
+ * by hand. A serverless function is not required to keep an un-awaited request alive after it
+ * responds, so correctness cannot rest on one.
  *
- *   POST { batch?: number, force?: boolean }
+ * Instead it works through every pending company until the deadline, then says how many are
+ * left. Nothing is lost when it stops: contacts_checked_at is written per company, so the next
+ * call resumes where this one ended. scripts/run-hiring-contacts.ts calls it until done, and a
+ * cron hitting it makes progress every day without any driving at all.
+ *
+ *   POST { force?: boolean }
  */
 const CONTACT = z.object({
   name: z.string().nullable().optional(),
@@ -38,8 +45,9 @@ const PEOPLE = z.object({
   })).default([]),
 });
 
-const BATCH = 8;
 const STALE_DAYS = 30;
+/** Leave headroom under maxDuration so the last company finishes and the answer is returned. */
+const DEADLINE_MS = 230_000;
 
 export async function POST(req: Request) {
   const db = supabaseAdmin();
@@ -61,27 +69,26 @@ export async function POST(req: Request) {
   const companyIds = [...new Set((open ?? []).map((r: any) => r.company_id))];
   if (!companyIds.length) return NextResponse.json({ done: true, reason: 'nothing open' });
 
+  // Every pending company, not a fixed batch: how many get done is decided by the clock.
   let q = db.from('companies')
     .select('id, name, domain, careers_url, contact_page_url, switchboard, switchboard_source_url, general_email, general_email_source_url, email_pattern, contacts_checked_at, workspace_id')
     .in('id', companyIds)
-    .limit(BATCH);
+    .order('contacts_checked_at', { ascending: true, nullsFirst: true });
   if (!force) q = q.or(`contacts_checked_at.is.null,contacts_checked_at.lt.${stale}`);
-  const { data: companies } = await q;
+  const { data: pending } = await q;
 
-  if (!companies?.length) return NextResponse.json({ done: true, reason: 'every company has been checked recently' });
+  if (!pending?.length) return NextResponse.json({ done: true, remaining: 0, reason: 'every company has been checked recently' });
 
-  // Dispatch the next batch first. If this request dies, the run continues.
-  const more = companies.length === BATCH;
-  if (more) {
-    const url = new URL(req.url);
-    fetch(url.toString(), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ force }) }).catch(() => {});
-  }
-
-  const workspaceId = companies[0].workspace_id as string;
+  const startedAt = Date.now();
+  const companies: any[] = [];
+  const workspaceId = pending[0].workspace_id as string;
   const budget = await Budget.open(db, workspaceId);
   const report: any[] = [];
 
-  for (const co of companies) {
+  for (const co of pending) {
+    // Stop before the platform stops us, so the report is returned rather than lost to a 504.
+    if (Date.now() - startedAt > DEADLINE_MS) break;
+    companies.push(co);
     const out: any = { company: co.name, postingContacts: 0, pages: 0 };
     try {
       // ---- 1. the company's own contact or careers page
@@ -197,9 +204,12 @@ export async function POST(req: Request) {
   }
 
   const withOrg = report.filter((r) => (r.orgContacts ?? 0) > 0).length;
+  const remaining = pending.length - companies.length;
   return NextResponse.json({
     checked: report.length,
-    more,
+    done: remaining === 0,
+    remaining,
+    tookMs: Date.now() - startedAt,
     // Reported on its own so the question "is the organisation page worth a standing check"
     // has a number behind it rather than an impression.
     organisationPage: {
