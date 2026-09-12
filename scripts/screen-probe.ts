@@ -12,6 +12,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
+import { markWorkspaceTest } from '../src/lib/test-data';
 
 const BASE = process.env.SCREEN_BASE ?? 'https://leadscout-rfbt.vercel.app';
 const PATH = process.argv[2] ?? '/app/radar?tab=hiring';
@@ -35,6 +36,7 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SU
   // the screen renders the real data under real RLS.
   const { data: own } = await admin.from('users').select('workspace_id').eq('id', uid).maybeSingle();
   const throwaway = own?.workspace_id as string;
+  await markWorkspaceTest(admin, throwaway);
   await admin.from('users').update({ workspace_id: ws.id, role: 'senior' }).eq('id', uid);
 
   const browser = await chromium.launch();

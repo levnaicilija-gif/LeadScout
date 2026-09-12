@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { hasPostingContact, hasHiringState } from './schema-features';
 
 /**
  * The day, in order. Six queries in a fixed priority — no model chooses any of this.
@@ -20,26 +21,38 @@ export type TodayItem = {
 const day = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
 
 export async function todayItems(sb: SupabaseClient): Promise<TodayItem[]> {
-  const [pending, noReply, newLeads, expiring, missingDocs] = await Promise.all([
+  const [pending, noReply, newLeads, expiring, missingDocs, hiring] = await Promise.all([
     sb.from('verifications').select('id, issuer_email_sent_at, documents(candidate_id, extracted, candidates!candidate_id(reference_code))').eq('result', 'pending'),
     sb.from('outreach').select('id, sent_at, leads(project_name, companies(name))').eq('status', 'sent').is('reply_at', null).lte('sent_at', day(-3)),
     sb.from('leads').select('id, kind, project_name, fit_score, trades_inferred, companies(name)').eq('status', 'new').gte('created_at', day(-7)).order('fit_score', { ascending: false }).limit(6),
     sb.from('verifications').select('id, valid_until, documents(cert_body, candidates!candidate_id(reference_code))').eq('result', 'valid').lte('valid_until', day(60).slice(0, 10)),
     campaignsMissingDocs(sb),
+    hiringWorthCalling(sb),
   ]);
 
   const items: TodayItem[] = [];
 
   // 4 · New leads, by fit then timing. Read before anything is chased.
-  if ((newLeads.data ?? []).length) {
-    const names = newLeads.data!.map((l: any) => l.companies?.name).filter(Boolean);
+  //
+  // Won work and hiring now are one item, because they are one job: read what came in and
+  // decide who to call. Each company is labelled with which it is, so a recruiter can see at a
+  // glance whether the reason to call is a contract award or an open advert.
+  const leadNames = (newLeads.data ?? []).map((l: any) => l.companies?.name).filter(Boolean) as string[];
+  const hiringNames = hiring.map((h) => `${h.name} (hiring now)`);
+  const allNames = [...leadNames, ...hiringNames];
+  if (allNames.length) {
+    const n = (newLeads.data ?? []).length + hiring.length;
     items.push({
       dot: '',
-      title: `Read ${newLeads.data!.length} new leads${names[0] ? ` — ${names[0]} first` : ''}`,
-      sub: names.join(', '),
+      title: `Read ${n} new lead${n === 1 ? '' : 's'}${allNames[0] ? ` — ${allNames[0]} first` : ''}`,
+      sub: allNames.join(', '),
       href: '/app/radar',
-      why: 'Contract awards are demand months before a job is posted.',
-      from: 'leads with status = new in the last 7 days, by fit',
+      why: hiring.length
+        ? 'Contract awards are demand months before a job is posted; an open advert is demand today.'
+        : 'Contract awards are demand months before a job is posted.',
+      from: hiring.length
+        ? 'leads with status = new in the last 7 days, plus hiring-now companies under high pressure or naming a contact'
+        : 'leads with status = new in the last 7 days, by fit',
     });
   }
 
@@ -165,3 +178,47 @@ export const HOW_THIS_LIST_IS_MADE = [
  * 11:00 for work that has no appointment is a small lie the recruiter would plan around.
  */
 export const whenLabel = (item: TodayItem, index: number) => item.at ?? (index === 0 ? 'Now' : 'Today');
+
+
+/**
+ * Hiring-now companies worth a call today.
+ *
+ * Two reasons qualify and no others. High pressure means the volume and the recency both say
+ * they are short of people now. A contact printed on the advert means there is a named person
+ * to ring, which is the difference between a task and a browse. A company already marked
+ * "not for us" never comes back.
+ *
+ * Guarded: the contact column and the row state both arrive with 0020, and naming a column that
+ * does not exist fails the whole query rather than omitting a field.
+ */
+async function hiringWorthCalling(sb: SupabaseClient): Promise<{ id: string; name: string; why: string }[]> {
+  const contacts = await hasPostingContact(sb);
+  const state = await hasHiringState(sb);
+  const cols = `company_id, headcount, posted_at, first_seen_at${contacts ? ', contact_name' : ''}, companies!inner(name${state ? ', hiring_status' : ''})`;
+  const { data, error } = await sb.from('job_posts').select(cols as '*')
+    .eq('status', 'open').not('company_id', 'is', null).limit(400) as { data: any[] | null; error: any };
+  if (error || !data) return [];
+
+  const byCompany = new Map<string, any[]>();
+  for (const p of data) {
+    if (state && p.companies?.hiring_status === 'not_for_us') continue;
+    const k = p.company_id as string;
+    (byCompany.get(k) ?? byCompany.set(k, []).get(k)!).push(p);
+  }
+
+  const out: { id: string; name: string; why: string }[] = [];
+  for (const [id, ps] of byCompany) {
+    const openings = ps.reduce((n, p) => n + (p.headcount && p.headcount > 0 ? p.headcount : 1), 0);
+    const newest = ps.map((p) => p.posted_at ?? p.first_seen_at).filter(Boolean).sort().pop();
+    const fresh = newest ? (Date.now() - Date.parse(newest)) / 86400000 <= 30 : false;
+    const named = contacts ? ps.find((p) => p.contact_name) : null;
+    const high = openings >= 5 && fresh;
+    if (!high && !named) continue;
+    out.push({
+      id,
+      name: ps[0].companies?.name ?? 'a company',
+      why: high ? `${openings} openings, newest within a month` : `${named.contact_name} is named on the advert`,
+    });
+  }
+  return out.slice(0, 5);
+}

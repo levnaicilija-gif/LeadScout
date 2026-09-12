@@ -10,6 +10,7 @@
 import fs from 'fs';
 import { createClient } from '@supabase/supabase-js';
 import { chromium, type Page } from 'playwright';
+import { markWorkspaceTest, markTest } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'https://leadscout-rfbt.vercel.app';
 const EMAIL = `smoke+${Date.now()}@rfbt-recruitment.com`;
@@ -33,8 +34,12 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
   const uid = created.user!.id;
   const { data: me } = await admin.from('users').select('workspace_id').eq('id', uid).maybeSingle();
   const workspace = me!.workspace_id as string;
+  // Mark everything this run creates before creating it, so a cleanup can never reach a real
+  // record even if the scoping below is wrong.
+  await markWorkspaceTest(admin, workspace);
 
   const { data: co } = await admin.from('companies').insert({ workspace_id: workspace, name: 'Smoke Offshore AS', employer_type: 'end_client', country: 'NO' }).select().single();
+  await markTest(admin, 'companies', [co!.id]);
   const { data: lead } = await admin.from('leads').insert({
     workspace_id: workspace, company_id: co!.id, kind: 'won_work', project_name: 'Smoke frame agreement',
     project_location: 'Norwegian Continental Shelf', country: 'NO', trades_inferred: ['welder'],
@@ -109,6 +114,16 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     // the table has something to show. The message varies, so match the shapes it can take.
     check(!/No trade postings open|No careers pages found yet|Nothing from an employer/.test(hiring),
       'Hiring now shows the table rather than an empty state');
+
+    // 4c — the Hiring now drawer. A row a recruiter cannot open is a table, not a screen.
+    await page.goto(`${BASE}/app/radar?tab=hiring&company=${co!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForTimeout(2500);
+    const hd = await page.locator('aside').first().innerText().catch(() => '');
+    check(/Smoke Offshore AS/.test(hd), 'Hiring now drawer opens on the company');
+    check(/Who to contact/.test(hd), 'drawer shows the contact block');
+    check(/What they are hiring for/.test(hd) && /Smoke Welder/.test(hd), 'drawer lists the postings');
+    // Nobody was seeded with a contact, so the honest answer is searches — never a made-up name.
+    check(/searches to run|Reading what we hold/.test(hd), 'drawer offers searches when nobody was found');
 
     // 5 — lead drawer: one tool, end to end
     await page.goto(`${BASE}/app/radar?lead=${lead!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });

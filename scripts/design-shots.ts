@@ -10,6 +10,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
+import { markWorkspaceTest } from '../src/lib/test-data';
 import fs from 'node:fs';
 
 const BASE = process.env.SCREEN_BASE ?? 'https://leadscout-rfbt.vercel.app';
@@ -38,6 +39,7 @@ const SIGNED_IN = [
   const uid = created.user!.id;
   const { data: own } = await admin.from('users').select('workspace_id').eq('id', uid).maybeSingle();
   const throwaway = own?.workspace_id as string;
+  await markWorkspaceTest(admin, throwaway);
   await admin.from('users').update({ workspace_id: ws.id, role: 'senior', onboarding_day: 30 }).eq('id', uid);
 
   const browser = await chromium.launch();

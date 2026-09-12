@@ -2,9 +2,13 @@ import { supabaseServer } from '@/lib/supabase/server';
 import { Help } from '@/components/Help';
 import { LeadDrawer } from '@/components/LeadDrawer';
 import { HiringNow, HiringHelp } from '@/components/HiringNow';
-import { hasEmployerOverride, hasJobBoardFields } from '@/lib/schema-features';
+import { hasEmployerOverride, hasJobBoardFields, hasHiringState, hasPostingContact } from '@/lib/schema-features';
+import { HiringDrawer } from '@/components/HiringDrawer';
+import { groupByCompany } from '@/components/HiringNow';
+import { checkRightToWork } from '@/lib/right-to-work';
+import { currentUser } from '@/lib/supabase/server';
 export const dynamic = 'force-dynamic';
-export default async function Radar({ searchParams }: { searchParams: { tab?: string; lead?: string; agencies?: string } }) {
+export default async function Radar({ searchParams }: { searchParams: { tab?: string; lead?: string; agencies?: string; company?: string; country?: string; trade?: string; employer?: string; pressure?: string } }) {
   const sb = supabaseServer(); const tab = searchParams.tab === 'hiring' ? 'job_post' : 'won_work';
   const hiring = tab === 'job_post';
   // Migration 0012 may not be applied yet; naming a column that does not exist fails the whole
@@ -13,12 +17,16 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const coOverride = ovr ? ", employer_type_override, employer_type_set_at" : "";
   const boards0014 = await hasJobBoardFields(sb);
   const jpBoard = boards0014 ? ", poster_name, poster_type, is_secondary, duplicate_of" : "";
+  // 0020: row state on the company, and the contact printed on an advert.
+  const state0020 = await hasHiringState(sb);
+  const coState = state0020 ? ", hiring_status, hiring_confirmed_at" : "";
+  const jpContact = (await hasPostingContact(sb)) ? ", contact_name, contact_title, contact_email" : "";
 
   // Hiring now reads job_posts directly: a posting on a company's own careers page has no lead
   // behind it, and inventing one to hang it off would be a lead nobody decided to create.
   const { data: postings } = hiring
     ? await sb.from('job_posts')
-      .select(`id, company_id, title, role, location, country, trades, certs_required, rotation, contract_type, headcount, posted_at, first_seen_at, source_url, via${jpBoard}, companies!inner(name, employer_type, country, domain${coOverride})`)
+      .select(`id, company_id, title, role, location, country, trades, certs_required, rotation, contract_type, headcount, posted_at, first_seen_at, source_url, via${jpBoard}${jpContact}, companies!inner(name, employer_type, country, domain${coOverride}${coState})`)
       .eq('status', 'open').not('company_id', 'is', null)
       .order('posted_at', { ascending: false, nullsFirst: false }).order('first_seen_at', { ascending: false }).limit(400)
     : { data: null };
@@ -40,13 +48,54 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const shown = (postings ?? []).filter(notDuplicate);
   const duplicates = (postings ?? []).length - shown.length;
   const agencyPostings = shown.filter(isAgency);
+  // A row marked "not for us" is a decision, and it stays taken: it leaves the table.
+  const notRejected = (p: any) => (p.companies?.hiring_status ?? 'new') !== 'not_for_us';
+  const live = shown.filter(notRejected);
+  const rejected = shown.length - live.length;
+
+  // Verified candidates by trade, for "Ready to attach". One query, not one per row.
+  const { data: readyRows } = hiring
+    ? await sb.from('verifications')
+      .select('result, documents!inner(candidates!candidate_id(trade))')
+      .eq('result', 'valid').limit(300)
+    : { data: null as any };
+  const readyCounts = new Map<string, number>();
+  for (const v of (readyRows ?? []) as any[]) {
+    const t = (v.documents?.candidates?.trade ?? '').toLowerCase();
+    if (!t) continue;
+    for (const word of t.split(/[^a-z]+/).filter(Boolean)) readyCounts.set(word, (readyCounts.get(word) ?? 0) + 1);
+  }
+
+  const agencyFiltered = (showAgencies ? live : live.filter((p: any) => !isAgency(p))) as any[];
+  const groupsAll = hiring ? groupByCompany(agencyFiltered as any) : [];
+  const options = {
+    countries: [...new Set(groupsAll.map((g) => g.country).filter(Boolean))].sort() as string[],
+    trades: [...new Set(groupsAll.flatMap((g) => g.trades))].sort(),
+    employers: [...new Set(groupsAll.map((g) => g.employerType ?? 'unknown'))].sort(),
+  };
+  const state: Record<string, { confirmedAt?: string | null; status?: string | null }> = {};
+  for (const p of agencyFiltered) {
+    state[p.company_id] = { confirmedAt: p.companies?.hiring_confirmed_at ?? null, status: p.companies?.hiring_status ?? null };
+  }
+  // One right-to-work line per country in view, keyed on where the work is.
+  const rightToWork: Record<string, string> = {};
+  for (const c of options.countries) rightToWork[c] = checkRightToWork(c, {} as any).rule;
+
+  const openCompany = searchParams.company
+    ? groupsAll.find((g) => g.companyId === searchParams.company) ?? null
+    : null;
+
   const hiringProps = {
-    postings: (showAgencies ? shown : shown.filter((p: any) => !isAgency(p))) as any,
+    postings: agencyFiltered as any,
     crawledAt: lastJobs?.last_jobs_crawl_at,
     companiesWithBoards: boards ?? 0,
     showAgencies,
     hiddenAgencies: agencyPostings.length,
     duplicates,
+    filters: { country: searchParams.country, trade: searchParams.trade, employer: searchParams.employer, pressure: searchParams.pressure },
+    options,
+    state,
+    rightToWork,
   };
 
   const selected = leads?.find((l) => l.id === searchParams.lead) ?? null;
@@ -70,5 +119,25 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
       {(leads ?? []).length === 0 && <tr><td colSpan={7} className="text-ink3 p-6">No leads yet. Radar reads your sources every morning at 06:00.</td></tr>}
       </tbody></table></div>)}
     {selected && <LeadDrawer lead={selected} />}
+    {openCompany && (
+      <HiringDrawer g={{
+        companyId: openCompany.companyId,
+        company: openCompany.company,
+        employerType: openCompany.employerType,
+        employerOverride: (openCompany.postings[0] as any)?.companies?.employer_type_override ?? null,
+        employerSetAt: (openCompany.postings[0] as any)?.companies?.employer_type_set_at ?? null,
+        country: openCompany.country,
+        postings: openCompany.postings,
+        trades: openCompany.trades,
+        certs: openCompany.certs,
+        pressure: openCompany.pressure,
+        pressureWhy: openCompany.pressureWhy,
+        confirmedAt: state[openCompany.companyId]?.confirmedAt ?? null,
+        status: state[openCompany.companyId]?.status ?? null,
+        readyByTrade: openCompany.trades
+          .map((t) => ({ trade: t, n: readyCounts.get(t.split(' ')[0].toLowerCase()) ?? 0 }))
+          .filter((x) => x.n > 0),
+      }} />
+    )}
   </>);
 }

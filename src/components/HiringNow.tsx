@@ -34,6 +34,7 @@ export type Posting = {
 };
 
 type Group = {
+  companyId: string;
   company: string;
   employerType: string | null;
   country: string | null;
@@ -47,6 +48,11 @@ type Group = {
   boardPosters: string[];
   newest: string | null;
   pressure: 'high' | 'medium' | 'low';
+  /** Why that word — shown on hover, so the ranking is never a number nobody can question. */
+  pressureWhy: string;
+  openings: number;
+  reposted: number;
+  daysSinceNewest: number | null;
 };
 
 const day = (s?: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null);
@@ -72,7 +78,13 @@ export function groupByCompany(postings: Posting[]): Group[] {
     const newest = dates.length ? dates[dates.length - 1] : null;
     const fresh = newest ? (Date.now() - Date.parse(newest)) / 86400000 <= 30 : false;
 
+    // An advert seen more than once under the same role is a repost: the job did not get filled.
+    const reposted = roles.filter((r) => r.n > 1).reduce((n, r) => n + r.n - 1, 0);
+    const days = newest ? Math.floor((Date.now() - Date.parse(newest)) / 86400000) : null;
+    const pressure: Group['pressure'] = openings >= 5 && fresh ? 'high' : openings >= 5 || (openings >= 2 && fresh) ? 'medium' : 'low';
+
     return {
+      companyId: ps[0].company_id,
       company: ps[0].companies?.name ?? 'Unknown company',
       employerType: ps[0].companies?.employer_type ?? null,
       country: ps[0].country ?? ps[0].companies?.country ?? null,
@@ -86,7 +98,15 @@ export function groupByCompany(postings: Posting[]): Group[] {
       newest,
       // Pressure is volume and recency together: five open trade roles is a campaign, and one
       // advert from March is not.
-      pressure: openings >= 5 && fresh ? 'high' : openings >= 5 || (openings >= 2 && fresh) ? 'medium' : 'low',
+      pressure,
+      openings,
+      reposted,
+      daysSinceNewest: days,
+      pressureWhy: [
+        `${openings} opening${openings === 1 ? '' : 's'} across ${ps.length} advert${ps.length === 1 ? '' : 's'}`,
+        reposted > 0 ? `${reposted} repost${reposted === 1 ? '' : 's'} — the role has not been filled` : null,
+        days === null ? 'no date on any advert' : days <= 30 ? `newest ${days} day${days === 1 ? '' : 's'} old` : `newest is ${days} days old`,
+      ].filter(Boolean).join(' · '),
     };
   });
 
@@ -103,6 +123,7 @@ const Pressure = ({ p }: { p: Group['pressure'] }) => (
 
 export function HiringNow({
   postings, crawledAt, companiesWithBoards, showAgencies, hiddenAgencies, duplicates = 0,
+  filters, options, state, rightToWork,
 }: {
   postings: Posting[];
   crawledAt?: string | null;
@@ -111,8 +132,22 @@ export function HiringNow({
   hiddenAgencies: number;
   /** Board adverts that repeat a company's own careers page, dropped from the view. */
   duplicates?: number;
+  /** What the page is currently filtered to, straight from the query string. */
+  filters?: { country?: string; trade?: string; employer?: string; pressure?: string };
+  /** Every value present in the unfiltered data, so a chip is never offered for nothing. */
+  options?: { countries: string[]; trades: string[]; employers: string[] };
+  /** Per company: confirmed, pursued, not for us. */
+  state?: Record<string, { confirmedAt?: string | null; status?: string | null }>;
+  /** The rule for a job in that country — one line, keyed on where the work is. */
+  rightToWork?: Record<string, string>;
 }) {
-  const groups = groupByCompany(postings);
+  const all = groupByCompany(postings);
+  const f = filters ?? {};
+  const groups = all.filter((g) =>
+    (!f.country || g.country === f.country)
+    && (!f.trade || g.trades.includes(f.trade))
+    && (!f.employer || (g.employerType ?? 'unknown') === f.employer)
+    && (!f.pressure || g.pressure === f.pressure));
 
   return (<>
     <div className="flex items-center gap-3 mb-2 text-[13px]">
@@ -130,6 +165,8 @@ export function HiringNow({
       </span>
     </div>
 
+    {options && <Chips options={options} filters={f} showAgencies={showAgencies} shown={groups.length} total={all.length} />}
+
     <div className="bg-panel border border-line rounded-card overflow-auto max-h-[calc(100vh-220px)]">
       <table className="tbl w-full min-w-[1100px] border-collapse">
         <thead>
@@ -137,13 +174,15 @@ export function HiringNow({
         </thead>
         <tbody>
           {groups.map((g) => (
-            <tr key={g.company} className="hover:bg-[#F9FAFB] align-top">
+            <tr key={g.company} className="hover:bg-[#F9FAFB] align-top cursor-pointer">
               <td>
-                <div className="font-medium whitespace-nowrap">{g.company}</div>
+                <a href={`?tab=hiring&company=${g.companyId}${showAgencies ? '&agencies=1' : ''}`} className="block font-medium whitespace-nowrap text-accent">{g.company}</a>
                 <div className="text-ink3 text-[12px]">
                   {[g.country, g.employerType?.replace(/_/g, ' ')].filter(Boolean).join(' · ')}
                   {g.employerType === 'staffing_agency' && <span className="text-warn"> · agency</span>}
                 </div>
+                {state?.[g.companyId]?.status === 'pursued' && <span className="badge badge-info mt-1">pursued</span>}
+                {state?.[g.companyId]?.confirmedAt && <span className="badge badge-ok mt-1 ml-1">✓ checked</span>}
                 {!g.fromOwnBoard && <div className="text-ink3 text-[12px]">from a job board{g.boardPosters.length ? `, placed by ${g.boardPosters.slice(0, 2).join(', ')}` : ', advertiser not named'}</div>}
               </td>
               <td>
@@ -154,13 +193,17 @@ export function HiringNow({
               <td className="text-[13px]">
                 {g.places.slice(0, 3).join(', ') || g.country || '—'}
                 {g.places.length > 3 && <div className="text-ink3 text-[12px]">+{g.places.length - 3} more</div>}
+                {g.country && rightToWork?.[g.country] && <div className="text-ink3 text-[12px] mt-0.5">{rightToWork[g.country]}</div>}
               </td>
               <td>
                 {g.trades.map((t) => <span key={t} className="inline-block text-[12px] px-2 py-0.5 rounded-md bg-line2 text-ink2 mr-1 mb-1">{t}</span>)}
                 {!g.trades.length && <span className="text-ink3 text-[12px]">—</span>}
               </td>
               <td className="text-[13px]">{g.certs.join(', ') || <span className="text-ink3">none stated</span>}</td>
-              <td><Pressure p={g.pressure} /></td>
+              <td title={g.pressureWhy}>
+                <Pressure p={g.pressure} />
+                <div className="text-ink3 text-[12px]">{g.openings} open{g.reposted > 0 ? ` · ${g.reposted} repost${g.reposted === 1 ? '' : 's'}` : ''}</div>
+              </td>
               <td className="text-[13px] whitespace-nowrap">
                 {day(g.newest) ?? <span className="text-ink3">—</span>}
                 <div className="text-[12px]">
@@ -199,3 +242,62 @@ export const HiringHelp = () => (
     ]}
   />
 );
+
+/**
+ * Filter chips, built from what is actually in the data.
+ *
+ * A chip is never offered for a value no row has: an empty filter that returns nothing teaches
+ * a recruiter that the filters are broken. The counts say how much the current filter is
+ * hiding, because a filtered table that looks like the whole table is how a company gets
+ * missed for a week.
+ */
+function Chips({
+  options, filters, showAgencies, shown, total,
+}: {
+  options: { countries: string[]; trades: string[]; employers: string[] };
+  filters: { country?: string; trade?: string; employer?: string; pressure?: string };
+  showAgencies: boolean;
+  shown: number;
+  total: number;
+}) {
+  const href = (patch: Record<string, string | undefined>) => {
+    const q = new URLSearchParams({ tab: 'hiring' });
+    if (showAgencies) q.set('agencies', '1');
+    const next = { ...filters, ...patch };
+    for (const [k, v] of Object.entries(next)) if (v) q.set(k, v);
+    return `?${q.toString()}`;
+  };
+
+  const Row = ({ label, name, values }: { label: string; name: keyof typeof filters; values: string[] }) => {
+    if (values.length < 2) return null;
+    return (
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-ink3 text-[12px] w-[74px] shrink-0">{label}</span>
+        {values.map((v) => {
+          const on = filters[name] === v;
+          return (
+            <a key={v} href={href({ [name]: on ? undefined : v })}
+              className={`text-[12px] px-2.5 py-1 rounded-full border ${on ? 'border-accent bg-accentsoft text-accent font-semibold' : 'border-line bg-panel text-ink2'}`}>
+              {v.replace(/_/g, ' ')}{on ? ' ×' : ''}
+            </a>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const any = filters.country || filters.trade || filters.employer || filters.pressure;
+  return (
+    <div className="bg-panel border border-line rounded-card px-3.5 py-3 mb-2.5 grid gap-2">
+      <Row label="Country" name="country" values={options.countries} />
+      <Row label="Trade" name="trade" values={options.trades} />
+      <Row label="Employer" name="employer" values={options.employers} />
+      <Row label="Pressure" name="pressure" values={['high', 'medium', 'low']} />
+      {any && (
+        <div className="text-[12px] text-ink2">
+          Showing {shown} of {total} companies · <a href={href({ country: undefined, trade: undefined, employer: undefined, pressure: undefined })} className="text-accent font-semibold">clear the filters</a>
+        </div>
+      )}
+    </div>
+  );
+}

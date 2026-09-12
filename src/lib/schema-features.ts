@@ -60,3 +60,9 @@ export async function hasTable(sb: SupabaseClient, table: string): Promise<boole
 /** The certificate library and the attach audit trail arrive with migration 0019. */
 export const hasCertLibrary = (sb: SupabaseClient) => hasTable(sb, 'cert_library');
 export const hasAttachTrail = (sb: SupabaseClient) => hasColumn(sb, 'documents', 'attached_by');
+
+/** Hiring-now contacts, company outreach, row state and test marking arrive with 0020. */
+export const hasPostingContact = (sb: SupabaseClient) => hasColumn(sb, 'job_posts', 'contact_name');
+export const hasHiringState = (sb: SupabaseClient) => hasColumn(sb, 'companies', 'hiring_status');
+export const hasCompanyOutreach = (sb: SupabaseClient) => hasColumn(sb, 'outreach', 'company_id');
+export const hasTestFlag = (sb: SupabaseClient) => hasColumn(sb, 'workspaces', 'is_test');
