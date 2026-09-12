@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { fetchPage } from '@/lib/fetch-page';
 import { askJson, MODEL_CLASSIFY } from '@/lib/ai/claude';
-import { emailsOn, phoneOn, contactFromPosting } from '@/lib/hiring-contacts';
+import { emailsOn, phoneOn, contactFromPosting, organisationLinks, contactsFromOrgPage } from '@/lib/hiring-contacts';
 import { hasPostingContact } from '@/lib/schema-features';
 import { Budget, logCost } from '@/lib/cost';
 export const maxDuration = 300;
@@ -26,6 +26,16 @@ const CONTACT = z.object({
   title: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
   phone: z.string().nullable().optional(),
+});
+
+/** An organisation page lists several people; every one is checked against the page after. */
+const PEOPLE = z.object({
+  people: z.array(z.object({
+    name: z.string().nullable().optional(),
+    title: z.string().nullable().optional(),
+    email: z.string().nullable().optional(),
+    phone: z.string().nullable().optional(),
+  })).default([]),
 });
 
 const BATCH = 8;
@@ -94,6 +104,57 @@ export async function POST(req: Request) {
         out.general = patch.general_email ?? co.general_email ?? null;
         out.switchboard = patch.switchboard ?? co.switchboard ?? null;
       }
+      // ---- 1b. the organisation / leadership / team page, once per company
+      //
+      // Kept separate from the contact page because it answers a different question: the
+      // contact page gives a switchboard, this one gives the person who decides whether a crew
+      // is booked. Found by following the company's own navigation, never by guessing a path.
+      let orgFound = 0;
+      try {
+        const home = co.domain ? await fetchPage(`https://${co.domain.replace(/^https?:\/\//, '').replace(/\/+$/, '')}`) : null;
+        const orgUrls = home && home.status === 'live' ? organisationLinks(home, 2) : [];
+        for (const orgUrl of orgUrls) {
+          if (!budget.canAfford(0.01)) { out.stopped = 'daily budget reached'; break; }
+          const page = await fetchPage(orgUrl);
+          if (page.status !== 'live' || page.text.length < 200) continue;
+          out.pages++;
+
+          const read = await askJson(
+            PEOPLE,
+            'You copy people out of a company organisation or leadership page. For each person listed, copy the name and the job title exactly as printed, and the email or phone only if one is printed beside them. Copy nothing that is not on the page — never construct an address from a name, and never infer a title.',
+            `Organisation page for ${co.name}:\n\n${page.text.slice(0, 8000)}`,
+            MODEL_CLASSIFY,
+            900,
+          ).catch(() => null);
+          budget.add(0.01);
+          await logCost(db, workspaceId, 'hiring-contacts', `organisation page at ${co.name}`, 1, 0.01);
+
+          const found = contactsFromOrgPage(page, read?.people ?? [], co.name, co.domain);
+          if (!found.length) continue;
+
+          // Stored as contacts on the company. contacts.lead_id is nullable, so a hiring-now
+          // contact needs no lead invented for it to hang from.
+          for (const c of found.slice(0, 4)) {
+            const { data: already } = await db.from('contacts')
+              .select('id').eq('company_id', co.id).ilike('name', c.name!).maybeSingle();
+            if (already) continue;
+            await db.from('contacts').insert({
+              company_id: co.id, name: c.name, title: c.title ?? 'title not printed',
+              email: c.email, email_status: c.email ? 'found' : 'unknown', email_source_url: c.email ? page.url : null,
+              phone: c.phone, phone_source_url: c.phone ? page.url : null,
+              source_url: page.url,
+              linkedin_search_url: c.linkedinSearchUrl, google_search_url: c.googleSearchUrl,
+            });
+            orgFound++;
+          }
+          if (!co.contact_page_url && !patch.contact_page_url) patch.contact_page_url = page.url;
+          if (orgFound) break;                                   // one good page is enough
+        }
+      } catch (e: any) {
+        out.orgError = String(e?.message ?? e).slice(0, 120);
+      }
+      out.orgContacts = orgFound;
+
       await db.from('companies').update(patch).eq('id', co.id);
 
       // ---- 2. the contact printed on each open advert
@@ -132,5 +193,17 @@ export async function POST(req: Request) {
     report.push(out);
   }
 
-  return NextResponse.json({ checked: report.length, more, report });
+  const withOrg = report.filter((r) => (r.orgContacts ?? 0) > 0).length;
+  return NextResponse.json({
+    checked: report.length,
+    more,
+    // Reported on its own so the question "is the organisation page worth a standing check"
+    // has a number behind it rather than an impression.
+    organisationPage: {
+      companiesChecked: report.length,
+      companiesYielding: withOrg,
+      contactsFound: report.reduce((n, r) => n + (r.orgContacts ?? 0), 0),
+    },
+    report,
+  });
 }

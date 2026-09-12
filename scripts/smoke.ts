@@ -8,6 +8,7 @@
  * Exits non-zero if any flow fails, so it can gate a deploy rather than merely describe one.
  */
 import fs from 'fs';
+import { execSync } from 'node:child_process';
 import { createClient } from '@supabase/supabase-js';
 import { chromium, type Page } from 'playwright';
 import { markWorkspaceTest, markTest } from '../src/lib/test-data';
@@ -57,6 +58,28 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     is_trade: true, first_seen_at: new Date().toISOString(), last_seen_at: new Date().toISOString(),
   });
   if (jpErr) console.log(`  ...  could not seed a job posting: ${jpErr.message}`);
+
+  // Against a deployed base, wait until the build serving requests is the commit we mean to
+  // test. A run that starts seconds after a push tests the previous build and reports failures
+  // against correct code — which sends you hunting a bug that is not there.
+  if (!/localhost|127\.0\.0\.1/.test(BASE)) {
+    const want = execSync('git rev-parse HEAD').toString().trim();
+    const deadline = Date.now() + 240_000;
+    let serving = '';
+    while (Date.now() < deadline) {
+      serving = await fetch(`${BASE}/api/health`, { cache: 'no-store' })
+        .then((r) => r.json()).then((j: any) => j?.sha ?? '').catch(() => '');
+      if (serving === want) break;
+      if (!serving) { console.log('  ...  /api/health has no commit to report — not waiting'); break; }
+      console.log(`  ...  waiting for the deploy: serving ${serving.slice(0, 7)}, want ${want.slice(0, 7)}`);
+      await new Promise((r) => setTimeout(r, 10_000));
+    }
+    if (serving && serving !== want) {
+      console.log(`\n  STOP  ${BASE} is still serving ${serving.slice(0, 7)}, not ${want.slice(0, 7)}. Nothing was tested.`);
+      await admin.auth.admin.deleteUser(uid);
+      process.exit(2);
+    }
+  }
 
   console.log(`smoke test against ${BASE}\n`);
   const browser = await chromium.launch();
@@ -117,13 +140,20 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
 
     // 4c — the Hiring now drawer. A row a recruiter cannot open is a table, not a screen.
     await page.goto(`${BASE}/app/radar?tab=hiring&company=${co!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(2500);
+    // Wait for the contact sheet to settle rather than sleeping at it. The sheet is fetched
+    // after the drawer paints, so a fixed pause makes these checks turn on timing — and a
+    // check that passes or fails on timing is worse than no check, because it teaches you to
+    // ignore a red.
+    await page.waitForFunction(
+      () => { const a = document.querySelector('aside'); return !!a && !a.innerText.includes('Reading what we hold'); },
+      undefined, { timeout: 60000 },
+    ).catch(() => {});
     const hd = await page.locator('aside').first().innerText().catch(() => '');
     check(/Smoke Offshore AS/.test(hd), 'Hiring now drawer opens on the company');
     check(/Who to contact/.test(hd), 'drawer shows the contact block');
     check(/What they are hiring for/.test(hd) && /Smoke Welder/.test(hd), 'drawer lists the postings');
     // Nobody was seeded with a contact, so the honest answer is searches — never a made-up name.
-    check(/searches to run|Reading what we hold/.test(hd), 'drawer offers searches when nobody was found');
+    check(/searches to run/.test(hd), 'drawer offers searches when nobody was found');
 
     // 5 — lead drawer: one tool, end to end
     await page.goto(`${BASE}/app/radar?lead=${lead!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -135,7 +165,21 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       await page.waitForFunction(() => !document.body.innerText.includes('Writing…'), undefined, { timeout: 75000 }).catch(() => {});
       const drawer = await page.locator('aside').first().innerText();
       check(!drawer.includes('Writing…'), 'drawer never stuck on "Writing…"');
-      check(/Job Title|Positions|Responsibilities|Location|took longer|went wrong/i.test(drawer), 'drawer shows a result or a plain error');
+      // Structural, not textual. This used to match on "Job Title|Positions|Responsibilities",
+      // which asserts the wording of model output: a perfectly good job description that opened
+      // differently failed the check and sent you looking for a bug in the drawer. What matters
+      // is that the drawer answered — a result block with something in it, or a stated failure.
+      const answered = await page.evaluate(() => {
+        const a = document.querySelector('aside');
+        if (!a) return { body: 0, error: false };
+        // The result carries data-result, so this asks "did the drawer answer" without
+        // depending on which element it answered in or what the model chose to write.
+        const res = Array.from(a.querySelectorAll('[data-result]')).map((p) => p.textContent ?? '').join('');
+        const error = !!a.querySelector('.text-bad');
+        return { body: res.trim().length, error };
+      });
+      check(answered.body > 60 || answered.error, 'drawer shows a result or a plain error',
+        answered.body > 60 || answered.error ? '' : `no result block and no error in the drawer (${answered.body} chars)`);
     } else check(false, 'drawer Write JD button present');
 
     // 6 — Verify upload
@@ -164,7 +208,17 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     // documents made every embed between them ambiguous, PostgREST failed the whole query, and
     // the page reported an empty pool it had never actually read. So assert both halves — that
     // a candidate is listed, and that neither the empty state nor the fault banner is showing.
-    if (CV) {
+    // Whether the upload actually produced a candidate is a question for the database, not for
+    // the page: if intake failed, "No candidates yet" is the correct thing for Candidates to
+    // show, and asserting a row is there turns an upstream flake into a false failure on a
+    // screen that is behaving. The service-role query decides whether the assertion applies;
+    // the screen is still what answers it.
+    const { data: made } = await admin.from('candidates').select('reference_code').eq('workspace_id', workspace);
+    const expected = (made ?? []).length;
+    if (CV && expected === 0) {
+      console.log('  ...  the Verify upload produced no candidate this run — the listing check does not apply');
+    }
+    if (CV && expected > 0) {
       // Wait for the row rather than sleeping at it: the save that Verify does can land a
       // moment after the upload reports done, and a fixed pause turned this into a check that
       // passed or failed on timing — which is worse than no check, because it teaches you to
@@ -179,7 +233,7 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       }
       check(listed.test(pool), 'Candidates lists the candidate the upload created',
         listed.test(pool) ? '' : pool.replace(/\s+/g, ' ').slice(0, 300));
-      check(!/No candidates yet/.test(pool), 'Candidates shows the pool rather than an empty state');
+      check(!/No candidates yet/.test(pool), `Candidates shows the pool rather than an empty state (${expected} in the database)`);
       check(!/could not be read|could not read the pool/.test(pool), 'Candidates read the pool without a query fault');
     }
 

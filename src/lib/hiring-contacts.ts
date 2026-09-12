@@ -6,14 +6,16 @@
  * produced from the shape of the company name. Anything not found is absent, or shown as a
  * pattern that is labelled a pattern.
  *
- * Four sources, in the order a recruiter would try them:
+ * Five sources, in the order a recruiter would try them:
  *
  *   1. the advert itself       — the contact printed on the posting, with the posting URL
- *   2. the company's pages     — switchboard, general email, HR or careers address
- *   3. the attendee list       — people at that company with ops, production, HR or yard titles
- *   4. prepared searches       — when the first three found nobody
+ *   2. the organisation page   — Leadership / Team / Om os, checked once per company; the one
+ *                                page that names the HR manager and the production director
+ *   3. the company's pages     — switchboard, general email, HR or careers address
+ *   4. the attendee list       — people at that company with ops, production, HR or yard titles
+ *   5. prepared searches       — when the first four found nobody
  *
- * The fourth is not a contact and is never presented as one. It is a search a recruiter runs.
+ * The fifth is not a contact and is never presented as one. It is a search a recruiter runs.
  */
 import { appearsIn } from './ai/claude';
 import { cleanCompany, linkedinSearchUrl, googleSearchUrl } from './search-urls';
@@ -28,7 +30,7 @@ export type FoundContact = {
   emailStatus: 'found' | 'pattern' | 'unknown';
   sourceUrl: string;
   readAt: string;
-  where: 'posting' | 'company page' | 'attendee list';
+  where: 'posting' | 'company page' | 'attendee list' | 'organisation page';
   linkedinSearchUrl?: string;
   googleSearchUrl?: string;
 };
@@ -180,17 +182,23 @@ export type ContactSheet = {
   searches: PreparedSearch[];
   /** True when nothing above a prepared search was found — the honest empty state. */
   nobodyFound: boolean;
+  primary?: FoundContact | null;
 };
 
 export function buildSheet(input: {
   companyName: string;
   postingContacts: FoundContact[];
+  orgContacts?: FoundContact[];
   attendees: FoundContact[];
   switchboard?: string | null; switchboardSource?: string | null;
   generalEmail?: string | null; generalEmailSource?: string | null;
   hrEmail?: string | null; hrEmailSource?: string | null;
 }): ContactSheet {
-  const contacts = [...input.postingContacts, ...input.attendees];
+  // Order is the recommendation. A person printed on the advert is answering about this job;
+  // an HR or production lead off the organisation page decides whether a crew is booked at all;
+  // an attendee-list name is someone we know exists. The switchboard is below all of them, and
+  // is still always shown.
+  const contacts = [...input.postingContacts, ...(input.orgContacts ?? []), ...input.attendees];
   return {
     contacts,
     // The front door is always shown when it is known: a switchboard that reaches a real yard
@@ -200,5 +208,116 @@ export function buildSheet(input: {
     hrEmail: input.hrEmail && input.hrEmailSource ? { value: input.hrEmail, sourceUrl: input.hrEmailSource } : null,
     searches: preparedSearches(input.companyName),
     nobodyFound: contacts.length === 0 && !input.generalEmail && !input.hrEmail && !input.switchboard,
+    /** Who to try first, and why — null when nobody was found at all. */
+    primary: contacts[0] ?? null,
   };
+}
+
+/* ------------------------------------------------- the organisation page */
+
+/**
+ * The "Organization" / "Leadership" / "Team" / "Om os" page.
+ *
+ * A fifth source, checked once per company rather than once per posting, because it is a fact
+ * about the company and not about the advert. It is usually in the main navigation, separately
+ * from Contact and from Jobs, and it is the one page that routinely names the HR manager and
+ * the production or operations director — the two people who actually decide whether a trade
+ * crew is booked.
+ *
+ * Words in the languages these companies publish in. "Om os", "Ledelse", "Über uns": a Danish
+ * yard does not have an About page.
+ */
+const ORG_WORDS = [
+  'organisation', 'organization', 'leadership', 'management', 'team', 'our people', 'people',
+  'about us', 'about', 'who we are', 'contact us',
+  'om os', 'om oss', 'ledelse', 'ledelsen', 'medarbejdere', 'ansatte', 'kontakt os',
+  'über uns', 'unternehmen', 'geschäftsführung', 'ansprechpartner', 'mitarbeiter',
+  'over ons', 'ons team', 'directie', 'medewerkers',
+  'o nas', 'zarząd', 'kierownictwo',
+  'equipo', 'nuestro equipo', 'direccion', 'chi siamo', 'direzione',
+];
+
+/** Links on a site that look like an organisation or leadership page, best first. */
+export function organisationLinks(page: { links: string[]; text: string; url: string }, limit = 3): string[] {
+  let origin = '';
+  try { origin = new URL(page.url).origin; } catch { return []; }
+
+  const scored: { url: string; score: number }[] = [];
+  for (const href of page.links) {
+    if (!href.startsWith(origin)) continue;                       // never leave the company's site
+    const path = href.slice(origin.length).toLowerCase();
+    if (!path || path === '/' || /\.(pdf|jpe?g|png|svg|zip|docx?)$/i.test(path)) continue;
+    // A careers page is already read elsewhere, and a news index is not an organisation page.
+    if (/\b(job|jobs|karriere|career|vacatur|vacancies|ledige|news|nyhed|press|blog|produkt|product|shop)\b/.test(path)) continue;
+
+    const hit = ORG_WORDS.findIndex((w) => path.includes(w.replace(/\s+/g, '-')) || path.includes(w.replace(/\s+/g, '')));
+    if (hit === -1) continue;
+    // Earlier in the list is a better word: "leadership" beats "about".
+    scored.push({ url: href, score: 100 - hit });
+  }
+  return [...new Map(scored.sort((a, b) => b.score - a.score).map((s) => [s.url, s])).values()]
+    .slice(0, limit).map((s) => s.url);
+}
+
+/** Titles worth having as the primary contact for a trade-hiring approach, best first. */
+const PRIMARY_TITLE: { re: RegExp; rank: number; what: string }[] = [
+  { re: /\b(hr|human resources|personal|personale|personeel)\b.*\b(manager|chef|leder|direktor|director|lead|head)\b|\b(manager|chef|leder|head)\b.*\b(hr|human resources|personal)\b/i, rank: 1, what: 'HR manager' },
+  { re: /\b(production|produktion|produksjon|productie|operations|drift)\b.*\b(director|direktør|manager|chef|leder|head)\b|\b(director|manager|head)\b.*\b(production|operations|drift)\b/i, rank: 2, what: 'production or operations director' },
+  { re: /\b(yard|verft|værft|werft)\b.*\b(manager|director|chef|leder)\b/i, rank: 3, what: 'yard manager' },
+  { re: /\b(resourc|recruit|talent|crewing|manpower|bemanding)\w*\b/i, rank: 4, what: 'resourcing' },
+];
+
+export const primaryRank = (title?: string | null) => {
+  if (!title) return null;
+  const hit = PRIMARY_TITLE.find((t) => t.re.test(title));
+  return hit ? { rank: hit.rank, what: hit.what } : null;
+};
+
+/**
+ * People read off an organisation page.
+ *
+ * Every name must be literally on the page, and a name is only kept when it sits near a title
+ * that means something for hiring — an organisation page lists the whole board, and a chief
+ * financial officer is not who books welders.
+ */
+export function contactsFromOrgPage(
+  page: { text: string; url: string; fetchedAt: string },
+  read: { name?: string | null; title?: string | null; email?: string | null; phone?: string | null }[],
+  companyName: string,
+  domain?: string | null,
+): FoundContact[] {
+  const host = (domain ?? '').replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].toLowerCase();
+  const out: (FoundContact & { rank: number })[] = [];
+
+  for (const r of read ?? []) {
+    if (!r?.name) continue;
+    const name = clean(r.name);
+    if (name.split(' ').length < 2) continue;
+    if (!appearsIn(page.text, name)) continue;
+
+    const title = r.title && appearsIn(page.text, r.title) ? clean(r.title) : null;
+    const ranked = primaryRank(title);
+    if (!ranked) continue;                                        // on the page, but not our person
+
+    const email = r.email
+      && appearsIn(page.text, r.email)
+      && !NOISE.test(r.email)
+      && (!host || r.email.toLowerCase().endsWith(`@${host}`) || r.email.toLowerCase().endsWith(`.${host}`))
+      ? r.email.toLowerCase() : null;
+    const phone = r.phone && appearsIn(page.text, r.phone) ? clean(r.phone) : null;
+
+    out.push({
+      name, title, email, phone,
+      emailStatus: email ? 'found' : 'unknown',
+      sourceUrl: page.url,
+      readAt: page.fetchedAt,
+      where: 'organisation page',
+      linkedinSearchUrl: linkedinSearchUrl(name, companyName),
+      googleSearchUrl: googleSearchUrl(name, companyName),
+      rank: ranked.rank,
+    });
+  }
+
+  // HR manager first, then production or operations — the two who decide a trade booking.
+  return out.sort((a, b) => a.rank - b.rank).map(({ rank, ...c }) => c);
 }

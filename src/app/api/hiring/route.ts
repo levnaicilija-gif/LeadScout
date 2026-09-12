@@ -72,6 +72,23 @@ export async function POST(req: Request) {
           googleSearchUrl: googleSearchUrl(p.contact_name, co.name),
         }));
 
+      // Anyone read off the company's own organisation or leadership page. contacts.lead_id is
+      // nullable, so these hang from the company with no lead invented for them.
+      const { data: onFile } = await sb.from('contacts')
+        .select('name, title, email, email_status, email_source_url, phone, phone_source_url, source_url, linkedin_search_url, google_search_url, found_at')
+        .eq('company_id', co.id).limit(10);
+      const orgContacts: FoundContact[] = (onFile ?? [])
+        .filter((c: any) => c.source_url)
+        .map((c: any) => ({
+          name: c.name, title: c.title, email: c.email, phone: c.phone,
+          emailStatus: (c.email_status ?? 'unknown') as any,
+          sourceUrl: c.email_source_url ?? c.source_url,
+          readAt: c.found_at ?? '',
+          where: 'organisation page' as const,
+          linkedinSearchUrl: c.linkedin_search_url ?? undefined,
+          googleSearchUrl: c.google_search_url ?? undefined,
+        }));
+
       const { data: people } = await sb.from('people')
         .select('name, title, source, company_name')
         .eq('workspace_id', me.workspace_id)
@@ -81,6 +98,7 @@ export async function POST(req: Request) {
       const sheet = buildSheet({
         companyName: co.name,
         postingContacts,
+        orgContacts,
         attendees: fromAttendeeList(people ?? [], co.name),
         switchboard: co.switchboard, switchboardSource: co.switchboard_source_url,
         generalEmail: co.general_email, generalEmailSource: co.general_email_source_url,

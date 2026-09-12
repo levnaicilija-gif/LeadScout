@@ -123,7 +123,8 @@ export function HiringDrawer({ g }: { g: Group }) {
       {sheet?.sheet && (
         <div className="grid gap-2">
           {sheet.sheet.contacts.map((c: any, i: number) => (
-            <div key={i} className="border border-line rounded-card p-3 text-[13px]">
+            <div key={i} className={`border rounded-card p-3 text-[13px] ${i === 0 ? 'border-accent bg-accentsoft' : 'border-line'}`}>
+              {i === 0 && <div className="text-[11px] font-semibold text-accent uppercase tracking-wide mb-1">Try this one first</div>}
               <b className="font-semibold">{c.name}</b>
               {c.title && <span className="text-ink2"> · {c.title}</span>}
               <span className={`badge ml-2 ${c.where === 'posting' ? 'badge-ok' : ''}`}>{c.where}</span>
@@ -224,7 +225,7 @@ export function HiringDrawer({ g }: { g: Group }) {
           </button>
           <Failure action="jd" />
           {out.jd && <>
-            <pre className="whitespace-pre-wrap text-[13px] mt-2 border border-line rounded-card p-3 bg-[#FAFBFC]">{out.jd.job_description}</pre>
+            <pre data-result="jd" className="whitespace-pre-wrap text-[13px] mt-2 border border-line rounded-card p-3 bg-[#FAFBFC]">{out.jd.job_description}</pre>
             {out.jd.assumptions?.length > 0 && <div className="text-[12px] text-warn mt-1">Assumed, confirm on the call: {out.jd.assumptions.join(' · ')}</div>}
           </>}
         </>)}
