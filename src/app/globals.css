@@ -1,12 +1,32 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-html,body{background:#F3F5F7;color:#141B26;font-variant-numeric:tabular-nums}
-.tbl th{position:sticky;top:0;background:#fff;text-align:left;font-weight:500;font-size:12px;color:#8590A0;padding:10px 14px;border-bottom:1px solid #E3E7EC;white-space:nowrap}
-.tbl td{padding:11px 14px;border-bottom:1px solid #EEF1F4;vertical-align:top}
+
+/* design/leadscout-design-v4.html — headings carry Plus Jakarta Sans, body stays IBM Plex Sans,
+   so numbers in tables keep the tabular figures the whole product is read through. */
+html,body{background:#F6F7F9;color:#141B26;font-variant-numeric:tabular-nums}
+h1,h2,h3{font-family:"Plus Jakarta Sans","IBM Plex Sans",system-ui,sans-serif;letter-spacing:-.3px}
+
+.tbl{@apply bg-panel border border-line rounded-card overflow-auto}
+.tbl th{position:sticky;top:0;background:#FAFBFC;text-align:left;font-weight:600;font-size:12px;color:#8590A0;padding:12px 16px;border-bottom:1px solid #E6E9EE;white-space:nowrap}
+.tbl td{padding:14px 16px;border-bottom:1px solid #F0F2F5;vertical-align:top}
 .tbl tr:last-child td{border-bottom:0}
-.btn{@apply inline-block border border-line bg-panel px-3 py-2 rounded font-medium whitespace-nowrap}
-.btn-primary{@apply bg-accent border-accent text-white}
+.tbl tbody tr:hover td{background:#FAFBFD}
+
+.btn{@apply inline-block border border-line bg-panel px-3.5 py-2.5 rounded font-semibold whitespace-nowrap}
+.btn-primary{@apply bg-rail border-rail text-white}
+.btn-go{@apply bg-ok border-ok text-white}
 .chip{@apply border border-line bg-panel rounded-full px-3 py-1 text-[13px] text-ink2}
+
+/* A badge states one fact and its standing. The colour is the status, never the screen. */
+.badge{@apply inline-flex items-center gap-1.5 text-[12px] font-semibold rounded-full px-2.5 py-1 bg-line2 text-ink2}
+.badge-ok{@apply bg-oksoft text-ok}
+.badge-warn{@apply bg-warnsoft text-warn}
+.badge-bad{@apply bg-badsoft text-bad}
+.badge-info{@apply bg-accentsoft text-accent}
+.badge-cand{@apply bg-soft-cand text-tool-cand}
+
 .st::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:#8590A0;margin-right:6px}
-.st-ok::before{background:#1E7F4F}.st-warn::before{background:#B7791F}.st-bad::before{background:#B23A3A}
+.st-ok::before{background:#178A5A}.st-warn::before{background:#D97A1F}.st-bad::before{background:#C93B3B}
+
+input,select,textarea{border-radius:10px}

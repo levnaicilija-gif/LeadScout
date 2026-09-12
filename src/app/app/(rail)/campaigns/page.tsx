@@ -20,7 +20,7 @@ export default async function Campaigns() {
   const ready = await hasCampaignFields(sb);
   if (!ready) {
     return (<>
-      <h1 className="text-[22px] font-semibold mb-1">Campaigns</h1>
+      <h1 className="font-display text-[26px] font-bold tracking-[-.4px] mb-1">Campaigns</h1>
       <p className="text-ink3">Migration 0015 has not been applied yet. The screen appears as soon as it is.</p>
     </>);
   }
@@ -42,8 +42,8 @@ export default async function Campaigns() {
   for (const d of docs ?? []) held.set(d.candidate_id, [...(held.get(d.candidate_id) ?? []), d.type]);
 
   return (<>
-    <div className="flex items-baseline justify-between mb-3">
-      <h1 className="text-[22px] font-semibold">Campaigns
+    <div className="flex items-baseline justify-between flex-wrap gap-x-3 gap-y-1 mb-3">
+      <h1 className="font-display text-[26px] font-bold tracking-[-.4px]">Campaigns
         <Help
           title="What Campaigns are"
           intro="A batch of people going to one client for one scope, and the documents each of them must have before they can travel."

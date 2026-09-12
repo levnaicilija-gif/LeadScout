@@ -66,7 +66,7 @@ export function CampaignsClient({ campaigns, candidates, companies, held, senior
     {err && <div className="text-bad text-[13px] mb-2">{err}</div>}
 
     {senior && (creating ? (
-      <div className="bg-panel border border-line rounded p-4 mb-4">
+      <div className="bg-panel border border-line rounded-card p-4 mb-4">
         <h2 className="text-[15px] font-semibold mb-2">New campaign</h2>
         <div className="grid grid-cols-2 gap-2 max-w-[720px]">
           <input className="border border-line rounded px-2 py-1" placeholder="Name, e.g. Esbjerg blade repair, Q4" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -98,7 +98,7 @@ export function CampaignsClient({ campaigns, candidates, companies, held, senior
     ) : <button className="btn btn-primary mb-4" onClick={() => setCreating(true)}>New campaign</button>)}
 
     {campaigns.length === 0 && (
-      <div className="bg-panel border border-line rounded p-6 text-ink3">
+      <div className="bg-panel border border-line rounded-card p-6 text-ink3">
         No campaigns yet. A campaign is a batch of people going to one client — create one and Today will tell you who is still missing a document.
       </div>
     )}
@@ -111,7 +111,7 @@ export function CampaignsClient({ campaigns, candidates, companies, held, senior
         const short = people.filter((p: any) => required.some((d) => !(held[p.id] ?? []).includes(d)));
 
         return (
-          <div key={c.id} className="bg-panel border border-line rounded">
+          <div key={c.id} className="bg-panel border border-line rounded-card">
             <div className="px-4 py-3 border-b border-line2 flex items-baseline justify-between flex-wrap gap-2">
               <div>
                 <b className="text-[15px] font-semibold">{c.name}</b>

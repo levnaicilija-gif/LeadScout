@@ -7,8 +7,8 @@ export const dynamic = 'force-dynamic';
 export default async function Verify() {
   const me = await currentUser();
   return (<>
-    <div className="flex items-baseline justify-between mb-4">
-      <h1 className="text-[22px] font-semibold">
+    <div className="flex items-baseline justify-between flex-wrap gap-x-3 gap-y-1 mb-4">
+      <h1 className="font-display text-[26px] font-bold tracking-[-.4px]">
         Verify
         <Help
           title="What Verify does"

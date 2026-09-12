@@ -1,3 +1,12 @@
 export const dynamic = 'force-dynamic';
 import { AuthForm } from '@/components/AuthForm';
-export default function Login() { return <main className="min-h-screen grid place-items-center p-5"><div className="w-[420px] bg-panel border border-line rounded-[10px] p-7"><a href="/" className="flex items-center gap-2 font-semibold mb-4"><span className="w-7 h-7 rounded-md bg-rail text-white grid place-items-center font-bold text-[13px]">L</span>LeadScout</a><h1 className="text-[20px] font-semibold">Sign in</h1><p className="text-ink3 text-[13px]">Your workspace, your candidates, your leads.</p><AuthForm mode="login" /></div></main>; }
+import { AuthShell } from '@/components/AuthShell';
+import { authStats } from '@/lib/auth-stats';
+
+export default async function Login() {
+  return (
+    <AuthShell stats={await authStats()} title="Welcome back" hint="Your workspace, your candidates, your leads.">
+      <AuthForm mode="login" />
+    </AuthShell>
+  );
+}

@@ -50,7 +50,7 @@ export function LeadDrawer({ lead }: { lead: any }) {
     </div>
   ) : null;
   const c = lead.contacts?.[0];
-  return (<aside className="fixed top-0 right-0 h-screen w-[500px] bg-panel border-l border-line shadow-[-16px_0_48px_rgba(14,26,43,.12)] overflow-auto p-6 pb-12 z-10">
+  return (<aside className="fixed top-0 right-0 h-screen w-full sm:w-[500px] max-w-full bg-panel border-l border-line shadow-[-16px_0_48px_rgba(14,26,43,.12)] overflow-auto p-5 sm:p-6 pb-12 z-20">
     <a href="?" className="absolute top-3 right-3 text-ink3 text-lg" aria-label="Close">×</a>
     <h2 className="text-[18px] font-semibold">{lead.companies?.name}</h2>
     <div className="text-ink3 text-[13px] mb-4">{lead.kind === 'won_work' ? `Won: ${lead.project_name}` : `Hiring: ${lead.job_posts?.[0]?.role}`} · {lead.project_location}</div>

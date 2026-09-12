@@ -130,7 +130,7 @@ export function HiringNow({
       </span>
     </div>
 
-    <div className="bg-panel border border-line rounded overflow-auto max-h-[calc(100vh-220px)]">
+    <div className="bg-panel border border-line rounded-card overflow-auto max-h-[calc(100vh-220px)]">
       <table className="tbl w-full min-w-[1100px] border-collapse">
         <thead>
           <tr><th>Company</th><th>Roles open</th><th>Where</th><th>Trades</th><th>Certificates asked for</th><th>Pressure</th><th>Latest</th></tr>
@@ -156,7 +156,7 @@ export function HiringNow({
                 {g.places.length > 3 && <div className="text-ink3 text-[12px]">+{g.places.length - 3} more</div>}
               </td>
               <td>
-                {g.trades.map((t) => <span key={t} className="inline-block text-[12px] px-1.5 py-0.5 rounded bg-line2 text-ink2 mr-1 mb-1">{t}</span>)}
+                {g.trades.map((t) => <span key={t} className="inline-block text-[12px] px-2 py-0.5 rounded-md bg-line2 text-ink2 mr-1 mb-1">{t}</span>)}
                 {!g.trades.length && <span className="text-ink3 text-[12px]">—</span>}
               </td>
               <td className="text-[13px]">{g.certs.join(', ') || <span className="text-ink3">none stated</span>}</td>

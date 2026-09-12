@@ -3,6 +3,7 @@ import { supabaseServer, currentUser } from '@/lib/supabase/server';
 import { SignOut } from '@/components/SignOut';
 import { todayItems, whenLabel, HOW_THIS_LIST_IS_MADE } from '@/lib/today';
 import { HomeCards } from '@/components/HomeCards';
+import { Logo } from '@/components/Logo';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -49,17 +50,21 @@ export default async function Home() {
   const newLeadsToRead = wonWork.count ?? 0;
   const freeBy = new Date(Date.now() + 30 * 86400000).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
 
+  const Pulse = ({ tone, children }: { tone: 'ok' | 'warn'; children: React.ReactNode }) => (
+    <span className="bg-panel border border-line rounded-full px-3.5 py-1.5 text-[13px] text-ink2 inline-flex items-center gap-2">
+      <i className={`w-2 h-2 rounded-full ${tone === 'warn' ? 'bg-warn' : 'bg-ok'}`} />{children}
+    </span>
+  );
+
   const Nav = ({ href, label, on }: { href: string; label: string; on?: boolean }) => (
-    <Link href={href} className={on ? 'text-ink font-medium' : ''}>{label}</Link>
+    <Link href={href} className={`px-3 py-1.5 rounded font-medium ${on ? 'bg-line2 text-ink' : 'hover:bg-line2/60'}`}>{label}</Link>
   );
 
   return (
     <div className="min-h-screen bg-bg">
-      <div className="bg-panel border-b border-line px-8 h-14 flex items-center justify-between">
-        <Link href="/app/home" className="flex items-center gap-2.5 font-semibold">
-          <span className="w-7 h-7 rounded-md bg-rail text-white grid place-items-center font-bold text-[13px]">L</span>LeadScout
-        </Link>
-        <nav className="hidden md:flex gap-[22px] text-ink2">
+      <div className="bg-panel border-b border-line px-8 h-[60px] flex items-center justify-between sticky top-0 z-10">
+        <Link href="/app/home"><Logo size="sm" /></Link>
+        <nav className="hidden md:flex gap-1 text-ink2">
           <Nav href="/app/home" label="Home" on />
           <Nav href="/app/today" label="Today" />
           <Nav href="/app/radar" label="Leads" />
@@ -67,24 +72,36 @@ export default async function Home() {
           <Nav href="/app/pitch" label="Pitch" />
           <Nav href="/app/candidates" label="Candidates" />
         </nav>
-        <span className="text-[13px] text-ink3 flex items-center gap-2">
-          {me?.name ?? me?.email} · {me?.role} · <SignOut />
+        {/* v4's .who — the initial in a violet disc, the name only where there is room for it. */}
+        <span className="text-[13px] text-ink3 flex items-center gap-2.5 min-w-0">
+          <span className="w-[30px] h-[30px] rounded-full bg-tool-cand text-white grid place-items-center font-semibold text-[12px] shrink-0">{(me?.name ?? me?.email ?? '?').trim()[0]?.toUpperCase()}</span>
+          <span className="hidden sm:inline truncate max-w-[220px]">{me?.name ?? me?.email} · {me?.role}</span>
+          <SignOut on="light" />
         </span>
       </div>
 
       <div className="max-w-[1180px] mx-auto px-7 pt-10 pb-20">
-        <div className="flex items-baseline justify-between mb-[22px] flex-wrap gap-2">
-          <h1 className="text-[28px] font-semibold tracking-[-0.4px] m-0">{greeting}, {(me?.name ?? me?.email ?? '').split(' ')[0]}</h1>
-          <span className="text-ink3">
-            {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
-            {readToday > 0 ? ` · Radar read ${readToday} article${readToday === 1 ? '' : 's'}${firstRead ? ` at ${firstRead}` : ''}` : ' · Radar has not run yet today'}
-          </span>
+        <div className="flex items-end justify-between mb-6 flex-wrap gap-5">
+          <div>
+            <h1 className="font-display text-[30px] font-extrabold tracking-[-.6px] m-0">{greeting}, {(me?.name ?? me?.email ?? '').split(' ')[0]}</h1>
+            <p className="mt-1.5 m-0 text-ink2 text-[15px]">
+              {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+              {readToday > 0 ? ` · Radar read ${readToday} article${readToday === 1 ? '' : 's'}${firstRead ? ` at ${firstRead}` : ''}` : ' · Radar has not run yet today'}
+              {newLeadsToRead > 0 && ` · ${newLeadsToRead} new lead${newLeadsToRead === 1 ? '' : 's'} worth calling`}
+            </p>
+          </div>
+          {/* Each pill is one query. A dot is amber only where something is actually waiting. */}
+          <div className="flex gap-2.5 flex-wrap">
+            <Pulse tone={readToday > 0 ? 'ok' : 'warn'}>Radar <b className="text-ink font-semibold">{readToday > 0 ? 'ran' : 'not run'}</b>{firstRead ? ` ${firstRead}` : ''}</Pulse>
+            <Pulse tone="ok">Spent today <b className="text-ink font-semibold">€{spentToday.toFixed(2)}</b></Pulse>
+            <Pulse tone={waitingOnIssuers > 0 ? 'warn' : 'ok'}><b className="text-ink font-semibold">{waitingOnIssuers}</b> waiting on issuers</Pulse>
+          </div>
         </div>
 
         <HomeCards
           cards={[
             {
-              href: '/app/today', tone: 'today', icon: 'calendar',
+              href: '/app/today', tool: 'today' as const, tone: 'today' as const, icon: 'calendar' as const,
               pill: items.length ? { text: `${items.length} to do`, tone: 'bad' } : { text: 'nothing waiting', tone: 'ok' },
               title: 'Today',
               get: 'Your day in priority order. Calls with the script ready, packs to send, certificates waiting on an issuer. Nothing sent without you.',
@@ -95,7 +112,7 @@ export default async function Home() {
               action: 'Open my day',
             },
             {
-              href: '/app/radar', tone: 'plain', icon: 'radar',
+              href: '/app/radar', tool: 'leads' as const, tone: 'plain' as const, icon: 'radar' as const,
               pill: newLeadsToRead ? { text: `${newLeadsToRead} new`, tone: 'ok' } : { text: 'none new', tone: '' },
               title: 'Leads',
               get: 'Companies that just won work — with the person quoted by name and the article that proves it — and companies posting trade jobs right now.',
@@ -106,7 +123,7 @@ export default async function Home() {
               action: 'See new leads',
             },
             {
-              href: '/app/verify', tone: 'plain', icon: 'shield', iconTone: 'ok',
+              href: '/app/verify', tool: 'verify' as const, tone: 'plain' as const, icon: 'shield' as const,
               pill: { text: 'drop files', tone: '' },
               title: 'Verify',
               get: 'Drop anything a candidate sends. CVs come back anonymized with three client bullets and a PDF. Certificates are checked with the issuer — what they cover, until when.',
@@ -117,7 +134,7 @@ export default async function Home() {
               action: 'Drop files',
             },
             {
-              href: '/app/pitch', tone: 'plain', icon: 'pitch', iconTone: 'warn',
+              href: '/app/pitch', tool: 'pitch' as const, tone: 'plain' as const, icon: 'pitch' as const,
               pill: { text: 'reverse', tone: '' },
               title: 'Pitch',
               get: 'Start from a scarce person. See which companies should hear about them, with a blind teaser drafted for each — reference code only, never a name.',
@@ -128,7 +145,7 @@ export default async function Home() {
               action: 'Pitch someone',
             },
             {
-              href: '/app/candidates', tone: 'plain', icon: 'people',
+              href: '/app/candidates', tool: 'cand' as const, tone: 'plain' as const, icon: 'people' as const,
               pill: (expiring.count ?? 0) ? { text: `${expiring.count} expiring`, tone: 'warn' } : { text: 'all in date', tone: 'ok' },
               title: 'Candidates',
               get: 'The pool. Who\'s free, who\'s verified, who was sent where. Full names and documents stay here — clients only ever see the anonymized version.',
@@ -139,7 +156,7 @@ export default async function Home() {
               action: 'Search the pool',
             },
             ...(me?.role === 'senior' ? [{
-              href: '/app/settings', tone: 'plain' as const, icon: 'cog' as const,
+              href: '/app/settings', tool: 'set' as const, tone: 'plain' as const, icon: 'cog' as const,
               pill: { text: 'senior', tone: '' as const },
               title: 'Settings',
               get: 'What Radar reads, how certificates are checked, right-to-work rules by country, where your candidates come from, team and onboarding.',
@@ -153,8 +170,8 @@ export default async function Home() {
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-[18px] mt-[18px]">
-          <div className="bg-panel border border-line rounded-[14px] px-[22px] py-5">
-            <h3 className="m-0 mb-0.5 text-[16px] font-semibold">Today, in order</h3>
+          <div className="bg-panel border border-line rounded-tile px-6 py-[22px]">
+            <h3 className="m-0 mb-0.5 text-[17px] font-bold">Today, in order</h3>
             <small className="text-ink3 text-[12px]">A clock time only where a call is actually scheduled</small>
             <ol className="list-none mt-3 m-0 p-0">
               {items.length === 0 && <li className="py-2.5 text-ink3 text-[13.5px]">Nothing waiting. Drop a certificate or a CV into Verify, or wait for Radar at 06:00.</li>}
@@ -171,8 +188,8 @@ export default async function Home() {
             </ol>
           </div>
 
-          <div className="bg-panel border border-line rounded-[14px] px-[22px] py-5">
-            <h3 className="m-0 mb-0.5 text-[16px] font-semibold">How this list is made</h3>
+          <div className="bg-panel border border-line rounded-tile px-6 py-[22px]">
+            <h3 className="m-0 mb-0.5 text-[17px] font-bold">How this list is made</h3>
             <small className="text-ink3 text-[12px]">No AI decides your day. Six queries, fixed order:</small>
             <ol className="list-decimal pl-[18px] mt-2.5 text-[13px] leading-[1.7] text-ink2">
               {HOW_THIS_LIST_IS_MADE.map((q) => <li key={q} className="py-0.5">{q}</li>)}

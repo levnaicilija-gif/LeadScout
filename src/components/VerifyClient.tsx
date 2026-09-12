@@ -42,7 +42,7 @@ function Steps({ at, failed }: { at: number; failed?: boolean }) {
 }
 
 const KV = ({ rows }: { rows: [string, React.ReactNode][] }) => (
-  <div className="grid grid-cols-[120px_1fr] gap-x-3 gap-y-1.5 text-[13px] mt-2.5">
+  <div className="grid grid-cols-[92px_minmax(0,1fr)] sm:grid-cols-[120px_1fr] gap-x-3 gap-y-1.5 text-[13px] mt-2.5">
     {rows.map(([k, v], i) => <span key={'r' + i} className="contents"><span className="text-ink3">{k}</span><span>{v}</span></span>)}
   </div>
 );
@@ -132,26 +132,29 @@ export function VerifyClient({ senior }: { senior?: boolean }) {
   const readyIds = candidates.filter((c: any) => c.files.some((f: any) => f.kind === 'cv' && f.piiPassed)).map((c: any) => c.id);
 
   return (<>
-    <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)] gap-4 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)] gap-4 items-start">
       <label
         onDragOver={(e) => { e.preventDefault(); setOver(true); }}
         onDragLeave={() => setOver(false)}
         onDrop={(e) => { e.preventDefault(); setOver(false); if (!busy) run(e.dataTransfer.files); }}
-        className={`block border-[1.5px] border-dashed rounded bg-panel px-6 py-10 text-center cursor-pointer ${over ? 'border-accent bg-accentsoft' : 'border-[#B3BDCA]'}`}
+        className={`block border-2 border-dashed rounded-tile px-6 py-11 text-center cursor-pointer transition-colors ${over ? 'border-tool-verify bg-soft-verify' : 'border-[#C3CCD8] bg-gradient-to-b from-panel to-[#F6FBF8]'}`}
       >
-        <b className="block text-[16px] font-semibold">Drop any candidate documents here</b>
+        <span className="w-[58px] h-[58px] rounded-[16px] grid place-items-center bg-soft-verify text-tool-verify mx-auto mb-3">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3" /></svg>
+        </span>
+        <b className="block font-display text-[18px] font-bold">Drop any candidate documents here</b>
         <div className="text-ink3 text-[13px] mt-1">CVs, certificates, passport, contract, medical, A1, welding test report · PDF, DOCX or photo · any language · several at once</div>
         <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.docx,.txt" className="hidden" disabled={!!busy} onChange={(e) => e.target.files && run(e.target.files)} />
-        <div className="text-accent text-[13px] mt-2.5">{busy || 'or click to choose'}</div>
+        <div className="text-tool-verify font-semibold text-[13px] mt-2.5">{busy || 'or click to choose'}</div>
 
-        <div className="grid grid-cols-4 gap-2 mt-5 text-left">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-5 text-left">
           {[
             ['CV', 'Anonymized version, three client bullets, PDF to download'],
             ['Certificate', 'Checked with the issuer · what it covers · valid until'],
             ['Passport · contract', 'Name and expiry cross-checks · availability from contract end'],
             ['Medical · A1 · test report', 'Saved with dates on the candidate'],
           ].map(([t, d]) => (
-            <div key={t} className="border border-line2 rounded px-3 py-2.5 bg-[#FAFBFC] text-[12.5px] leading-snug">
+            <div key={t} className="border border-line rounded-[12px] px-3.5 py-3 bg-panel text-[12.5px] leading-snug">
               <b className="block text-[13px] font-semibold mb-0.5">{t}</b>{d}
             </div>
           ))}
@@ -161,7 +164,7 @@ export function VerifyClient({ senior }: { senior?: boolean }) {
       <JobPanel value={job} onChange={setJob} />
     </div>
 
-    {err && <div className="mt-4 bg-panel border border-bad rounded p-4 text-[13px]">
+    {err && <div className="mt-4 bg-panel border border-bad rounded-card p-4 text-[13px]">
       <b className="text-bad">{friendlyError(err, 'cv')}</b>
       <details className="mt-1 text-[12px] text-ink3"><summary className="cursor-pointer">Technical detail</summary><pre className="whitespace-pre-wrap mt-1">{err}</pre></details>
     </div>}
@@ -169,13 +172,13 @@ export function VerifyClient({ senior }: { senior?: boolean }) {
     {!res && !err && !busy && <div className="text-ink3 text-[13px] mt-6">Drop a candidate&apos;s files — the app recognises each one and tells you what it did.</div>}
 
     {res && <>
-      <div className="flex justify-between items-center mt-6 mb-2.5">
+      <div className="flex justify-between items-center flex-wrap gap-2 mt-6 mb-2.5">
         <h2 className="text-[13px] text-ink3 font-medium m-0">{res.files} file{res.files === 1 ? '' : 's'} · {candidates.length} candidate{candidates.length === 1 ? '' : 's'} · recognised and handled</h2>
         <button className="btn" onClick={clear} disabled={!!busy}>Clear</button>
       </div>
 
       {job?.id && readyIds.length > 0 && (
-        <div className="bg-panel border border-line rounded p-3 mb-3.5 flex flex-wrap gap-2 items-center text-[13px]">
+        <div className="bg-panel border border-line rounded-card p-3 mb-3.5 flex flex-wrap gap-2 items-center text-[13px]">
           <b className="font-semibold">{job.label}</b>
           <span className="text-ink3">· {readyIds.length} candidate{readyIds.length === 1 ? '' : 's'} ready</span>
           <div className="flex-1" />
@@ -184,7 +187,7 @@ export function VerifyClient({ senior }: { senior?: boolean }) {
       )}
 
       {candidates.map((c: any) => (
-        <div key={c.id} className="bg-panel border border-line rounded mb-3.5">
+        <div key={c.id} className="bg-panel border border-line rounded-card mb-3.5">
           <div className="px-[18px] py-3 border-b border-line flex justify-between items-center">
             <b className="font-semibold">{c.reference_code}{c.full_name ? ` · ${shortName(c.full_name)}` : ''}</b>
             <span className="text-[12px] text-ink3">{c.files.some((f: any) => f.kind === 'cv') ? 'new candidate created from CV' : 'matched to existing candidate by name on document'} · {c.files.length} file{c.files.length === 1 ? '' : 's'}</span>
@@ -194,7 +197,7 @@ export function VerifyClient({ senior }: { senior?: boolean }) {
       ))}
 
       {loose.map((f: any, i: number) => (
-        <div key={'l' + i} className={`bg-panel border rounded mb-3.5 ${f.kind === 'other' || f.kind === 'unreadable' ? 'border-dashed' : ''} border-line`}>
+        <div key={'l' + i} className={`bg-panel border rounded-card mb-3.5 ${f.kind === 'other' || f.kind === 'unreadable' ? 'border-dashed' : ''} border-line`}>
           <FileCard f={f} senior={senior} job={job} busy={busy} />
         </div>
       ))}

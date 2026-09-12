@@ -45,7 +45,7 @@ export function CandidateCountries({ initial }: { initial: string[] }) {
   const dirty = JSON.stringify(value) !== JSON.stringify(initial);
 
   return (
-    <div className="bg-panel border border-line rounded p-4 mb-4">
+    <div className="bg-panel border border-line rounded-card p-4 mb-4">
       <h2 className="text-[16px] font-semibold">Candidates come from</h2>
       <p className="text-ink3 text-[13px] mt-0.5 mb-2">
         The countries the LinkedIn candidate search looks in. A job in the UK searches the UK first, then these;

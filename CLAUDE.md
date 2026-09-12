@@ -1,6 +1,10 @@
 # LeadScout — instructions for Claude Code
 
-Read `LeadScout-build-prompt.txt` (full spec) and open the file in `design/` that matches the screen before changing UI: `leadscout.html` (rail screens), `leadscout-home-v2.html` (Home), `verify-v2.html` (Verify).
+Read `LeadScout-build-prompt.txt` (full spec) before changing UI. `design/leadscout-design-v4.html` is the current visual language — logo, per-tool colours, Plus Jakarta Sans headings, rounded containers and badges, two-panel login — and overrides the older files where they disagree. The earlier files still hold the layout and copy of individual screens: `leadscout.html` (rail screens), `leadscout-home-v2.html` (Home), `verify-v2.html` (Verify).
+
+Tool colours only ever come from `src/lib/tool-colour.ts` — Tailwind cannot build a class name at runtime, so `bg-tool-${x}` renders nothing. A colour says which tool; `ok`/`warn`/`bad` say how a fact stands. Never mix the two.
+
+Every screen is checked at desktop and 390px: `SCREEN_BASE=… npx tsx --env-file=.env.local scripts/design-shots.ts` signs in as a real user, shoots both widths and fails on sideways scroll.
 
 ## The rule that overrides everything
 Never fabricate. Every contact, email, phone, date or "verified" flag must come from a fetched page (stored with URL + time) or be shown as `pattern` / `unknown`. `src/lib/ai/claude.ts#appearsIn` is the check — keep using it. No Math.random() in data paths. Nothing is emailed except through `/api/outreach`, by a recruiter, to an address attached to a contact/company.
