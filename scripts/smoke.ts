@@ -150,10 +150,20 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     // the page reported an empty pool it had never actually read. So assert both halves — that
     // a candidate is listed, and that neither the empty state nor the fault banner is showing.
     if (CV) {
-      await page.goto(`${BASE}/app/candidates`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      await page.waitForTimeout(1500);
-      const pool = await bodyOf(page);
-      check(/RFBT-[A-Z]-d{4}/.test(pool), 'Candidates lists the candidate the upload created');
+      // Wait for the row rather than sleeping at it: the save that Verify does can land a
+      // moment after the upload reports done, and a fixed pause turned this into a check that
+      // passed or failed on timing — which is worse than no check, because it teaches you to
+      // ignore it. Poll with a reload, since the page is server-rendered.
+      const listed = /RFBT-[A-Z]-[0-9]{4}/;
+      let pool = '';
+      for (let i = 0; i < 6; i++) {
+        await page.goto(`${BASE}/app/candidates`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.waitForTimeout(1200);
+        pool = await bodyOf(page);
+        if (listed.test(pool) || /could not be read/.test(pool)) break;
+      }
+      check(listed.test(pool), 'Candidates lists the candidate the upload created',
+        listed.test(pool) ? '' : pool.replace(/\s+/g, ' ').slice(0, 300));
       check(!/No candidates yet/.test(pool), 'Candidates shows the pool rather than an empty state');
       check(!/could not be read|could not read the pool/.test(pool), 'Candidates read the pool without a query fault');
     }
