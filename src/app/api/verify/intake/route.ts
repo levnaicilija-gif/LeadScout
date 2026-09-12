@@ -7,6 +7,7 @@ import { appearsIn } from '@/lib/ai/claude';
 import { isEea } from '@/lib/right-to-work';
 import { countriesFromText, norm } from '@/lib/geo';
 import { hasRightToWork } from '@/lib/schema-features';
+import { matchName, autoMatch, normName } from '@/lib/name-match';
 export const maxDuration = 300;
 
 /**
@@ -70,7 +71,24 @@ export async function POST(req: Request) {
           const cvText = prepared.kind === 'text' ? prepared.text! : await transcribe(prepared.base64, prepared.mediaType);
           if (!cvText.trim()) { row.kind = 'unreadable'; row.why = 'no readable text in the file'; results.push(row); continue; }
           const profile = await parseCv(cvText);
-          let cand = matchCandidate(known, profile.full_name);
+          let cand = autoMatch(known, profile.full_name);
+
+          // A near match is not acted on. "M. Marcu" on file and "Marian Marcu" on the CV are
+          // probably one man, and creating a second record is how the pool ended up with five
+          // Marians — but so is attaching them when they are two. The file is stored, the card
+          // asks, and nothing is created until someone answers.
+          const near = cand ? [] : matchName(known, profile.full_name).filter((m) => m.kind === 'near');
+          if (!cand && near.length) {
+            const doc = await store(db, me, bytes, f, 'cv', null, { text: cvText.slice(0, 5000), profile, holder: profile.full_name });
+            row.documentId = doc?.id ?? null;
+            row.needsDecision = 'A candidate with a very similar name is already in the pool.';
+            row.suggest = near.slice(0, 4).map((m) => ({ candidateId: m.candidate.id, reference: m.candidate.reference_code, name: m.candidate.full_name, kind: m.kind, why: m.why }));
+            row.profile = anonymize(profile);
+            row.trade = profile.trade;
+            results.push(row);
+            continue;
+          }
+
           if (!cand) {
             const code = (await db.rpc('next_reference_code', { tc: profile.trade_code })).data as string;
             const { data: created, error } = await db.from('candidates').insert({
@@ -80,11 +98,12 @@ export async function POST(req: Request) {
             }).select().single();
             if (error) { row.kind = 'unreadable'; row.why = `could not create the candidate: ${error.message}`; results.push(row); continue; }
             cand = { ...created, key: normName(created.full_name) };
-            known.push(cand);
+            known.push(cand!);
           } else {
             await db.from('candidates').update({ profile, trade: profile.trade, languages: profile.languages }).eq('id', cand.id);
             cand.profile = profile;
           }
+          const person = cand!;
 
           // What the CV says about right to work — recorded as "per CV" so a passport can
           // overwrite it later, and never allowed to overwrite a passport that already has.
@@ -94,26 +113,37 @@ export async function POST(req: Request) {
           if (profile.uk_right_to_work !== undefined) { said.uk_right_to_work = profile.uk_right_to_work; said.uk_right_to_work_source = 'cv'; }
           if (profile.uk_right_to_work_basis) said.uk_right_to_work_basis = profile.uk_right_to_work_basis;
           if (rtwReady && Object.keys(said).length) {
-            const { data: cur } = await db.from('candidates').select('eu_passport_source, uk_right_to_work_source').eq('id', cand.id).maybeSingle();
+            const { data: cur } = await db.from('candidates').select('eu_passport_source, uk_right_to_work_source').eq('id', person.id).maybeSingle();
             if (cur?.eu_passport_source === 'passport') { delete said.eu_passport; delete said.eu_passport_source; delete said.nationality; }
             if (cur?.uk_right_to_work_source === 'passport') { delete said.uk_right_to_work; delete said.uk_right_to_work_source; delete said.uk_right_to_work_basis; }
-            if (Object.keys(said).length) await db.from('candidates').update({ ...said, right_to_work_checked_at: new Date().toISOString() }).eq('id', cand.id);
+            if (Object.keys(said).length) await db.from('candidates').update({ ...said, right_to_work_checked_at: new Date().toISOString() }).eq('id', person.id);
           }
-          await store(db, me, bytes, f, 'cv', cand.id, { text: cvText.slice(0, 5000) });
-          row.candidateId = cand.id; row.reference = cand.reference_code;
+          await store(db, me, bytes, f, 'cv', person.id, { text: cvText.slice(0, 5000), profile, holder: profile.full_name });
+          row.candidateId = person.id; row.reference = person.reference_code;
           row.profile = anonymize(profile);
           row.trade = profile.trade;
-          touched.set(cand.id, cand);
+          touched.set(person.id, person);
           results.push(row);
           continue;
         }
 
-        // ---- Everything else attaches to a candidate when the name matches one.
-        const cand = matchCandidate(known, ext.holder);
+        // ---- Everything else attaches to a candidate when the name matches one exactly.
+        //
+        // When it does not, the document is still stored — it is a real document about a real
+        // person — and the card offers the near matches, or offers to open a record from it.
+        // A certificate never opens one by itself: a ticket says what someone can do, not that
+        // we have them. That is a recruiter's call, taken on the card.
+        const cand = autoMatch(known, ext.holder);
         const doc = await store(db, me, bytes, f, ext.doc_type, cand?.id ?? null, ext);
         row.documentId = doc?.id ?? null;
         row.candidateId = cand?.id ?? null;
         row.reference = cand?.reference_code ?? null;
+        if (!cand) {
+          row.suggest = matchName(known, ext.holder).slice(0, 4).map((m) => ({ candidateId: m.candidate.id, reference: m.candidate.reference_code, name: m.candidate.full_name, kind: m.kind, why: m.why }));
+          row.needsDecision = ext.holder
+            ? (row.suggest.length ? 'Nobody in the pool has exactly this name.' : `Nobody in the pool is called ${ext.holder}.`)
+            : 'No holder name could be read from this document.';
+        }
 
         if (ext.doc_type === 'contract' && cand) {
           // Availability follows the contract: free the day after it ends.
@@ -204,21 +234,6 @@ function passportCountry(ext: any): string | undefined {
   return countriesFromText(text)[0];
 }
 
-const normName = (n?: string | null) => (n ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
-
-/** Same person, allowing for word order and a missing middle name. */
-function matchCandidate(known: any[], name?: string | null) {
-  const k = normName(name);
-  if (!k || k.split(' ').length < 2) return undefined;
-  const parts = k.split(' ');
-  return known.find((c) => {
-    if (!c.key) return false;
-    if (c.key === k) return true;
-    const cp = c.key.split(' ');
-    // First and last name both present, in either order.
-    return parts[0] && parts[parts.length - 1] && cp.includes(parts[0]) && cp.includes(parts[parts.length - 1]);
-  });
-}
 
 function parseDate(s?: string | null) {
   if (!s) return null;

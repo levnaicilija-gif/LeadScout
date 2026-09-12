@@ -43,3 +43,20 @@ export const hasCandidateCountries = (sb: SupabaseClient) => hasColumn(sb, 'work
 
 /** `employer_type_override` and its companions arrive with migration 0012. */
 export const hasEmployerOverride = (sb: SupabaseClient) => hasColumn(sb, 'companies', 'employer_type_override');
+
+/**
+ * Whether a whole table exists yet. Same rule as hasColumn — only ever cached once true — but
+ * PostgREST reports an unknown relation on the schema cache rather than as 42703.
+ */
+export async function hasTable(sb: SupabaseClient, table: string): Promise<boolean> {
+  const key = `table:${table}`;
+  if (known.get(key) === true) return true;
+  const { error } = await sb.from(table).select('*').limit(1);
+  const missing = error && (error.code === '42P01' || /relation .* does not exist|Could not find the table/i.test(error.message));
+  if (!missing) known.set(key, true);
+  return !missing;
+}
+
+/** The certificate library and the attach audit trail arrive with migration 0019. */
+export const hasCertLibrary = (sb: SupabaseClient) => hasTable(sb, 'cert_library');
+export const hasAttachTrail = (sb: SupabaseClient) => hasColumn(sb, 'documents', 'attached_by');

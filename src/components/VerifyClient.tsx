@@ -5,6 +5,7 @@ import { JobPanel, SendToLead, type JobChoice } from './JobPanel';
 import { AnonymizedPreview, DownloadPdf } from './CvCard';
 import { PreviewPdf } from './PreviewPdf';
 import { friendlyError } from '@/lib/friendly-error';
+import { AttachChoice } from './AttachChoice';
 
 /** Nothing may spin forever: every call is bounded and every failure is shown. */
 const STEP_TIMEOUT_MS = 90_000;
@@ -199,6 +200,13 @@ export function VerifyClient({ senior }: { senior?: boolean }) {
       {loose.map((f: any, i: number) => (
         <div key={'l' + i} className={`bg-panel border rounded-card mb-3.5 ${f.kind === 'other' || f.kind === 'unreadable' ? 'border-dashed' : ''} border-line`}>
           <FileCard f={f} senior={senior} job={job} busy={busy} />
+          {/* Stored, recognised, and belonging to nobody yet — so ask. */}
+          {f.documentId && !f.candidateId && (
+            <div className="px-[18px] pb-3.5">
+              {f.needsDecision && <div className="text-[12px] text-warn mb-1.5">{f.needsDecision}</div>}
+              <AttachChoice documentId={f.documentId} holder={f.extracted?.holder ?? f.profile?.full_name} suggest={f.suggest} />
+            </div>
+          )}
         </div>
       ))}
     </>}

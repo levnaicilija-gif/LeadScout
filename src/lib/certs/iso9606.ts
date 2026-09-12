@@ -174,10 +174,13 @@ const LAYERS: Record<string, { says: string }> = {
   ml: { says: 'ml — multi layer' },
 };
 
+
 /* ---------------------------------------------------------------- parsing */
 
 const num = (s: string) => Number(String(s).replace(',', '.'));
 const round = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, ''));
+/** A minimum is rounded up, never down: rounding 109.55 to 109.5 says he may weld pipe he may not. */
+const roundUp = (n: number) => round(Math.ceil(n * 10) / 10);
 
 /** ISO 9606-1 Table 7 — range of qualification for thickness, in mm. */
 function thicknessRange(t: number): string {
@@ -191,10 +194,9 @@ function thicknessRange(t: number): string {
 function diameterRange(d: number): string {
   if (!Number.isFinite(d) || d <= 0) return '';
   if (d <= 25) return `${round(d)} mm to ${round(2 * d)} mm outside diameter`;
-  return `${round(0.5 * d)} mm outside diameter and above (the ≥ 0.5 D rule), and plate`;
+  return `${roundUp(0.5 * d)} mm outside diameter and above (the ≥ 0.5 D rule), and plate`;
 }
 
-/** Which part of ISO 9606 this is, and therefore which metals it can be about at all. */
 function standardOf(raw: string): { standard: string; material: string } {
   const m = raw.match(/9606\s*[-–]\s*(\d)/);
   const part = m?.[1] ?? '1';
@@ -208,6 +210,22 @@ function standardOf(raw: string): { standard: string; material: string } {
   return { standard: `ISO 9606-${part}`, material: by[part] ?? 'steels' };
 }
 
+/** What the parse found, before any of it is turned into prose. */
+type Facts = {
+  processes: string[];
+  product?: 'P' | 'T';
+  weld?: 'BW' | 'FW';
+  group?: string;
+  fillerGroup?: string;
+  letters: string[];
+  thickness?: { kind: 't' | 's'; total: number; split: number[] };
+  diameter?: number;
+  positions: string[];
+  side?: 'ss' | 'bs';
+  backing?: 'nb' | 'mb' | 'gb';
+  layers?: 'ml' | 'sl';
+};
+
 /**
  * Decode a designation. Everything not recognised is listed in `undecoded`, so a card can say
  * "this part of the code was read but is not explained here" instead of quietly dropping it.
@@ -217,173 +235,200 @@ export function decodeIso9606(raw0: string, extra?: { position?: string | null; 
   if (!/9606/i.test(raw) && !/\b(1[13][1-9]|111|114|121|125|141|142|143|145)\b/.test(raw)) return null;
 
   const { standard, material } = standardOf(raw);
-  const says: Line[] = [];
   const undecoded: string[] = [];
-  const seen = new Set<string>();
+  const f: Facts = { processes: [], letters: [], positions: [] };
 
-  // Strip the standard itself, then work token by token on what is left.
   const body = raw.replace(/\b(EN\s*)?ISO\s*9606\s*[-–]\s*\d\s*:?/gi, ' ').replace(/\bEN\b/gi, ' ');
-  const tokens = body.split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean);
+  // Tokens, with brackets and joiners treated as separators — "(138+136)" is two tokens, and
+  // "(M+P)" is two letters, which the old single-separator scan silently lost the second of.
+  const tokens = body.split(/[\s,;()+/]+/).map((t) => t.trim()).filter(Boolean);
 
-  // --- processes. Several may appear: "(138+136)", "138/136", "138 + 136".
-  const processes = [...new Set((body.match(/\b(1[0-9]{2}|15[0-3]|15|311)\b/g) ?? []).filter((p) => PROCESS[p]))];
-  for (const p of processes) {
-    const d = PROCESS[p];
-    says.push({
-      token: p,
-      label: 'Process',
-      says: `${p} — ${d.name}`,
-      range: 'A welder is qualified for the process tested and no other. A MAG ticket is not a TIG ticket.',
-    });
+  for (const p of tokens) if (PROCESS[p] && !f.processes.includes(p)) f.processes.push(p);
+  f.product = tokens.find((t) => /^[PT]$/.test(t)) as any;
+  f.weld = tokens.find((t) => /^(BW|FW)$/i.test(t))?.toUpperCase() as any;
+
+  const group = tokens.find((t) => /^(1|2|3|4|5|6|7|8|10|11|21|22|23|41|43)(\.\d)?$/.test(t) && MATERIAL_GROUP[t]);
+  if (group) f.group = group;
+
+  const fm = tokens.find((t) => /^FM[1-6]$/i.test(t));
+  if (fm) f.fillerGroup = fm.toUpperCase();
+  else if (tokens.some((t) => /^nm$/i.test(t))) f.fillerGroup = 'nm';
+
+  // The consumable letters stand alone as tokens once brackets and "+" are separators.
+  for (const t of tokens) {
+    if (/^(R[ABCR]|[ABCMPRSVWYZ])$/.test(t) && !f.letters.includes(t)) f.letters.push(t);
   }
 
-  // --- product form, weld type
-  const prod = tokens.find((t) => /^[PT]$/.test(t));
-  if (prod) says.push({ token: prod, label: 'Product', says: PRODUCT[prod].says, range: PRODUCT[prod].range });
-  const weld = tokens.find((t) => /^(BW|FW)$/i.test(t))?.toUpperCase();
-  if (weld) says.push({ token: weld, label: 'Weld type', says: WELD[weld].says, range: WELD[weld].range });
-
-  // --- parent material group. Bare "1.2" or "8.1"; guard against eating a diameter.
-  const group = body.match(/(?:^|[\s(])((?:1|2|3|4|5|6|7|8|10|11|21|22|23|41|43)(?:\.\d)?)(?=[\s)]|$)/);
-  const gk = group?.[1];
-  if (gk && MATERIAL_GROUP[gk]) {
-    const g = MATERIAL_GROUP[gk];
-    says.push({
-      token: gk,
-      label: 'Parent metal',
-      says: g.says,
-      range: g.qualifies ? `Qualifies parent metal groups ${g.qualifies.join(', ')} (ISO 9606-1 Table 3).` : undefined,
-    });
-    seen.add(gk);
-  }
-
-  // --- filler metal group and type letters
-  const fm = body.match(/\bFM\s?([1-6])\b/i);
-  if (fm) says.push({ token: `FM${fm[1]}`, label: 'Filler metal', says: FILLER_GROUP[`FM${fm[1]}`] });
-  else if (/\bnm\b/i.test(body)) says.push({ token: 'nm', label: 'Filler metal', says: FILLER_GROUP.nm });
-
-  const wireProcess = processes.some((p) => PROCESS[p].consumable === 'wire');
-  const typeTable = wireProcess ? FILLER_TYPE_WIRE : FILLER_TYPE_ELECTRODE;
-  // Only inside a bracket or standing alone — never a stray letter from another token.
-  const letters = [...new Set((body.match(/(?:\(|\s)([ABCMPRSVWYZ]|R[ABCR])(?=[\s)+/]|$)/g) ?? []).map((s) => s.replace(/[^A-Z]/g, '')))];
-  for (const L of letters) {
-    if (!typeTable[L]) { undecoded.push(L); continue; }
-    says.push({ token: L, label: 'Consumable', says: typeTable[L] });
-  }
-
-  // --- thickness. "t10", "s12", "s25(12+13)" — the bracket splits it per process.
-  const th = body.match(/\b([ts])\s?(\d+(?:[.,]\d+)?)\s*(\(([^)]*)\))?/i);
+  const th = body.match(/\b([ts])\s?(\d+(?:[.,]\d+)?)\s*(?:\(([^)]*)\))?/i);
   if (th) {
-    const total = num(th[2]);
-    const split = th[4]?.split(/[+/]/).map((x) => num(x)).filter((n) => Number.isFinite(n) && n > 0) ?? [];
-    const isDeposit = th[1].toLowerCase() === 's';
-    const each = split.length && split.length === processes.length
-      ? split.map((s, i) => `${processes[i]}: ${round(s)} mm deposited, covering ${thicknessRange(s)}`).join(' · ')
-      : '';
-    says.push({
-      token: `${th[1]}${th[2]}${th[3] ?? ''}`,
-      label: 'Thickness',
-      says: isDeposit
-        ? `${round(total)} mm of weld metal deposited in the test${split.length ? ` (${split.map(round).join(' + ')} mm)` : ''}`
-        : `${round(total)} mm material thickness in the test`,
-      range: each
-        ? `Each process is qualified on its own deposit (ISO 9606-1 Table 7) — ${each}.`
-        : `Qualifies ${thicknessRange(total)} (ISO 9606-1 Table 7).`,
-    });
+    f.thickness = {
+      kind: th[1].toLowerCase() as 't' | 's',
+      total: num(th[2]),
+      split: (th[3] ?? '').split(/[+/]/).map(num).filter((n) => Number.isFinite(n) && n > 0),
+    };
+    // "s12/13" writes the split without brackets.
+    if (!f.thickness.split.length) {
+      const slash = body.match(/\b[ts]\s?\d+(?:[.,]\d+)?\s*\/\s*(\d+(?:[.,]\d+)?)/i);
+      if (slash) f.thickness.split = [f.thickness.total, num(slash[1])];
+    }
   }
 
-  // --- pipe diameter
   const dia = body.match(/\bD\s?(\d+(?:[.,]\d+)?)/i);
-  if (dia) {
-    const d = num(dia[1]);
-    says.push({
-      token: `D${dia[1]}`,
-      label: 'Diameter',
-      says: `tested on ${round(d)} mm outside diameter pipe`,
-      range: `Qualifies ${diameterRange(d)}.`,
-    });
-  }
+  if (dia) f.diameter = num(dia[1]);
 
-  // --- positions. "PH-L045" is how some issuers print H-L045; read both halves.
-  const posTokens: string[] = [];
   for (const m of body.matchAll(/\b(P?[HJ]-?L\s?045|P[ABCDEFGHJ])\b/gi)) {
     const t = m[1].toUpperCase().replace(/\s/g, '').replace(/^P([HJ])-?L045$/, '$1-L045').replace(/^([HJ])L045$/, '$1-L045');
-    if (!posTokens.includes(t)) posTokens.push(t);
+    if (!f.positions.includes(t)) f.positions.push(t);
   }
-  for (const t of posTokens) {
+
+  // Side, backing and layers arrive spaced ("ss nb ml") or run together ("ssnb"). Matched as
+  // whole tokens only: scanning the flattened string read the "b" of "M/B s12" as "bs".
+  for (const t of tokens) {
+    const m = t.toLowerCase().match(/^(ss|bs)?(nb|mb|gb)?(ml|sl)?$/);
+    if (!m || !(m[1] || m[2] || m[3])) continue;
+    if (m[1]) f.side = m[1] as any;
+    if (m[2]) f.backing = m[2] as any;
+    if (m[3]) f.layers = m[3] as any;
+  }
+
+  const says = linesFrom(f, undecoded);
+  if (!says.length) return null;
+  return { standard, material, says, ...plainEnglish(standard, f), undecoded, raw: raw0.trim() };
+}
+
+/** The facts, in the order they appear in the designation, each with its lookup and its rule. */
+function linesFrom(f: Facts, undecoded: string[]): Line[] {
+  const out: Line[] = [];
+  const push = (token: string, label: string, says: string, range?: string) => out.push({ token, label, says, range });
+
+  for (const p of f.processes) {
+    push(p, 'Process', `${p} — ${PROCESS[p].name}`, 'A welder is qualified for the process tested and no other. A MAG ticket is not a TIG ticket.');
+  }
+  if (f.product) push(f.product, 'Product', PRODUCT[f.product].says, PRODUCT[f.product].range);
+  if (f.weld) push(f.weld, 'Weld type', WELD[f.weld].says, WELD[f.weld].range);
+  if (f.group) {
+    const g = MATERIAL_GROUP[f.group];
+    push(f.group, 'Parent metal', g.says, g.qualifies ? `Qualifies parent metal groups ${g.qualifies.join(', ')} (ISO 9606-1 Table 3).` : undefined);
+  }
+  if (f.fillerGroup) push(f.fillerGroup, 'Filler metal', FILLER_GROUP[f.fillerGroup] ?? f.fillerGroup);
+
+  // Only 111 carries a covering; every other process on these certificates carries a wire or a
+  // rod, and reading "S" from the covering table there gave "other coverings" for plain TIG.
+  const covered = f.processes.length > 0 && f.processes.every((p) => PROCESS[p].consumable === 'electrode');
+  const table = covered ? FILLER_TYPE_ELECTRODE : FILLER_TYPE_WIRE;
+  for (const L of f.letters) {
+    if (!table[L]) { undecoded.push(L); continue; }
+    push(L, 'Consumable', table[L]);
+  }
+
+  if (f.thickness) {
+    const { kind, total, split } = f.thickness;
+    const perProcess = split.length > 1 && split.length === f.processes.length
+      ? split.map((s, i) => `${f.processes[i]}: ${round(s)} mm deposited, covering ${thicknessRange(s)}`).join(' · ')
+      : '';
+    push(
+      `${kind}${round(total)}${split.length > 1 ? `(${split.map(round).join('+')})` : ''}`,
+      'Thickness',
+      kind === 's'
+        ? `${round(total)} mm of weld metal deposited in the test${split.length > 1 ? ` (${split.map(round).join(' + ')} mm)` : ''}`
+        : `${round(total)} mm material thickness in the test`,
+      perProcess
+        ? `Each process is qualified on its own deposit (ISO 9606-1 Table 7) — ${perProcess}.`
+        : `Qualifies ${thicknessRange(total)} (ISO 9606-1 Table 7).`,
+    );
+  }
+  if (f.diameter) push(`D${round(f.diameter)}`, 'Diameter', `tested on ${round(f.diameter)} mm outside diameter pipe`, `Qualifies ${diameterRange(f.diameter)}.`);
+
+  for (const t of f.positions) {
     const p = POSITION[t];
     if (!p) { undecoded.push(t); continue; }
-    says.push({
-      token: t,
-      label: 'Position',
-      says: p.says,
-      range: p.covers ? `Covers ${p.covers.join(', ')} (ISO 9606-1 Table 5).` : undefined,
-    });
+    push(t, 'Position', p.says, p.covers ? `Covers ${p.covers.join(', ')} (ISO 9606-1 Table 5).` : undefined);
   }
-
-  // --- side, backing, layers. "ssnb" arrives unspaced on plenty of certificates.
-  const flat = body.replace(/\s+/g, '').toLowerCase();
-  for (const [k, v] of Object.entries(SIDE)) if (new RegExp(`(?:^|[^a-z])${k}(?![a-z])|${k}(?=nb|mb|gb)`).test(flat)) says.push({ token: k, label: 'Sides', says: v.says, range: v.range });
-  for (const [k, v] of Object.entries(BACKING)) if (new RegExp(`${k}(?![a-z])`).test(flat)) says.push({ token: k, label: 'Backing', says: v.says, range: v.range });
-  for (const [k, v] of Object.entries(LAYERS)) if (new RegExp(`(?:^|[^a-z])${k}(?![a-z])`).test(flat)) says.push({ token: k, label: 'Layers', says: v.says });
-
-  if (!says.length) return null;
-
-  return { standard, material, says, ...plainEnglish(standard, material, says, processes, posTokens), undecoded, raw: raw0.trim() };
+  if (f.side) push(f.side, 'Sides', SIDE[f.side].says, SIDE[f.side].range);
+  if (f.backing) push(f.backing, 'Backing', BACKING[f.backing].says, BACKING[f.backing].range);
+  if (f.layers) push(f.layers, 'Layers', LAYERS[f.layers].says);
+  return out;
 }
 
 /* ------------------------------------------------- the three plain layers */
 
-function plainEnglish(standard: string, material: string, says: Line[], processes: string[], positions: string[]) {
-  const has = (label: string) => says.filter((l) => l.label === label);
+/**
+ * The same facts said again for someone who does not read the code.
+ *
+ * Written from the parsed values, not by cutting up the sentences above: a plain-English line
+ * assembled with a regex over another sentence is how you end up telling a client the welder
+ * qualifies "3 mm to 24 mm ." with the rule silently amputated.
+ */
+function plainEnglish(standard: string, f: Facts) {
   const can: string[] = [];
   const cannot: string[] = [];
-  const trades = new Set<string>();
   const fits: string[] = [];
+  const trades = new Set<string>();
 
-  const procNames = processes.map((p) => `${PROCESS[p].short} (${p})`);
-  const sixG = positions.includes('H-L045');
-  const fiveG = positions.includes('PH') || sixG;
-  const pipe = has('Diameter').length > 0 || has('Product').some((l) => l.token === 'T');
-  const butt = has('Weld type').some((l) => l.token === 'BW');
-  const thick = has('Thickness')[0];
-  const dia = has('Diameter')[0];
-  const grp = has('Parent metal')[0];
+  const sixG = f.positions.includes('H-L045');
+  const sixGDown = f.positions.includes('J-L045');
+  const fiveG = f.positions.includes('PH') || sixG;
+  const pipe = f.product === 'T' || f.diameter !== undefined;
+  const butt = f.weld === 'BW';
+  const carbon = !!f.group?.startsWith('1') || f.group === '2' || f.group === '3' || f.group === '11';
 
-  if (procNames.length) {
-    can.push(`Welds with ${procNames.join(' and ')}${procNames.length > 1 ? ' — both processes are on the same certificate' : ''}.`);
+  if (f.processes.length) {
     trades.add('welder');
+    const names = f.processes.map((p) => `${PROCESS[p].short} (${p})`);
+    can.push(`Welds with ${names.join(' and ')}${names.length > 1 ? ', both on this one certificate' : ''}.`);
   }
-  if (pipe && butt) can.push('Butt welds on pipe, which also covers plate and covers fillet welds.');
+  if (butt && pipe) can.push('Butt welds on pipe. That covers plate as well, and covers fillet welds.');
   else if (butt) can.push('Butt welds, which also covers fillet welds.');
-  if (sixG) can.push('Works in the 6G position — pipe fixed at 45° and welded upwards, the hardest of the standard tests. Every upward position is covered, so no site position should be refused on the ticket.');
-  else if (fiveG) can.push('Works in 5G — pipe fixed horizontally and welded upwards.');
-  if (thick?.range) can.push(`Thickness: ${thick.range.replace(/\(ISO[^)]*\)\.?/, '').replace(/^Qualifies /, 'qualifies ').trim()}`);
-  if (dia?.range) can.push(`Pipe size: ${dia.range.replace(/\(the[^)]*\)/, '').replace(/^Qualifies /, 'qualifies ').trim()}`);
-  if (grp) can.push(`Parent metal: ${grp.says.replace(/^group [\d.]+ — /, '')}${grp.range ? ` — ${grp.range.replace(/^Qualifies /, 'and also qualifies ').replace(/\(ISO[^)]*\)\.?/, '').trim()}` : ''}`);
+  else if (f.weld === 'FW') can.push('Fillet welds only.');
 
-  // What it does not cover. Only statements that follow from the code, never from a hunch.
-  const allProcesses = ['111', '135', '136', '138', '141', '121'];
-  const missing = allProcesses.filter((p) => !processes.includes(p));
-  if (missing.length) cannot.push(`Other welding processes — ${missing.map((p) => `${PROCESS[p].short} (${p})`).filter((v, i, a) => a.indexOf(v) === i).join(', ')}. A welder is qualified for the process tested and no other.`);
+  if (sixG) can.push('Works in 6G — pipe fixed at 45° and welded upwards, the hardest of the standard position tests. Every upward position is covered, so no site position should be refused on this ticket.');
+  else if (sixGDown) can.push('Works in 6G down — pipe fixed at 45° and welded downwards; every downward position is covered.');
+  else if (fiveG) can.push('Works in 5G — pipe fixed horizontally and welded upwards.');
+  else if (f.positions.length) can.push(`Works in ${f.positions.join(', ')}${POSITION[f.positions[0]]?.covers ? `, which covers ${POSITION[f.positions[0]].covers!.join(', ')}` : ''}.`);
+
+  if (f.thickness) {
+    const { total, split } = f.thickness;
+    if (split.length > 1 && split.length === f.processes.length) {
+      can.push(`Thickness: each process on its own deposit — ${split.map((s, i) => `${f.processes[i]} from ${thicknessRange(s)}`).join(', ')}.`);
+    } else {
+      can.push(`Thickness: ${thicknessRange(total)}.`);
+    }
+  }
+  if (f.diameter) can.push(`Pipe size: ${diameterRange(f.diameter)}.`);
+  if (f.group) {
+    const g = MATERIAL_GROUP[f.group];
+    can.push(`Parent metal: ${g.says.replace(/^group [\d.]+ — /, '')}${g.qualifies ? `, and also groups ${g.qualifies.join(', ')}` : ''}.`);
+  }
+  if (f.side === 'ss' && f.backing === 'nb') can.push('Welded from one side with no backing — an open root, which is the demanding case and covers welding with backing.');
+
+  // --- what it does not cover. Every line follows from the code, never from a hunch.
+  const common = ['111', '135', '136', '138', '141', '121'];
+  const missing = common.filter((p) => !f.processes.includes(p));
+  if (f.processes.length && missing.length) {
+    const names = [...new Set(missing.map((p) => `${PROCESS[p].short} (${p})`))];
+    cannot.push(`Other welding processes — ${names.join(', ')}. A welder is qualified for the process tested and no other.`);
+  }
   if (/9606-1/.test(standard)) {
-    const gk = grp?.token ?? '';
-    if (!gk.startsWith('8') && gk !== '10') cannot.push('Stainless steel and duplex — this certificate is on carbon steel groups. Stainless work needs a group 8 or 10 qualification.');
+    if (carbon || !f.group) cannot.push(`Stainless and duplex${f.group ? '' : ' unless the certificate itself names a group 8 or 10 parent metal'} — that needs a group 8 or 10 qualification.`);
     cannot.push('Aluminium — that is ISO 9606-2, a separate certificate.');
   }
-  if (positions.length && !positions.some((p) => p === 'J-L045' || p === 'PJ' || p === 'PG')) {
-    cannot.push('Downward (vertical-down) welding — the positions on this certificate are all welded upwards.');
+  if (f.positions.length && !f.positions.some((p) => p === 'J-L045' || p === 'PJ' || p === 'PG')) {
+    cannot.push('Downward (vertical-down) welding — every position on this certificate is welded upwards.');
   }
-  if (!butt) cannot.push('Butt welds — a fillet-weld qualification never covers them.');
-  cannot.push('It is a welder qualification, not an inspection one: it says nothing about NDT, coating or supervision.');
+  if (f.weld === 'FW') cannot.push('Butt welds — a fillet-weld qualification never covers them.');
+  if (f.product === 'P' && !f.diameter) cannot.push('Small-bore pipe — this was a plate test, and plate only qualifies pipe above 150 mm welded rotated.');
+  cannot.push('Anything but welding: it says nothing about NDT, coating, rigging or supervision.');
 
-  // What it fits, in our terms.
-  if (sixG && pipe) fits.push('6G pipe welding — offshore pipe spools, risers, process piping');
-  if (pipe) fits.push('pipefitting and pipe welding on fabrication and shutdown scopes');
-  if (grp?.token?.startsWith('1')) fits.push('thick-wall carbon steel — jackets, monopiles, transition pieces, structural fabrication');
-  if (has('Thickness')[0]?.range?.includes('no upper limit')) fits.push('heavy plate and heavy wall — no upper thickness limit on this ticket');
-  if (processes.includes('136') || processes.includes('138')) fits.push('yard and site production welding, where flux- and metal-cored MAG is the normal process');
-  if (processes.includes('141')) fits.push('root runs and stainless or alloy work where TIG is specified');
+  // --- what it fits, in our terms.
+  if (sixG && pipe) fits.push('6G pipe welding — offshore spools, risers, process piping');
+  if (pipe) fits.push('pipe welding and pipefitting on fabrication, tie-in and shutdown scopes');
+  if (carbon) fits.push('thick-wall carbon steel — jackets, monopiles, transition pieces, structural fabrication');
+  if (f.thickness && thicknessRange(f.thickness.split.length ? Math.max(...f.thickness.split) : f.thickness.total).includes('no upper limit')) {
+    fits.push('heavy plate and heavy wall — no upper thickness limit on this ticket');
+  }
+  if (f.processes.includes('136') || f.processes.includes('138')) fits.push('yard and site production welding, where cored-wire MAG is the normal process');
+  if (f.processes.includes('141')) fits.push('root runs, and stainless or alloy work where TIG is specified');
+  if (f.processes.includes('111')) fits.push('site and repair work where stick is still the practical process');
 
   return { can, cannot, trades: [...trades], fits };
 }
