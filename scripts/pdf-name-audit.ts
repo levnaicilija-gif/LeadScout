@@ -99,13 +99,25 @@ const partsOf = (name: string) =>
   let leaks = 0;
   let audited = 0;
 
-  for (const c of cands) {
-    const { data: cv } = await db.from('anonymized_cvs')
-      .select('storage_path, pii_check_passed, version, generated_at')
-      .eq('candidate_id', c.id).order('generated_at', { ascending: false }).limit(1).maybeSingle();
+  // Every version, not just the newest. An older client PDF is still a downloadable object with
+  // a signed URL somebody may hold, so auditing only the latest would leave real files unchecked.
+  const { data: allCvs } = await db.from('anonymized_cvs')
+    .select('candidate_id, storage_path, pii_check_passed, version, generated_at')
+    .order('generated_at', { ascending: false });
 
-    console.log(`\n${'='.repeat(74)}\n${c.reference_code} · internal name: ${JSON.stringify(c.full_name)}`);
-    if (!cv?.storage_path) { console.log('  no client PDF on file — nothing to audit'); continue; }
+  const pairs = cands.flatMap((c) => {
+    const rows = (allCvs ?? []).filter((r) => r.candidate_id === c.id);
+    return rows.length ? rows.map((cv) => ({ c, cv })) : [{ c, cv: null as any }];
+  });
+
+  for (const { c, cv } of pairs) {
+    console.log(`\n${'='.repeat(74)}\n${c.reference_code}${cv?.version ? ` v${cv.version}` : ''} · internal name: ${JSON.stringify(c.full_name)}`);
+    if (!cv?.storage_path) {
+      console.log(cv
+        ? `  version ${cv.version} wrote no file${cv.pii_check_passed ? '' : ' — it did not pass the PII check, which is the gate working'}`
+        : '  no client PDF on file — nothing to audit');
+      continue;
+    }
     if (!cv.pii_check_passed) console.log('  (this version did not pass the PII check)');
 
     const { data: file, error } = await db.storage.from('pdfs').download(cv.storage_path);

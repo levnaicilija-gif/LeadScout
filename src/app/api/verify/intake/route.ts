@@ -1,3 +1,4 @@
+import { documentPath } from '@/lib/storage-path';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { extractDocument, parseCv, anonymize } from '@/lib/ai/documents';
@@ -246,7 +247,7 @@ function parseDate(s?: string | null) {
 }
 
 async function store(db: any, me: any, bytes: Buffer, f: File, type: string, candidateId: string | null, extracted: any) {
-  const path = `${me.workspace_id}/${type}/${Date.now()}-${f.name.replace(/[^\w.-]/g, '_')}`;
+  const path = documentPath({ workspaceId: me.workspace_id, type, filename: f.name, contentType: f.type, candidateId });
   const up = await db.storage.from('documents').upload(path, bytes, { contentType: f.type || 'application/octet-stream', upsert: true });
   if (up.error) throw new Error(`could not store the file: ${up.error.message}`);
   const { data, error } = await db.from('documents').insert({

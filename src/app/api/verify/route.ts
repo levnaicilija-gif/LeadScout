@@ -1,3 +1,4 @@
+import { documentPath } from '@/lib/storage-path';
 import { NextResponse } from 'next/server';
 import { supabaseServer, supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { extractDocument } from '@/lib/ai/documents';
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
     const ext = await extractDocument(base64, mediaType);
 
     const db = supabaseAdmin();
-    const path = `${me.workspace_id}/${Date.now()}-${file.name.replace(/[^\w.-]/g, '_')}`;
+    const path = documentPath({ workspaceId: me.workspace_id, type: ext.doc_type, filename: file.name, contentType: file.type || mediaType, candidateId });
     const up = await db.storage.from('documents').upload(path, bytes, { contentType: file.type || mediaType, upsert: true });
     if (up.error) return NextResponse.json({ error: `could not store the file: ${up.error.message}` }, { status: 500 });
 

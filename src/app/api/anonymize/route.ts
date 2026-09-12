@@ -1,3 +1,4 @@
+import { documentPath } from '@/lib/storage-path';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { parseCv, anonymize } from '@/lib/ai/documents';
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
         }).select().single();
         if (cErr) { failed.push({ file: f.name, why: `could not create the candidate: ${cErr.code} ${cErr.message}` }); continue; }
 
-        const path = `${me.workspace_id}/cv/${cand.id}-${f.name.replace(/[^\w.-]/g, '_')}`;
+        const path = documentPath({ workspaceId: me.workspace_id, type: 'cv', filename: f.name, contentType: f.type, candidateId: cand.id });
         const up = await db.storage.from('documents').upload(path, bytes, { contentType: f.type || 'application/octet-stream', upsert: true });
         if (up.error) { failed.push({ file: f.name, why: `could not store the file: ${up.error.message}` }); continue; }
         await db.from('documents').insert({

@@ -20,6 +20,7 @@ Standing instruction from the user:
 npm run typecheck && npm run build
 npx next start -p <port>                     # serve the build you are about to commit
 npx tsx --env-file=.env.local scripts/pdf-check.ts
+npx tsx --env-file=.env.local scripts/pdf-name-audit.ts   # every stored client PDF, every version
 npx tsx --env-file=.env.local scripts/verify-e2e.ts       http://localhost:<port>
 npx tsx --env-file=.env.local scripts/lead-drawer-e2e.ts  http://localhost:<port>
 npx tsx --env-file=.env.local scripts/smoke.ts            http://localhost:<port>
@@ -32,6 +33,10 @@ After deploying, run `scripts/smoke.ts https://leadscout-rfbt.vercel.app` and re
 **A migration that adds a unique index must dedupe inside the migration.** 0014 failed on live data holding the same source_url twice. Adding the index is not the job; making the data satisfy it is. Keep the oldest row so `first_seen_at` still means what it says, and re-point references before deleting.
 
 **A migration that adds a column referencing another table breaks every existing embed between those two tables.** 0013 added `candidates.eu_passport_document_id` and `candidates.uk_right_to_work_document_id`; with `documents.candidate_id` that made three relationships, PostgREST could no longer resolve `candidates(documents(...))`, and it failed the *whole* query — Candidates, the public `/v/<slug>` page and two of Today's six queries all went quiet on the day it was applied. Name the foreign key in every such embed: `documents!candidate_id(...)`.
+
+**No name goes in a storage path, even an internal one.** Every upload site built its key from the file the recruiter dropped, so object storage held `…/cv/1789031300347-Bertescu_Dumitrel_CV_Final_Readable.pdf`. That is never served to a client, but a name in a path turns up in logs, backups, bucket listings and signed URLs, and none of those are places anyone thinks to look. `src/lib/storage-path.ts#documentPath` is the only way to build one: workspace, type, candidate id, a twelve-character digest of the original name, and the extension. Fourteen existing objects were moved by `scripts/rename-document-paths.ts`.
+
+**`scripts/pdf-name-audit.ts` runs whenever a new anonymized CV is generated, not once.** It reads the *rendered* client PDFs — drawn text, the document information dictionary, the storage path, the download filename — because nothing else in the codebase reads the bytes that actually reach a client. Three separate defects in the reading each produced a false "clean" before it was trustworthy (the newline before `endstream` is optional; @react-pdf writes text as hex runs inside TJ arrays; the Info dictionary holds indirect references to UTF-16BE objects), so it now refuses to call a file clean when it extracts under 40 characters or reads no properties. It audits every version, not just the latest: an older PDF is still an object somebody may hold a URL to.
 
 **A screen must never report an absence it did not check.** Candidates read `{ data }` and ignored `{ error }`, so a query that never ran rendered as "No candidates yet" and looked like a true empty pool for weeks. Read the error, and say a query failed when it failed.
 
