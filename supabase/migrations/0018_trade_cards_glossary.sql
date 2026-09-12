@@ -9,6 +9,8 @@ create table if not exists trade_cards (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid references workspaces(id),          -- null = shipped with the product
   trade text not null,                                  -- one of the ten in RFBT_TRADE_LIST
+  -- English only. The column exists so a translation is possible later without a migration;
+  -- nothing seeds or writes 'sr', and the app is English throughout.
   lang text not null default 'en' check (lang in ('en', 'sr')),
   title text not null,
   what_it_is text,                                      -- what the job actually is, on site
@@ -31,6 +33,7 @@ create table if not exists glossary (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid references workspaces(id),          -- null = shipped with the product
   term text not null,
+  -- English only, as above.
   lang text not null default 'en' check (lang in ('en', 'sr')),
   category text,                                        -- welding | coating | safety | commercial | contract
   short text not null,                                  -- one line, for the hover

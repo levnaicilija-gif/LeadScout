@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { supabaseServer, currentUser } from '@/lib/supabase/server';
 import { Help } from '@/components/Help';
 import { todayItems, whenLabel } from '@/lib/today';
+import { planFor, needsReview } from '@/lib/onboarding';
 export const dynamic = 'force-dynamic';
 /** Today = six queries in a fixed priority order. Nothing generated, nothing sent. */
 export default async function Today() {
@@ -15,7 +16,18 @@ export default async function Today() {
     sb.from('contacts').select('lead_id', { count: 'exact', head: true }).gte('found_at', d(-7)),
     sb.from('anonymized_cvs').select('id', { count: 'exact', head: true }).eq('pii_check_passed', false),
   ]);
+  // The day's goal, for anyone still inside their first fortnight. A senior never sees it.
+  const plan = planFor(me?.onboarding_day);
+  const onPlan = me?.role !== 'senior' && (me?.onboarding_day ?? 99) <= 10;
+
   return (<>
+    {onPlan && (
+      <div className="bg-panel border border-line rounded px-4 py-3 mb-3">
+        <div className="text-[12px] text-ink3">Day {plan.day} of your first fortnight</div>
+        <b className="text-[15px] font-semibold">{plan.goal}</b>
+        {needsReview(me) && <div className="text-[12px] text-warn mt-1">Outreach and packs you send today go to a senior for review before they leave.</div>}
+      </div>
+    )}
     <div className="flex items-baseline justify-between mb-4"><h1 className="text-[22px] font-semibold">{new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}<Help title="What Today is" intro="Your day in order, built from the data. Nothing here is generated; nothing is sent." rows={[['Comes from', 'Radar leads, pending verifications, outreach without reply, expiring certificates.'], ['Never', 'Sends anything. Today proposes; you act.']]} /></h1><span className="text-ink3">{me?.name} · day {me?.onboarding_day}</span></div>
     <div className="grid grid-cols-[minmax(0,1fr)_280px] gap-4">
       <ol className="bg-panel border border-line rounded py-1">
