@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 /** Public verification summary: certificate statuses and where they were checked. NO personal data. */
 export default async function V({ params }: { params: { slug: string } }) {
   const db = supabaseAdmin();
-  const { data: cv } = await db.from('anonymized_cvs').select('bullets, generated_at, candidates(reference_code, trade, documents(type, cert_body, verifications(result, valid_until, checked_where, checked_at)))').eq('public_slug', params.slug).order('version', { ascending: false }).limit(1).maybeSingle();
+  const { data: cv } = await db.from('anonymized_cvs').select('bullets, generated_at, candidates(reference_code, trade, documents!candidate_id(type, cert_body, verifications(result, valid_until, checked_where, checked_at)))').eq('public_slug', params.slug).order('version', { ascending: false }).limit(1).maybeSingle();
   if (!cv) {
     // A reference that exists but has no client version yet is not the same as a wrong link,
     // and a bare "Not found." sends the recruiter looking for a broken URL instead of the

@@ -31,6 +31,10 @@ After deploying, run `scripts/smoke.ts https://leadscout-rfbt.vercel.app` and re
 
 **A migration that adds a unique index must dedupe inside the migration.** 0014 failed on live data holding the same source_url twice. Adding the index is not the job; making the data satisfy it is. Keep the oldest row so `first_seen_at` still means what it says, and re-point references before deleting.
 
+**A migration that adds a column referencing another table breaks every existing embed between those two tables.** 0013 added `candidates.eu_passport_document_id` and `candidates.uk_right_to_work_document_id`; with `documents.candidate_id` that made three relationships, PostgREST could no longer resolve `candidates(documents(...))`, and it failed the *whole* query — Candidates, the public `/v/<slug>` page and two of Today's six queries all went quiet on the day it was applied. Name the foreign key in every such embed: `documents!candidate_id(...)`.
+
+**A screen must never report an absence it did not check.** Candidates read `{ data }` and ignored `{ error }`, so a query that never ran rendered as "No candidates yet" and looked like a true empty pool for weeks. Read the error, and say a query failed when it failed.
+
 **`findOrCreateCompany` is the only way to create a company.** Four jobs each matched on their own `ilike name`, which is how "Equinor" and "Equinor ASA" became two rows and the unique index would not build. `src/lib/company-identity.ts` holds the one rule; it is deliberately cautious, because a wrong merge moves another company's provenance onto the survivor with no way back.
 
 ## State of the codebase

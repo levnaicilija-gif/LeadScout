@@ -21,10 +21,10 @@ const day = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
 
 export async function todayItems(sb: SupabaseClient): Promise<TodayItem[]> {
   const [pending, noReply, newLeads, expiring, missingDocs] = await Promise.all([
-    sb.from('verifications').select('id, issuer_email_sent_at, documents(candidate_id, extracted, candidates(reference_code))').eq('result', 'pending'),
+    sb.from('verifications').select('id, issuer_email_sent_at, documents(candidate_id, extracted, candidates!candidate_id(reference_code))').eq('result', 'pending'),
     sb.from('outreach').select('id, sent_at, leads(project_name, companies(name))').eq('status', 'sent').is('reply_at', null).lte('sent_at', day(-3)),
     sb.from('leads').select('id, kind, project_name, fit_score, trades_inferred, companies(name)').eq('status', 'new').gte('created_at', day(-7)).order('fit_score', { ascending: false }).limit(6),
-    sb.from('verifications').select('id, valid_until, documents(cert_body, candidates(reference_code))').eq('result', 'valid').lte('valid_until', day(60).slice(0, 10)),
+    sb.from('verifications').select('id, valid_until, documents(cert_body, candidates!candidate_id(reference_code))').eq('result', 'valid').lte('valid_until', day(60).slice(0, 10)),
     campaignsMissingDocs(sb),
   ]);
 

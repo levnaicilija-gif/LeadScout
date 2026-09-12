@@ -142,6 +142,22 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       check(!/could not be prepared/.test(verify), 'Verify prepared the client version');
     }
 
+    // 7 — Candidates must list the candidate the upload just created.
+    //
+    // This is the check that was missing when 0013 added candidates.eu_passport_document_id and
+    // candidates.uk_right_to_work_document_id: a third relationship between candidates and
+    // documents made every embed between them ambiguous, PostgREST failed the whole query, and
+    // the page reported an empty pool it had never actually read. So assert both halves — that
+    // a candidate is listed, and that neither the empty state nor the fault banner is showing.
+    if (CV) {
+      await page.goto(`${BASE}/app/candidates`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await page.waitForTimeout(1500);
+      const pool = await bodyOf(page);
+      check(/RFBT-[A-Z]-d{4}/.test(pool), 'Candidates lists the candidate the upload created');
+      check(!/No candidates yet/.test(pool), 'Candidates shows the pool rather than an empty state');
+      check(!/could not be read|could not read the pool/.test(pool), 'Candidates read the pool without a query fault');
+    }
+
     check(pageErrors.length === 0, 'no uncaught client errors', pageErrors.slice(0, 2).join(' | '));
   } finally {
     await browser.close();
