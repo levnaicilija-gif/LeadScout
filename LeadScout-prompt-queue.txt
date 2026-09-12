@@ -102,3 +102,18 @@ lead" attaches selected packs under the existing guardrails. (6) Row-level actio
 Confirm, Not for us, Mark pursued, Pursue (moves to Today); right-to-work rule shown
 per row from the job country. Mark all test and probe data unmistakably so cleanup
 can never delete a real record. Commit after each step, two lines per step.
+
+-------------------------------------------------------------------------------
+15. CV ANONYMIZER — REMOVE NAME
+-------------------------------------------------------------------------------
+The candidate's full name must be removed from the anonymized CV output, the same
+way contact details are already gated. Confirm current PII gate fields first —
+report exactly what is and isn't stripped today before changing anything, since
+this is a client-facing document and a partial fix is worse than a clear picture
+of the gap. Replace the name with a stable placeholder (e.g. "Candidate", or an
+internal reference number already used elsewhere in the app) rather than blanking
+it, so the document still reads naturally. Check the raw CV text, any embedded
+filename, and any header/footer metadata in the source file — a name hiding in
+the PDF's file properties or a footer is still a leak. Confirm the anonymized PDF
+render (not just the on-screen card) reflects this. Commit after each step, two
+lines per step.
