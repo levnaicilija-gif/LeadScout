@@ -62,3 +62,43 @@ Settings; recruiter adds three lines at end of day; senior sees it in the review
 queue and can reply; shown in Today after 16:00 and on Home as "yesterday's
 scorecard". Migration guarded until applied. Commit after each step, two lines per
 step.
+
+-------------------------------------------------------------------------------
+13. HIRING NOW — COMPLETE THE PAGE
+-------------------------------------------------------------------------------
+(1) Decision-maker contact discovery for each Hiring now company/posting, to the
+same evidence standard as Radar: every name, title, email and phone comes from a
+fetched page stored with URL and time, checked with appearsIn, or shows as
+pattern/unknown. Never guess a contact from a name pattern and present it as
+verified. Sources in order: the contact printed on the posting (posting URL as
+source); the company's contact/careers page (switchboard, general email, HR or
+careers address, with source URL); attendee-list people at the company with
+ops/production/HR/yard titles, each with LinkedIn and Google search links; and if
+none of those, prepared searches for "<company> production manager / HR manager /
+yard manager / resourcing". Company switchboard and general email are always shown
+when known. (2) A drawer on each Hiring now row, same shape as the lead drawer where
+it fits: postings grouped with role, location, start, rotation, certificates asked
+for, posted date, link and "Open board"; employer type with its evidence and the
+manual override; source verification (live/stale) with Confirm; the four tools —
+Need as a job description built from the postings, Score the pool, Find candidates
+on LinkedIn with countries taken from the job (never Serbia by default), Screening
+questions; and a "Ready to attach" count of verified candidates per trade. (3) Table
+additions: a "Certificates asked for" column from the postings (ISO 9606, ICATS,
+GWO…) or "none stated"; hiring pressure with its reason on hover (N open, reposted,
+days); "Latest" linking to the newest posting; filter chips for country, trade,
+employer type and pressure; the hidden-agency count on the "Show agencies" toggle.
+(4) Today: hiring-now leads with high pressure or a printed contact appear in the
+new-leads item, labelled "hiring now". (5) Outreach, ready on open: email and
+LinkedIn message drafted from the postings, offering manpower supply and citing only
+candidates and certificates we actually hold, with the "why" line under the draft;
+checkDraft runs against the pool so no claim about our people is unbacked. Build the
+full send path now — Resend when RESEND_API_KEY/RESEND_FROM and the domain are
+configured, mailto fallback when they are not. The send button stays visibly
+disabled, not hidden, with the reason shown ("domain not verified yet") until Resend
+is live, and that is checked in one place the way schema-features checks for a
+missing column, never a hardcoded flag needing a code change to flip. Drafts still
+generate and stay reviewable and editable regardless of send status. "Send to this
+lead" attaches selected packs under the existing guardrails. (6) Row-level actions:
+Confirm, Not for us, Mark pursued, Pursue (moves to Today); right-to-work rule shown
+per row from the job country. Mark all test and probe data unmistakably so cleanup
+can never delete a real record. Commit after each step, two lines per step.
