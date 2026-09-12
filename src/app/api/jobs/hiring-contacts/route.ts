@@ -135,9 +135,12 @@ export async function POST(req: Request) {
           // Stored as contacts on the company. contacts.lead_id is nullable, so a hiring-now
           // contact needs no lead invented for it to hang from.
           for (const c of found.slice(0, 4)) {
+            // maybeSingle() errors when the name is already there more than once, and an error
+            // reads as "not found" — so every re-run inserted another copy, and Aibel's HR
+            // director ended up in the table five times. Ask for a row, not for exactly one.
             const { data: already } = await db.from('contacts')
-              .select('id').eq('company_id', co.id).ilike('name', c.name!).maybeSingle();
-            if (already) continue;
+              .select('id').eq('company_id', co.id).ilike('name', c.name!).limit(1);
+            if (already?.length) continue;
             await db.from('contacts').insert({
               company_id: co.id, name: c.name, title: c.title ?? 'title not printed',
               email: c.email, email_status: c.email ? 'found' : 'unknown', email_source_url: c.email ? page.url : null,
