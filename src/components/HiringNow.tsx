@@ -168,6 +168,14 @@ export function HiringNow({
 
     {options && <Chips options={options} filters={f} showAgencies={showAgencies} shown={groups.length} total={all.length} />}
 
+    <div data-drawer-help className="text-[13px] mb-2">
+      <span className="text-ink3">Click or tap a company to open its drawer</span>
+      <Help
+        title="What opens when you click a company"
+        intro="The company's drawer: who to contact — a named person, the switchboard or a general email, each with the page it came from — and its employer type, with the evidence and your override. Below that, its postings, the four tools (job description, score the pool, LinkedIn search, screening questions), a drafted email that says whether sending is on yet, and Confirm, Pursue or Not for us."
+      />
+    </div>
+
     <div className="bg-panel border border-line rounded-card overflow-auto max-h-[calc(100vh-220px)]">
       <table className="tbl w-full min-w-[1100px] border-collapse">
         <thead>

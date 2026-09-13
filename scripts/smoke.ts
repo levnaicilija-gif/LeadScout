@@ -189,6 +189,18 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     };
     await rowOpens('Smoke Offshore AS', /[?&]lead=/, 'Leads row');
     await page.goto(`${BASE}/app/radar`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    // The "?" beside each table says what the drawer holds. Opening it must show that text.
+    const drawerHelp = async (p: typeof page, title: string, what: string, width?: number) => {
+      const btn = p.locator('[data-drawer-help] button').first();
+      await btn.waitFor({ timeout: 30000 }).catch(() => {});
+      const box = await btn.boundingBox().catch(() => null);
+      const onScreen = !!box && box.width > 0 && (!width || (box.x >= 0 && box.x + box.width <= width));
+      if (width) await btn.tap().catch(() => {}); else await btn.click().catch(() => {});
+      const text = await p.locator('[data-drawer-help]').first().innerText().catch(() => '');
+      const shown = text.includes(title) && /four tools/.test(text);
+      check(onScreen && shown, `${what}: the "?" beside the table explains the drawer`, JSON.stringify({ onScreen, shown, text: text.replace(/\s+/g, ' ').slice(0, 90) }));
+    };
+    await drawerHelp(page, 'What opens when you click a lead', 'Leads');
     // The source filter narrows the table to one kind, and the other kind is gone from it.
     await page.goto(`${BASE}/app/radar?tab=won&source=tender`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForSelector('tr[data-lead-source]', { timeout: 60000 }).catch(() => {});
@@ -205,6 +217,7 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     // the table has something to show. The message varies, so match the shapes it can take.
     check(!/No trade postings open|No careers pages found yet|Nothing from an employer/.test(hiring),
       'Hiring now shows the table rather than an empty state');
+    await drawerHelp(page, 'What opens when you click a company', 'Hiring now');
     await rowOpens('Smoke Offshore AS', /[?&]company=/, 'Hiring now row');
 
     // The same at 390px on a touch screen. There is no hover there, so the chevron must already be
@@ -215,6 +228,7 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       for (const [path, param, what] of [['/app/radar', /[?&]lead=/, 'Leads row'], ['/app/radar?tab=hiring', /[?&]company=/, 'Hiring now row']] as const) {
         await m.goto(`${BASE}${path}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
         await m.waitForSelector('tr[data-row-href]', { timeout: 60000 }).catch(() => {});
+        await drawerHelp(m, what === 'Leads row' ? 'What opens when you click a lead' : 'What opens when you click a company', `${what.replace(' row', '')} at 390px, touch`, 390);
         const row = m.locator('tr[data-row-href]', { hasText: 'Smoke Offshore AS' }).first();
         const box = await row.locator('[data-row-open]').boundingBox().catch(() => null);
         const onScreen = !!box && box.width > 0 && box.x >= 0 && box.x + box.width <= 390;
