@@ -7,8 +7,10 @@ import { extractLead, extractJobPost } from '@/lib/ai/radar-extract';
 import { detectEmployerType } from '@/lib/agency-detector';
 import { findOrCreateCompany } from '@/lib/find-or-create-company';
 import { linkedinSearchUrl, googleSearchUrl } from '@/lib/search-urls';
-import { inferTrades, hasRfbtTrades } from '@/lib/trades';
-import { countryFromText, regionFor, isEuropean, NON_EUROPE_MAX_FIT } from '@/lib/geo';
+import { inferTrades } from '@/lib/trades';
+import { countryFromText, regionFor } from '@/lib/geo';
+import { fitScore } from '@/lib/fit';
+import { ingestTedAwards, tedWindowFor } from '@/lib/tender/ingest';
 export const maxDuration = 300;
 
 /**
@@ -82,6 +84,22 @@ async function run(req: Request) {
     const ac = new AbortController();
     setTimeout(() => ac.abort(), 1500);
     await fetch(next, { method: 'POST', headers: { 'x-cron-secret': process.env.CRON_SECRET! }, signal: ac.signal }).catch(() => {});
+  }
+
+  // Contract awards ride the morning cron: the first invocation reads TED before its own sources.
+  //
+  // Inline rather than dispatched, because a fire-and-forget fetch does not reliably survive the
+  // response. Bounded to a minute — a normal day is one API page and a few dozen rows — and caught,
+  // so the award pass can never cost this batch its crawl. ?tenders=0 skips it.
+  let tenders: any = null;
+  if (cursor === 0 && !only && !auditOnly && params.get('tenders') !== '0') {
+    try {
+      const window = await tedWindowFor(db);
+      const { leads: _leads, rejected: _rejected, ...summary } = await ingestTedAwards(db, { ...window, deadlineAt: Date.now() + 60_000 });
+      tenders = summary;
+    } catch (e: any) {
+      tenders = { error: String(e?.message ?? e).slice(0, 300) };
+    }
   }
 
   const report: any[] = [];
@@ -174,26 +192,11 @@ async function run(req: Request) {
   }
 
   // One line per batch, so the daily run is readable in the Vercel logs.
-  console.log(`[radar] cursor=${cursor} batch=${take} sources=${tally.sources} articles=${tally.articlesRead} leads=${tally.leads} rejected=${tally.rejected} next=${next ? cursor + take : 'done'}`);
+  console.log(`[radar] cursor=${cursor} batch=${take} sources=${tally.sources} articles=${tally.articlesRead} leads=${tally.leads} rejected=${tally.rejected} next=${next ? cursor + take : 'done'}${tenders ? ` tenders=${tenders.error ? `error: ${tenders.error}` : `${tenders.leadsCreated} leads from ${tenders.noticesChecked} notices`}` : ''}`);
 
-  return NextResponse.json({ ok: true, browser: browserProvider(), cursor, batch: take, nextCursor: more ? cursor + take : null, chained: !!next, tally, audit, rejected, report });
+  return NextResponse.json({ ok: true, browser: browserProvider(), cursor, batch: take, nextCursor: more ? cursor + take : null, chained: !!next, tally, tenders, audit, rejected, report });
 }
 
-/**
- * Fit 0-100: trades x0.4, geography x0.2, timing x0.25, employer type x0.15.
- *
- * Geography is a gate before it is a weight: outside Europe the score is capped at
- * NON_EUROPE_MAX_FIT so a non-European project can never reach Today, however good the trades.
- */
-function fit(trades: string[], country: string | undefined, employer: string, timingMonths: number | null) {
-  const t = hasRfbtTrades(trades) ? 1 : 0;
-  const european = isEuropean(country);
-  const g = european ? 1 : 0;
-  const tm = timingMonths == null ? 0.5 : timingMonths <= 12 ? 1 : 0.3;
-  const e = employer === 'end_client' || employer === 'epc_contractor' ? 1 : employer === 'unknown' ? 0.5 : 0.3;
-  const score = Math.round((t * 0.4 + g * 0.2 + tm * 0.25 + e * 0.15) * 100);
-  return european ? score : Math.min(score, NON_EUROPE_MAX_FIT);
-}
 async function company(db: any, ws: string, name: string, agencyNames: string[]) {
   // One matcher for every job that creates companies. Four of them used to match on their own
   // `ilike name`, which is how one company became two rows and a unique index would not build.
@@ -215,7 +218,7 @@ async function upsertWonLead(db: any, ws: string, x: any, articleId: string, url
     // Trades from the scope, not just from words the article happened to use.
     const { trades } = inferTrades(x.trades ?? [], x.project?.name, x.project?.phase, x.project?.location, x.company);
     const country = countryFromText(x.project?.location) ?? countryFromText(x.project?.name);
-    const { data: lead } = await db.from('leads').insert({ workspace_id: ws, company_id: co.id, kind: 'won_work', project_name: x.project?.name, project_location: x.project?.location, project_value: x.project?.value, phase: x.project?.phase, trades_inferred: trades, country, region: regionFor(country), fit_score: fit(trades, country, co.employer_type, null), source_url: url, source_fetched_at: fetchedAt }).select().single();
+    const { data: lead } = await db.from('leads').insert({ workspace_id: ws, company_id: co.id, kind: 'won_work', project_name: x.project?.name, project_location: x.project?.location, project_value: x.project?.value, phase: x.project?.phase, trades_inferred: trades, country, region: regionFor(country), fit_score: fitScore(trades, country, co.employer_type, null), source_url: url, source_fetched_at: fetchedAt }).select().single();
     leadId = lead.id;
     await attachPeople(db, leadId, ws, x.company);
   }
@@ -233,7 +236,7 @@ async function upsertJobLead(db: any, ws: string, j: any, url: string, pageText:
   const co = await company(db, ws, j.company, agencyNames);
   const { trades } = inferTrades(j.trades ?? [], j.role, j.location);
   const country = (j.country && j.country.length === 2 ? j.country.toUpperCase() : undefined) ?? countryFromText(j.country) ?? countryFromText(j.location);
-  const { data: lead } = await db.from('leads').upsert({ workspace_id: ws, company_id: co.id, kind: 'job_post', project_name: j.role, project_location: j.location, trades_inferred: trades, country, region: regionFor(country), fit_score: fit(trades, country, co.employer_type, 3), source_url: url, source_fetched_at: new Date().toISOString() }, { onConflict: 'source_url' as any }).select().single();
+  const { data: lead } = await db.from('leads').upsert({ workspace_id: ws, company_id: co.id, kind: 'job_post', project_name: j.role, project_location: j.location, trades_inferred: trades, country, region: regionFor(country), fit_score: fitScore(trades, country, co.employer_type, 3), source_url: url, source_fetched_at: new Date().toISOString() }, { onConflict: 'source_url' as any }).select().single();
   await db.from('job_posts').upsert({ lead_id: lead.id, role: j.role, trades: j.trades, location: j.location, country: j.country, posted_at: j.posted_at, certs_required: j.certs_required, rotation: j.rotation, contract_type: j.contract_type, headcount: j.headcount, source_url: url, screenshot_path: shot, poster_type: co.employer_type }, { onConflict: 'lead_id,source_url' });
   if (j.contact?.name && j.contact?.title) await db.from('contacts').insert({ lead_id: lead.id, company_id: co.id, name: j.contact.name, title: j.contact.title, source_url: url, email: j.contact.email, email_status: j.contact.email ? 'found' : 'unknown', email_source_url: j.contact.email ? url : null, phone: j.contact.phone, phone_source_url: j.contact.phone ? url : null, linkedin_search_url: linkedinSearchUrl(j.contact.name, j.company), google_search_url: googleSearchUrl(j.contact.name, j.company) });
   // hiring pressure: 5+ open posts for the company

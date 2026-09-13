@@ -22,6 +22,8 @@ export type CompanyInput = {
   source?: string | null;
   sourceUrl?: string | null;
   agencyNames?: string[];
+  /** Look up, never insert: a dry run reports what would be created without creating it. */
+  dryRun?: boolean;
 };
 
 export type CompanyResult = { id: string; name: string; created: boolean; matchedOn?: string };
@@ -55,6 +57,8 @@ export async function findOrCreateCompany(db: SupabaseClient, input: CompanyInpu
       return { id: c.id, name: c.name, created: false, matchedOn: verdict.why };
     }
   }
+
+  if (input.dryRun) return { id: `dry:${key}`, name, created: true, matchedOn: 'dry run — would be created' };
 
   const det = detectEmployerType(name, input.agencyNames ?? []);
   const { data, error } = await db.from('companies').insert({

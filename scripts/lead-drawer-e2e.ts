@@ -17,9 +17,16 @@ const EMAIL = `drawer-e2e+${Date.now()}@rfbt-recruitment.com`;
 const PASSWORD = 'probe-password-0123456789';
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 
-/** Every tool, with the text that proves it produced something real. */
-const TOOLS = [
-  { tool: 'jd', button: 'Write JD', spinner: 'Writing…', proof: /Job Title|Positions|Responsibilities|Location/i },
+/**
+ * Every tool, with what proves it produced something real.
+ *
+ * The job description is proved by its result block (data-result="jd") holding text, not by its
+ * wording. The old proof matched Job Title|Positions|Responsibilities|Location, so a good JD that
+ * opened "Probe Offshore AS is seeking experienced Welders…" failed with a 200 and the text on
+ * screen — the same false red smoke.ts was already rid of.
+ */
+const TOOLS: { tool: string; button: string; spinner: string; proof: RegExp; result?: string }[] = [
+  { tool: 'jd', button: 'Write JD', spinner: 'Writing…', proof: /$^/, result: 'jd' },
   { tool: 'q', button: 'Get questions', spinner: 'Writing…', proof: /Good:/i },
   { tool: "pool", button: "Score the pool", spinner: "Scoring…", proof: /RFBT-|Create the job description first|No candidates in the pool yet/i },
 ];
@@ -95,11 +102,12 @@ const check = (ok: boolean, what: string, detail = '') => {
       const secs = Math.round((Date.now() - started) / 1000);
       const text = await page.locator('aside').first().innerText();
       const stuck = text.includes(t.spinner);
-      const produced = t.proof.test(text);
+      const resultText = t.result ? (await page.locator(`aside [data-result="${t.result}"]`).first().innerText().catch(() => '')).trim() : '';
+      const produced = t.result ? resultText.length > 60 : t.proof.test(text);
       const errored = /text-bad/.test(await page.locator('aside').first().innerHTML()) && !produced;
 
       check(!stuck, `${t.tool}: never stuck on "${t.spinner}"`, `settled in ${secs}s`);
-      check(produced || errored, `${t.tool}: shows a result or a plain error`, produced ? 'result rendered' : 'error shown');
+      check(produced || errored, `${t.tool}: shows a result or a plain error`, produced ? `result rendered${t.result ? ` (${resultText.length} chars)` : ''}` : errored ? 'error shown' : 'neither a result nor an error on screen');
     }
   } finally {
     await browser.close();
