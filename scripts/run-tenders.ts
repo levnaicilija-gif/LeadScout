@@ -25,10 +25,12 @@ const flag = (name: string) => process.argv.includes(`--${name}`);
     notices: arg('notices')?.split(',').map((s) => s.trim()).filter(Boolean),
     ignoreCpv: flag('ignore-cpv'),
   });
-  const { leads, rejected, ...tally } = report;
+  const { leads, rejected, merged, ...tally } = report;
   console.log(JSON.stringify(tally, null, 2));
   console.log(`\nleads (${leads.length}):`);
-  for (const l of leads) console.log(`  ${l.notice}  ${l.companyCreated ? 'NEW ' : 'SAME'}  ${l.company}${l.matchedOn ? `  [${l.matchedOn}]` : ''}  · ${l.country ?? 'country not stated'} · ${l.value ?? 'value not stated'}`);
+  for (const l of leads) console.log(`  ${l.notice}  ${l.companyCreated ? 'NEW ' : 'SAME'}  ${l.company}${l.matchedOn ? `  [${l.matchedOn}]` : ''}  · ${l.country ?? 'country not stated'} · ${l.value ?? 'value not stated'}${l.mergedInto ? `  → linked to lead ${l.mergedInto}` : ''}`);
+  console.log(`\nsame contract as an existing lead (${merged.length}):`);
+  for (const m of merged) console.log(`  ${m.notice}  ${m.company} → lead ${m.leadId}  [canonical: ${m.canonical}]\n      ${m.why}`);
   const reasons = new Map<string, number>();
   for (const r of rejected) { const k = r.why.replace(/\(.*\)$/, '').trim(); reasons.set(k, (reasons.get(k) ?? 0) + 1); }
   console.log('\nnot made into leads, by reason:');

@@ -9,6 +9,10 @@
  * fields, so there is nothing to extract and nothing to verify a model against; a field the notice
  * leaves empty stays empty and is shown as not stated.
  *
+ * When the winner already has a lead for the same contract — its press release, or the same notice
+ * republished — the notice is linked to that lead as a second source instead of making another.
+ * The rule is src/lib/same-contract.ts.
+ *
  * One timed pass. A run that reaches its deadline stops, records how far it got, and the next run
  * picks up: a notice already stored is skipped rather than read twice.
  */
@@ -17,6 +21,7 @@ import { searchTed, tedStats, AWARD_FIELDS, type TedRecord } from './ted';
 import { AWARD_NOTICE_TYPES, TRADE_CPV, tradeCpvFor } from './cpv';
 import { normalizeAward, awardText, formatValue } from './award';
 import { findOrCreateCompany } from '@/lib/find-or-create-company';
+import { findSameContract, mergeSameContract, canonicalOf, type SourceRecord } from '@/lib/same-contract';
 import { inferTrades } from '@/lib/trades';
 import { regionFor } from '@/lib/geo';
 import { fitScore } from '@/lib/fit';
@@ -45,7 +50,11 @@ export type IngestOptions = {
 export type LeadLine = {
   notice: string; company: string; companyCreated: boolean; matchedOn?: string;
   leadId: string | null; value: string | null; country: string | null;
+  /** Set when the notice was linked to an existing lead for the same contract. */
+  mergedInto?: string;
 };
+
+export type MergeLine = { notice: string; company: string; leadId: string; canonical: 'incoming' | 'existing'; why: string };
 
 /**
  * Where the daily run starts: two days before the newest notice already stored, so a notice TED
@@ -91,6 +100,8 @@ export async function ingestTedAwards(db: SupabaseClient, opts: IngestOptions) {
     winners: 0,
     leadsCreated: 0,
     leadsAlreadyThere: 0,
+    mergedIntoExisting: 0,
+    ambiguousNotMerged: 0,
     companiesCreated: 0,
     companiesMatched: 0,
     companiesUnusable: 0,
@@ -101,6 +112,7 @@ export async function ingestTedAwards(db: SupabaseClient, opts: IngestOptions) {
     throttled: 0,
     seconds: 0,
     eur: 0,
+    merged: [] as MergeLine[],
     rejected: [] as { notice: string; why: string }[],
     leads: [] as LeadLine[],
   };
@@ -158,6 +170,9 @@ export async function ingestTedAwards(db: SupabaseClient, opts: IngestOptions) {
 
     // Trades from what the CPV codes describe, plus any the title and scope spell out.
     const { trades } = inferTrades(hits.flatMap((h) => h.trades), a.title, a.description);
+    const asSource = (url: string): SourceRecord => ({
+      kind: 'tender', url, date: a.publishedOn, dateKnown: /^\d{4}-\d{2}-\d{2}$/.test(a.publishedOn), text, buyers: a.buyers, title: a.title || null,
+    });
 
     for (const [i, name] of a.winners.entries()) {
       report.winners++;
@@ -173,7 +188,23 @@ export async function ingestTedAwards(db: SupabaseClient, opts: IngestOptions) {
       const leadUrl = a.winners.length > 1 ? `${a.url}#winner-${i + 1}` : a.url;
       const line: LeadLine = { notice: a.noticeId, company: hit.name, companyCreated: hit.created, matchedOn: hit.matchedOn, leadId: null, value: formatValue(a.value), country: a.country };
       report.leads.push(line);
-      if (opts.dryRun) continue;
+      const incoming = asSource(leadUrl);
+
+      if (opts.dryRun) {
+        // Read-only: would this have been linked to a lead the company already has?
+        if (!hit.created) {
+          const same = await findSameContract(db, { workspaceId, companyId: hit.id, incoming });
+          if (same.match) {
+            const decision = canonicalOf(same.existing, incoming);
+            report.merged.push({ notice: a.noticeId, company: hit.name, leadId: same.leadId, canonical: decision.canonical, why: `${same.why}; ${decision.why}` });
+            line.mergedInto = same.leadId;
+          } else if (same.ambiguous.length) {
+            report.ambiguousNotMerged++;
+            reject(`"${name}": ${same.why}`);
+          }
+        }
+        continue;
+      }
 
       const { data: existing } = await db.from('leads').select('id').eq('source_url', leadUrl).maybeSingle();
       if (existing) {
@@ -182,6 +213,24 @@ export async function ingestTedAwards(db: SupabaseClient, opts: IngestOptions) {
         await db.from('lead_articles').upsert({ lead_id: existing.id, article_id: articleId });
         continue;
       }
+
+      // A company made a moment ago has no leads to be the same contract as.
+      if (!hit.created) {
+        const same = await findSameContract(db, { workspaceId, companyId: hit.id, incoming });
+        if (same.match) {
+          const merged = await mergeSameContract(db, same, incoming, articleId!, { project_value: formatValue(a.value), country: a.country, region: regionFor(a.country) });
+          report.mergedIntoExisting++;
+          report.merged.push({ notice: a.noticeId, company: hit.name, leadId: same.leadId, canonical: merged.canonical, why: merged.why });
+          line.leadId = same.leadId;
+          line.mergedInto = same.leadId;
+          continue;
+        }
+        if (same.ambiguous.length) {
+          report.ambiguousNotMerged++;
+          reject(`"${name}": ${same.why} — a lead of its own was made`);
+        }
+      }
+
       const { data: co } = await db.from('companies').select('employer_type').eq('id', hit.id).maybeSingle();
       const { data: lead, error } = await db.from('leads').insert({
         workspace_id: workspaceId,

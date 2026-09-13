@@ -11,6 +11,7 @@ import { inferTrades } from '@/lib/trades';
 import { countryFromText, regionFor } from '@/lib/geo';
 import { fitScore } from '@/lib/fit';
 import { ingestTedAwards, tedWindowFor } from '@/lib/tender/ingest';
+import { findSameContract, mergeSameContract } from '@/lib/same-contract';
 export const maxDuration = 300;
 
 /**
@@ -169,7 +170,7 @@ async function run(req: Request) {
         }
         const res = await extractLead(page.text, url);
         if (res.ok) {
-          await upsertWonLead(db, src.workspace_id, res.lead, article.id, url, page.fetchedAt, agencyNames);
+          await upsertWonLead(db, src.workspace_id, res.lead, article.id, url, page.fetchedAt, agencyNames, page.text);
           tally.leads++;
           report.push({ url, title: page.title, lead: true, company: res.lead.company, people: res.lead.people.map((p) => `${p.name} (${p.title})`) });
         } else {
@@ -209,11 +210,23 @@ async function attachPeople(db: any, leadId: string, ws: string, companyName: st
   const { data: ppl } = await db.from('people').select('id').eq('workspace_id', ws).ilike('company_name', `%${companyName.split(' ')[0]}%`).limit(10);
   for (const p of ppl ?? []) await db.from('lead_people').upsert({ lead_id: leadId, person_id: p.id });
 }
-async function upsertWonLead(db: any, ws: string, x: any, articleId: string, url: string, fetchedAt: string, agencyNames: string[]) {
+async function upsertWonLead(db: any, ws: string, x: any, articleId: string, url: string, fetchedAt: string, agencyNames: string[], pageText: string) {
   const co = await company(db, ws, x.company, agencyNames);
   const since = new Date(Date.now() - 30 * 86400000).toISOString();
   const { data: dup } = await db.from('leads').select('id').eq('company_id', co.id).eq('kind', 'won_work').gte('created_at', since).ilike('project_name', `%${(x.project?.name ?? '').split(' ').slice(0, 2).join(' ')}%`).maybeSingle();
   let leadId = dup?.id;
+  if (!leadId) {
+    // The contract may already be a lead from its award notice. Then this story is a second source
+    // on that lead, not a second lead. The story's own date is not captured, so it never takes
+    // over as canonical here — see src/lib/same-contract.ts.
+    const incoming = { kind: 'news' as const, url, date: String(fetchedAt).slice(0, 10), dateKnown: false, text: pageText, buyers: [], title: x.project?.name ?? null };
+    const same = await findSameContract(db, { workspaceId: ws, companyId: co.id, incoming });
+    if (same.match) {
+      const merged = await mergeSameContract(db, same, incoming, articleId);
+      leadId = same.leadId;
+      console.log(`[radar] same contract as lead ${leadId}: ${merged.why}`);
+    }
+  }
   if (!leadId) {
     // Trades from the scope, not just from words the article happened to use.
     const { trades } = inferTrades(x.trades ?? [], x.project?.name, x.project?.phase, x.project?.location, x.company);

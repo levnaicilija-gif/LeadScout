@@ -1,0 +1,32 @@
+/**
+ * Where a lead came from: a news story Radar read, or a contract award notice.
+ *
+ * Read off the lead's source URL rather than stored in a column of its own. The URL is already
+ * the evidence the lead stands on, so the tag cannot disagree with it — and no migration has to
+ * be applied by hand before the tag can show.
+ */
+export type LeadSource = 'tender' | 'news';
+
+/** Hosts that publish award notices. TED only for now; Doffin joins when its API key exists. */
+const TENDER_HOSTS = ['ted.europa.eu'];
+
+export function leadSource(url: string | null | undefined): LeadSource {
+  try {
+    const host = new URL(String(url)).hostname.toLowerCase();
+    return TENDER_HOSTS.some((h) => host === h || host.endsWith(`.${h}`)) ? 'tender' : 'news';
+  } catch {
+    return 'news';
+  }
+}
+
+export const LEAD_SOURCE_LABEL: Record<LeadSource, string> = { tender: 'Tender award', news: 'News' };
+
+/**
+ * The tag's look, as whole class names (Tailwind cannot build one at runtime). Neither a status
+ * colour nor a tool colour: where a lead came from is not how a fact stands, and not which screen
+ * you are on. An award is outlined on white, a story filled grey, and the word says which.
+ */
+export const LEAD_SOURCE_BADGE: Record<LeadSource, string> = {
+  tender: 'badge bg-panel border border-ink3 text-ink',
+  news: 'badge',
+};
