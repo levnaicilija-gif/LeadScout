@@ -117,3 +117,89 @@ filename, and any header/footer metadata in the source file — a name hiding in
 the PDF's file properties or a footer is still a leak. Confirm the anonymized PDF
 render (not just the on-screen card) reflects this. Commit after each step, two
 lines per step.
+
+-------------------------------------------------------------------------------
+12. TENDER-AWARD EXTRACTION
+-------------------------------------------------------------------------------
+A second, earlier-signal lead source alongside Radar's news crawl: contract AWARD
+notices (not open tenders — we don't bid) from structured procurement sources
+rather than scraped news. Sources for this pass: TED (ted.europa.eu, EU/EEA-wide,
+has a public API), Doffin (Norway), Udbud.dk (Denmark). Confirm the actual API/feed
+shape for each against the live source before building against it — do not assume
+a schema. Filter by CPV codes / sector relevant to our trades (offshore wind
+construction and O&M, oil & gas, marine/yard work, industrial coating, scaffolding,
+electrical installation — compile the actual CPV code list against TED's published
+vocabulary, don't guess codes). For each award: contracting authority, winning
+company, contract value, scope description, CPV code(s), country, award date,
+source URL — every field either present in the source record or shown as
+unknown, nothing inferred. Match/create the winning company via
+findOrCreateCompany (same identity rule as Radar — no new ad-hoc matching). Feed
+into the same leads pipeline Radar uses, tagged by source (tender vs news) so
+duplicates between a news article and its underlying award notice are detected and
+merged, keeping the earliest-dated one as canonical. Report: notices checked per
+source, awards matched to our sectors, companies created vs matched, duplicates
+merged against existing news-sourced leads, cost.
+
+Commit after each step, two lines per step.
+
+-------------------------------------------------------------------------------
+14. RADAR — STRICTER FILTERING, CONTACT PRIORITY, EMAIL PATTERNS
+-------------------------------------------------------------------------------
+Tightens what Radar surfaces as a lead, based on a review of an earlier build.
+Three changes:
+
+(1) Hard filter, not just annotation: a lead only surfaces to the user when all
+three hold — a real business trigger, a named company representative quoted in
+the article, and that representative being an appropriate outreach target (see
+role exclusion below). If any of the three is missing, the article does not
+become a visible lead — store it as a rejected/low-confidence record instead of
+dropping it silently, so we can audit what got filtered and why.
+
+What counts as a real business trigger: contract award, construction/project
+start, facility opening, funding round, acquisition, production scale-up. What
+does NOT qualify, even with a named person quoted: early-stage consenting,
+planning applications, EIA/scoping submissions, or any milestone years ahead of
+actual construction or staffing activity.
+
+Concrete test case (real example, found in current Leads): a Nadara article about
+submitting an EIA scoping request for the Bellrock Floating Wind Farm — offshore
+construction not planned until "early 2030s" per the article's own timeline — was
+quoted with a named "Head of Consents and Land." This should NOT have surfaced as
+a lead: the trigger is a multi-year-out regulatory step, not hiring-adjacent
+activity, and the role (consents/land) isn't a hiring contact even when the
+trigger is real. Confirm this specific article is excluded under the new filter,
+and report on it by name.
+
+(2) Contact prioritization: when an article quotes more than one person from the
+awarded company, pick the one most directly tied to the business event over a more
+senior but unrelated exec, and record why. Exclude by role regardless of
+seniority: journalists, politicians/government officials, industry analysts,
+outside consultants, and representatives of a different company mentioned in
+passing (a partner company's rep only counts if that partner is itself a target
+account).
+
+Concrete test case (real example, currently correct — confirm it stays correct
+after this change): a DWT (Deutsche Windtechnik) lead for the Riffgat Offshore
+Wind Farm maintenance contract. The article quotes both Achim Berge Olsen (CEO of
+DWT's offshore division — currently the kept contact) and Jantje Bolduan (Offshore
+Manager at EWE's Offshore Centre — EWE is the client that awarded the contract to
+DWT, not the hiring company itself). Confirm Olsen stays the contact and Bolduan
+is correctly excluded as a client-side representative, not a DWT rep. Report on
+this specific example by name.
+
+Prefer a rank-order / rule-based approach for this, the same no-model-call pattern
+used for organisation-page contacts in item 13, rather than a model call per
+article. If a model call turns out to be genuinely necessary for judgment calls a
+rank order can't resolve, report why and its expected per-article cost before
+committing to it.
+
+(3) Email-pattern capture: when any email address appears in an article
+(including PR/media contacts, who are excluded as leads but still useful here),
+store the observed pattern against the company with a confidence level. Multiple
+patterns allowed per company. Regex over pages already fetched, no model call.
+
+Also fix source resolution: flag (don't silently accept) a source URL that is
+broken, resolves to a landing/index page, sits behind a paywall, or requires
+sign-in.
+
+Commit after each step, two lines per step.
