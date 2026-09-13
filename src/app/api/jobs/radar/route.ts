@@ -12,6 +12,8 @@ import { countryFromText, regionFor } from '@/lib/geo';
 import { fitScore } from '@/lib/fit';
 import { ingestTedAwards, tedWindowFor } from '@/lib/tender/ingest';
 import { findSameContract, mergeSameContract } from '@/lib/same-contract';
+import { hasPublishedAtSource } from '@/lib/schema-features';
+import { datelineFromText } from '@/lib/page-dates';
 export const maxDuration = 300;
 
 /**
@@ -155,7 +157,12 @@ async function run(req: Request) {
 
         const shotPath = `radar/${Date.now()}-${Math.abs(hash(url))}.png`;
         if (page.screenshot) await db.storage.from('screenshots').upload(shotPath, page.screenshot, { contentType: 'image/png' });
-        const { data: article } = await db.from('articles').insert({ source_id: src.id, url, title: page.title, text: page.text, screenshot_path: shotPath, last_fetch_status: 'live', last_fetch_at: page.fetchedAt }).select().single();
+        // The article's own date: its metadata, else — only once 0021 can record that it was a
+        // dateline — one full date in its opening lines. Without a date the same-contract rule
+        // cannot say which of two sources came first.
+        const dateSource = await hasPublishedAtSource(db);
+        const published = page.published ?? (dateSource ? datelineFromText(page.text, page.fetchedAt) : null);
+        const { data: article } = await db.from('articles').insert({ source_id: src.id, url, title: page.title, text: page.text, screenshot_path: shotPath, last_fetch_status: 'live', last_fetch_at: page.fetchedAt, published_at: published?.date ?? null, ...(dateSource && published ? { published_at_source: published.via } : {}) }).select().single();
         tally.articlesRead++;
 
         if (src.type === 'job_board' || src.type === 'company_press') {

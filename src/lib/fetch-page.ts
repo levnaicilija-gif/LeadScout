@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import { httpGet } from './http';
 import { connectBrowser, NoBrowserError } from './browser';
+import { datesFromHtml, type FoundDate } from './page-dates';
 
 export type Fetched = {
   url: string;
@@ -14,6 +15,10 @@ export type Fetched = {
   /** How it was read, so a source audit can say which sources cost money. */
   via: 'http' | 'rss' | 'browser' | 'none';
   note?: string;
+  /** The article's own publication date, when its metadata states one (see page-dates.ts). */
+  published?: FoundDate | null;
+  /** A vacancy's own posting date, when its JobPosting data states one. */
+  posted?: FoundDate | null;
 };
 
 const miss = (url: string, note: string, via: Fetched['via'] = 'none'): Fetched => ({
@@ -23,7 +28,7 @@ const miss = (url: string, note: string, via: Fetched['via'] = 'none'): Fetched 
 /** Visible text from HTML, without a browser: drop script/style/nav chrome, collapse space. */
 function readable($: cheerio.CheerioAPI): string {
   $('script, style, noscript, svg, iframe').remove();
-  return $('body').text().replace(/[ \t ]+/g, ' ').replace(/\n\s*\n\s*/g, '\n').trim();
+  return $('body').text().replace(/[ \t ]+/g, ' ').replace(/\n\s*\n\s*/g, '\n').trim();
 }
 
 /** RSS/Atom item links. Feeds are the cheapest and cleanest source of article URLs. */
@@ -71,6 +76,8 @@ export async function fetchPage(url: string, opts: { allowBrowser?: boolean; for
   }
 
   if (res.ok) {
+    // Dates come from the raw HTML, before readable() strips the scripts that carry JSON-LD.
+    const dates = datesFromHtml(res.body, now());
     const $ = cheerio.load(res.body);
     const title = $('title').first().text().trim();
     const text = readable($);
@@ -79,7 +86,7 @@ export async function fetchPage(url: string, opts: { allowBrowser?: boolean; for
     }).get().filter(Boolean))];
 
     const problem = needsBrowser(res.body, text, links.length);
-    if (!problem) return { url, status: 'live', title, text, links, screenshot: null, fetchedAt: now(), via: 'http' };
+    if (!problem) return { url, status: 'live', title, text, links, screenshot: null, fetchedAt: now(), via: 'http', ...dates };
 
     // The page itself was thin — try its advertised feed before paying for a browser.
     const feedHref = $('link[rel="alternate"][type*="rss"], link[rel="alternate"][type*="atom"]').first().attr('href');
@@ -89,7 +96,7 @@ export async function fetchPage(url: string, opts: { allowBrowser?: boolean; for
         const f = await httpGet(feedUrl);
         if (f.ok && isFeed(f.contentType, f.body)) {
           const feed = parseFeed(f.body);
-          if (feed.links.length) return { url, status: 'live', title: title || feed.title, text, links: feed.links, screenshot: null, fetchedAt: now(), via: 'rss', note: `page needed JS; used its feed ${feedUrl}` };
+          if (feed.links.length) return { url, status: 'live', title: title || feed.title, text, links: feed.links, screenshot: null, fetchedAt: now(), via: 'rss', note: `page needed JS; used its feed ${feedUrl}`, ...dates };
         }
       } catch { /* fall through to the browser */ }
     }
@@ -118,8 +125,9 @@ async function viaBrowser(url: string, why: string): Promise<Fetched> {
     const title = await page.title();
     const text = await page.evaluate(() => document.body.innerText);
     const links: string[] = await page.evaluate(() => Array.from(new Set(Array.from(document.querySelectorAll('a[href]')).map((a) => (a as HTMLAnchorElement).href))));
+    const dates = datesFromHtml(await page.content(), new Date().toISOString());
     const screenshot = await page.screenshot({ fullPage: false });
-    return { url, status: 'live', title, text, links, screenshot, fetchedAt: new Date().toISOString(), via: 'browser', note: `plain fetch insufficient: ${why}` };
+    return { url, status: 'live', title, text, links, screenshot, fetchedAt: new Date().toISOString(), via: 'browser', note: `plain fetch insufficient: ${why}`, ...dates };
   } catch (e: any) {
     return miss(url, `browser failed: ${String(e?.message ?? e).split('\n')[0]}`, 'browser');
   } finally {

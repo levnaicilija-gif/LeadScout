@@ -33,6 +33,8 @@ const authorised = (req: Request) => {
   return !!s && (req.headers.get('x-cron-secret') === s || req.headers.get('authorization') === `Bearer ${s}`);
 };
 
+import { postedFields } from '@/lib/posting-date';
+
 export const GET = (req: Request) => run(req);
 export const POST = (req: Request) => run(req);
 
@@ -298,7 +300,9 @@ async function run(req: Request) {
         const row: any = {
           company_id: c.id, source_url: j.url, title, role: title,
           location: j.location ?? null, country: country ?? null, trades, certs_required: k.certs,
-          posted_at: postedDate(j.postedAt),
+          // A date the feed lists, else the one already stored (left alone), else the posting's own
+          // page. No date writes nothing: a crawl used to blank posted_at on every re-read.
+          ...(await postedFields(db, j.url, postedDate(j.postedAt), `the ${board.via} list`)),
           via: board.via, is_trade: true, classified_at: new Date().toISOString(),
           last_seen_at: new Date().toISOString(), status: 'open',
           poster_type: c.employer_type ?? 'unknown',

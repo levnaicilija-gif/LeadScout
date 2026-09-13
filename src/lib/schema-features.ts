@@ -66,3 +66,7 @@ export const hasPostingContact = (sb: SupabaseClient) => hasColumn(sb, 'job_post
 export const hasHiringState = (sb: SupabaseClient) => hasColumn(sb, 'companies', 'hiring_status');
 export const hasCompanyOutreach = (sb: SupabaseClient) => hasColumn(sb, 'outreach', 'company_id');
 export const hasTestFlag = (sb: SupabaseClient) => hasColumn(sb, 'workspaces', 'is_test');
+
+/** Where a date came from arrives with 0021. A date found only in text is written once it exists. */
+export const hasPublishedAtSource = (sb: SupabaseClient) => hasColumn(sb, 'articles', 'published_at_source');
+export const hasPostedAtSource = (sb: SupabaseClient) => hasColumn(sb, 'job_posts', 'posted_at_source');

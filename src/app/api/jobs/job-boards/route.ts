@@ -202,7 +202,10 @@ async function run(req: Request) {
           location: x.location ?? null, country: country ?? null,
           certs_required: x.certs_required, rotation: x.rotation ?? null,
           contract_type: x.contract_type ?? null, headcount: x.headcount ?? null,
-          posted_at: isoDate(x.posted_at), description: page.text.slice(0, 4000),
+          // The advert's own JobPosting date first, then a date the reading copied off the page.
+          // No date at all writes nothing, so the next crawl cannot blank one already stored.
+          ...(page.posted ? { posted_at: page.posted.date } : isoDate(x.posted_at) ? { posted_at: isoDate(x.posted_at) } : {}),
+          description: page.text.slice(0, 4000),
           via: 'board', is_trade: true, classified_at: new Date().toISOString(),
           last_seen_at: new Date().toISOString(), status: 'open',
           poster_name: x.poster ?? null,

@@ -97,7 +97,7 @@ export function parseAtsJobs(type: AtsType, slug: string, body: string): AtsJob[
 
   switch (type) {
     case 'greenhouse':
-      return (j.jobs ?? []).map((x: any) => ({ title: str(x.title), url: str(x.absolute_url), location: str(x.location?.name), postedAt: str(x.updated_at), description: x.content ? plain(String(x.content)) : undefined }));
+      return (j.jobs ?? []).map((x: any) => ({ title: str(x.title), url: str(x.absolute_url), location: str(x.location?.name), postedAt: str(x.first_published) || undefined, description: x.content ? plain(String(x.content)) : undefined })); // updated_at is the last edit, not the posting: an edited advert looked new
     case 'lever':
       return (Array.isArray(j) ? j : []).map((x: any) => ({ title: str(x.text), url: str(x.hostedUrl), location: str(x.categories?.location), postedAt: x.createdAt ? new Date(x.createdAt).toISOString() : undefined, description: x.descriptionPlain ? String(x.descriptionPlain).slice(0, 6000) : undefined }));
     case 'ashby':
