@@ -69,6 +69,25 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
   if (agedErr) console.log(`  ...  could not seed an aged article: ${agedErr.message}`);
   else await admin.from('lead_articles').insert({ lead_id: lead!.id, article_id: agedArticle!.id });
 
+  // Item 17 on Hiring now: a company whose only advert was posted 70 days ago (ageing), and one whose
+  // "Smoke Rigger" role was advertised on three days inside 180 — re-advertised twice, so raised.
+  const dayAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+  const { data: agedCo } = await admin.from('companies').insert({ workspace_id: workspace, name: 'Smoke Aged Hiring AS', employer_type: 'end_client', country: 'NO' }).select().single();
+  const { data: readvertCo } = await admin.from('companies').insert({ workspace_id: workspace, name: 'Smoke Readvert AS', employer_type: 'end_client', country: 'NO' }).select().single();
+  await markTest(admin, 'companies', [agedCo!.id, readvertCo!.id]);
+  const agePosting = (companyId: string, role: string, postedAt: string, n: number) => ({
+    company_id: companyId, source_url: `https://example.invalid/smoke-age-job-${Date.now()}-${n}`, title: role, role, trades: ['rigger'],
+    location: 'Stavanger, NO', country: 'NO', status: 'open', via: 'http', is_trade: true, posted_at: postedAt,
+    first_seen_at: new Date().toISOString(), last_seen_at: new Date().toISOString(), is_test: true,
+  });
+  const { error: ageJobErr } = await admin.from('job_posts').insert([
+    agePosting(agedCo!.id, 'Smoke Scaffolder', dayAgo(70), 1),
+    agePosting(readvertCo!.id, 'Smoke Rigger', dayAgo(100), 2),
+    agePosting(readvertCo!.id, 'Smoke Rigger', dayAgo(50), 3),
+    agePosting(readvertCo!.id, 'Smoke Rigger', dayAgo(5), 4),
+  ]);
+  if (ageJobErr) console.log(`  ...  could not seed the aged and re-advertised postings: ${ageJobErr.message}`);
+
   // A person read off a company's organisation page hangs from the company, not a lead. 0001's
   // contacts policy hid every such row from signed-in users, so Karstensens' drawer showed a
   // switchboard and no name while René Hansen sat in the table. Seed one and look for it on screen.
@@ -161,6 +180,7 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     // award lead has no date (age unknown, fit 70). The award lead is named first, the other labelled.
     check(/Smoke Tender Winner AS first/.test(today) && /Smoke Offshore AS \(stale signal\)/.test(today),
       'Today names an undated lead before a stale signal and labels the stale one', today.match(/Read \d+ new leads?[^\n]*/)?.[0] ?? 'no new-leads item on Today');
+    check(/Smoke Readvert AS \(hiring now\)/.test(today), 'Today lists a hiring-now company for a re-advertised role', today.match(/Read \d+ new leads?[^\n]*\n?[^\n]*/)?.[0] ?? 'no new-leads item on Today');
 
     // 4 — Leads
     await page.goto(`${BASE}/app/radar`, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -244,6 +264,22 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     // the table has something to show. The message varies, so match the shapes it can take.
     check(!/No trade postings open|No careers pages found yet|Nothing from an employer/.test(hiring),
       'Hiring now shows the table rather than an empty state');
+    // Item 17 on Hiring now: the re-advertised company is raised to the top and badged; the company
+    // whose only advert is 70 days old reads "ageing", is dimmed and sorts last; one first seen today is fresh.
+    const hiringRows = await page.evaluate(() => Array.from(document.querySelectorAll('tr[data-row-href]')).map((tr) => ({
+      name: (tr as HTMLElement).innerText.split('\n')[0], age: tr.getAttribute('data-age'), boosted: tr.getAttribute('data-boosted') === 'true',
+      opacity: getComputedStyle(tr).opacity, label: (tr.querySelector('[data-age-label]') as HTMLElement | null)?.innerText ?? '',
+      badge: (tr.querySelector('[data-boosted-label]') as HTMLElement | null)?.innerText ?? '',
+    })));
+    const rowAt = (n: string) => hiringRows.findIndex((r) => r.name.includes(n));
+    const raisedRow = hiringRows[rowAt('Smoke Readvert AS')];
+    check(rowAt('Smoke Readvert AS') === 0 && !!raisedRow?.boosted && /re-advertised 2× — priority raised/.test(raisedRow.badge) && raisedRow.opacity === '1',
+      'a role advertised on three days inside 180 is raised to the top and badged', JSON.stringify({ index: rowAt('Smoke Readvert AS'), row: raisedRow ?? 'not found' }));
+    const agedRow = hiringRows[rowAt('Smoke Aged Hiring AS')];
+    check(agedRow?.age === 'flagged' && /ageing · 70 days/.test(agedRow.label) && agedRow.opacity === '0.8' && rowAt('Smoke Aged Hiring AS') === hiringRows.length - 1,
+      'a company whose newest advert is 70 days old reads "ageing", is dimmed and sorts last', JSON.stringify({ index: rowAt('Smoke Aged Hiring AS'), of: hiringRows.length, row: agedRow ?? 'not found' }));
+    const freshRow = hiringRows[rowAt('Smoke Offshore AS')];
+    check(freshRow?.age === 'fresh' && freshRow.opacity === '1' && /0 days old/.test(freshRow.label), 'a company first seen today is fresh and not dimmed', JSON.stringify(freshRow ?? 'not found'));
     await drawerHelp(page, 'What opens when you click a company', 'Hiring now');
     await rowOpens('Smoke Offshore AS', /[?&]company=/, 'Hiring now row');
 
@@ -293,6 +329,12 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     ).catch(() => {});
     const orgDrawer = await page.locator('aside').first().innerText().catch(() => '');
     check(/Smoke Orgpage Person/.test(orgDrawer) && /Production Manager/.test(orgDrawer), 'an organisation-page contact on the company is shown to a signed-in user', /Smoke Orgpage Person/.test(orgDrawer) ? '' : orgDrawer.replace(/\s+/g, ' ').slice(0, 200));
+
+    // Item 17: each advert in the Hiring now drawer says how old it is and from which date.
+    await page.goto(`${BASE}/app/radar?tab=hiring&company=${agedCo!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('aside [data-age]', { timeout: 60000 }).catch(() => {});
+    const advertAge = await page.locator('aside [data-age]').first().innerText().catch(() => '');
+    check(/ageing · 70 days · posted \d{4}-\d{2}-\d{2}/.test(advertAge), 'the Hiring now drawer dates each advert and marks an ageing one', advertAge || 'no age line');
 
     // 5 — lead drawer: one tool, end to end
     await page.goto(`${BASE}/app/radar?lead=${lead!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -394,6 +436,11 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     if (tenderLead) await admin.from('leads').delete().eq('id', tenderLead.id).eq('is_test', true);
     // After the lead, whose delete removes the lead_articles link; the URL guard keeps this off real articles.
     if (agedArticle) await admin.from('articles').delete().eq('id', agedArticle.id).like('url', 'https://example.invalid/%');
+    for (const c of [agedCo, readvertCo]) {
+      if (!c) continue;
+      await admin.from('job_posts').delete().eq('company_id', c.id).eq('is_test', true);
+      await admin.from('companies').delete().eq('id', c.id).eq('is_test', true);
+    }
     await admin.from('companies').delete().eq('id', co!.id);
     if (tenderCo) await admin.from('companies').delete().eq('id', tenderCo.id).eq('is_test', true);
     await admin.auth.admin.deleteUser(uid);

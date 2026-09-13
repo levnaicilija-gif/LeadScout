@@ -1,5 +1,6 @@
 import { Help } from './Help';
 import { OpenRow, OpenChevron } from './OpenRow';
+import { postingAge, reAdverts, roleKey, ageSink, AGE_TEXT, AGE_DIM, REPOST_WINDOW_DAYS, type Age } from '@/lib/lead-age';
 
 /**
  * Hiring now — one row per company, not per posting.
@@ -54,12 +55,18 @@ type Group = {
   openings: number;
   reposted: number;
   daysSinceNewest: number | null;
+  /** Item 17: as old as the newest advert. Informational — it sinks and dims the row, never hides it. */
+  age: Age;
+  /** Roles advertised again on another day inside the repost window, most first. */
+  readvertised: { role: string; count: number; days: string[] }[];
+  /** A role re-advertised often enough to raise the row above the others. */
+  boosted: boolean;
 };
 
 const day = (s?: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null);
 
-/** Two "Servicemonteur" adverts in two towns are one role hiring twice. */
-const roleKey = (p: Posting) => (p.role ?? p.title ?? '').replace(/\s*[-–—|,(].*$/, '').replace(/\s+/g, ' ').trim();
+// roleKey — two "Servicemonteur" adverts in two towns are one role hiring twice — lives in
+// src/lib/lead-age.ts, because re-advertising is counted per role too.
 
 export function groupByCompany(postings: Posting[]): Group[] {
   const byCompany = new Map<string, Posting[]>();
@@ -79,8 +86,19 @@ export function groupByCompany(postings: Posting[]): Group[] {
     const newest = dates.length ? dates[dates.length - 1] : null;
     const fresh = newest ? (Date.now() - Date.parse(newest)) / 86400000 <= 30 : false;
 
-    // An advert seen more than once under the same role is a repost: the job did not get filled.
-    const reposted = roles.filter((r) => r.n > 1).reduce((n, r) => n + r.n - 1, 0);
+    // Re-advertised means the same role again on a different day inside the window (src/lib/lead-age.ts).
+    // Several adverts for one role on one day are openings at once: this used to count wet pro's three
+    // same-day adverts and AIBEL's two as reposts and call the roles "not filled".
+    const byRole = new Map<string, Posting[]>();
+    for (const p of ps) { const k = roleKey(p) || 'Trade role'; byRole.set(k, [...(byRole.get(k) ?? []), p]); }
+    const readvertised = [...byRole.entries()]
+      .map(([role, list]) => ({ role, ...reAdverts(list) }))
+      .filter((r) => r.count > 0)
+      .sort((a, b) => b.count - a.count);
+    const reposted = readvertised.reduce((n, r) => n + r.count, 0);
+    const boosted = readvertised.some((r) => r.boosted);
+    // A row is as old as its newest advert; an advert with no date at all never makes it older.
+    const age = ps.map((p) => postingAge(p)).sort((a, b) => (a.days ?? Infinity) - (b.days ?? Infinity))[0];
     const days = newest ? Math.floor((Date.now() - Date.parse(newest)) / 86400000) : null;
     const pressure: Group['pressure'] = openings >= 5 && fresh ? 'high' : openings >= 5 || (openings >= 2 && fresh) ? 'medium' : 'low';
 
@@ -103,17 +121,22 @@ export function groupByCompany(postings: Posting[]): Group[] {
       openings,
       reposted,
       daysSinceNewest: days,
+      age,
+      readvertised: readvertised.map(({ role, count, days: on }) => ({ role, count, days: on })),
+      boosted,
       pressureWhy: [
         `${openings} opening${openings === 1 ? '' : 's'} across ${ps.length} advert${ps.length === 1 ? '' : 's'}`,
-        reposted > 0 ? `${reposted} repost${reposted === 1 ? '' : 's'} — the role has not been filled` : null,
+        ...readvertised.map((r) => `${r.role} re-advertised ${r.count}× in ${REPOST_WINDOW_DAYS} days (${r.days.join(', ')})${r.boosted ? ' — priority raised' : ''}`),
         days === null ? 'no date on any advert' : days <= 30 ? `newest ${days} day${days === 1 ? '' : 's'} old` : `newest is ${days} days old`,
       ].filter(Boolean).join(' · '),
     };
   });
 
   const rank = { high: 0, medium: 1, low: 2 };
+  // Re-advertised rows first, ageing rows last (src/lib/lead-age.ts#ageSink), then pressure as before.
   return groups.sort((a, b) =>
-    rank[a.pressure] - rank[b.pressure]
+    ageSink(a.age.state, a.boosted) - ageSink(b.age.state, b.boosted)
+    || rank[a.pressure] - rank[b.pressure]
     || b.postings.length - a.postings.length
     || (b.newest ?? '').localeCompare(a.newest ?? ''));
 }
@@ -183,13 +206,15 @@ export function HiringNow({
         </thead>
         <tbody>
           {groups.map((g) => (
-            <OpenRow key={g.company} href={`/app/radar?tab=hiring&company=${g.companyId}${showAgencies ? '&agencies=1' : ''}`} className="align-top">
+            <OpenRow key={g.company} href={`/app/radar?tab=hiring&company=${g.companyId}${showAgencies ? '&agencies=1' : ''}`} className={`align-top ${g.boosted ? '' : AGE_DIM[g.age.state]}`} attrs={{ 'data-age': g.age.state, ...(g.boosted ? { 'data-boosted': 'true' } : {}) }}>
               <td>
                 <a href={`?tab=hiring&company=${g.companyId}${showAgencies ? '&agencies=1' : ''}`} className="flex items-center gap-1.5 font-medium whitespace-nowrap text-accent">{g.company}<OpenChevron /></a>
                 <div className="text-ink3 text-[12px]">
                   {[g.country, g.employerType?.replace(/_/g, ' ')].filter(Boolean).join(' · ')}
                   {g.employerType === 'staffing_agency' && <span className="text-warn"> · agency</span>}
                 </div>
+                <div data-age-label title={g.age.why} className={`text-[12px] ${AGE_TEXT[g.age.state]}`}>{g.age.label}</div>
+                {g.boosted && <span data-boosted-label title={g.pressureWhy} className="badge badge-info mt-1 mr-1">re-advertised {g.readvertised[0].count}× — priority raised</span>}
                 {state?.[g.companyId]?.status === 'pursued' && <span className="badge badge-info mt-1">pursued</span>}
                 {state?.[g.companyId]?.confirmedAt && <span className="badge badge-ok mt-1 ml-1">✓ checked</span>}
                 {!g.fromOwnBoard && <div className="text-ink3 text-[12px]">from a job board{g.boardPosters.length ? `, placed by ${g.boardPosters.slice(0, 2).join(', ')}` : ', advertiser not named'}</div>}
@@ -211,7 +236,7 @@ export function HiringNow({
               <td className="text-[13px]">{g.certs.join(', ') || <span className="text-ink3">none stated</span>}</td>
               <td title={g.pressureWhy}>
                 <Pressure p={g.pressure} />
-                <div className="text-ink3 text-[12px]">{g.openings} open{g.reposted > 0 ? ` · ${g.reposted} repost${g.reposted === 1 ? '' : 's'}` : ''}</div>
+                <div className="text-ink3 text-[12px]">{g.openings} open{g.reposted > 0 ? ` · re-advertised ${g.reposted}×` : ''}</div>
               </td>
               <td className="text-[13px] whitespace-nowrap">
                 {day(g.newest) ?? <span className="text-ink3">—</span>}
@@ -246,6 +271,8 @@ export const HiringHelp = () => (
       ['Comes from', 'The company\'s own board. Where they use an ATS we read its published list; otherwise the careers page itself.'],
       ['Filtered by', 'Every title is read in its own language and mapped to our trades — industrirørlegger is a pipefitter. Only trades we place are kept.'],
       ['Pressure', 'Volume and recency together: five or more open trade roles in the last month is high; one advert from March is low.'],
+      ['Age', 'A company is ageing when its newest advert is 60 days old — from the posting date, else the day we first saw it. It sinks and dims; it is never hidden. Several adverts on one day are openings, not reposts.'],
+      ['Re-advertised', 'The same role advertised again on another day. Twice or more inside 180 days raises the company to the top: a role that keeps coming back is demand, not a stale advert.'],
       ['Agencies', 'Hidden by default — a staffing agency\'s vacancies are a competitor\'s, not a customer\'s. The toggle shows them when you want the market view.'],
       ['Never', 'Invents a posting, a certificate requirement or a headcount. Everything links back to the board it was read from.'],
     ]}

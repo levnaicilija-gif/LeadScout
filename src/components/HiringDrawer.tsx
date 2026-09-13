@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { postingAge, AGE_TEXT } from '@/lib/lead-age';
 import { EmployerTypeOverride } from './EmployerTypeOverride';
 import { CountryPicker } from './CountryPicker';
 import { ScoredCandidate } from './ScoredCandidate';
@@ -181,6 +182,7 @@ export function HiringDrawer({ g }: { g: Group }) {
             <div className="text-ink3 text-[12px]">
               {[p.location, p.rotation, p.contract_type, p.posted_at && `posted ${day(p.posted_at)}`].filter(Boolean).join(' · ') || 'no detail printed'}
             </div>
+            {(() => { const a = postingAge(p); return <div data-age={a.state} title={a.why} className={`text-[12px] ${AGE_TEXT[a.state]}`}>{a.label} · {a.state === 'unknown' ? 'no date on the advert' : a.basis?.split(' (')[0]} {a.date ?? ''}</div>; })()}
             {p.certs_required?.length > 0 && <div className="text-[12px] mt-0.5">Certificates asked for: {p.certs_required.join(', ')}</div>}
             <a href={p.source_url} target="_blank" rel="noopener" className="text-accent text-[12px]">Open board</a>
           </div>

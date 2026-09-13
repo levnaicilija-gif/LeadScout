@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { hasPostingContact, hasHiringState, hasAwardDate } from './schema-features';
-import { newsLeadAge, tenderLeadAge, ageSink } from './lead-age';
+import { newsLeadAge, tenderLeadAge, postingAge, reAdverts, roleKey, ageSink, REPOST_WINDOW_DAYS } from './lead-age';
 import { leadSource, primaryArticle } from './lead-source';
 import { articlesByLead } from './lead-articles';
 
@@ -58,7 +58,7 @@ export async function todayItems(sb: SupabaseClient): Promise<TodayItem[]> {
   const leadNames = aged
     .map(({ l, age }) => l.companies?.name && `${l.companies.name}${age.state === 'stale' ? ' (stale signal)' : age.state === 'flagged' ? ' (ageing)' : ''}`)
     .filter(Boolean) as string[];
-  const hiringNames = hiring.map((h) => `${h.name} (hiring now)`);
+  const hiringNames = hiring.map((h) => `${h.name} (hiring now${h.ageing ? ', ageing' : ''})`);
   const allNames = [...leadNames, ...hiringNames];
   if (allNames.length) {
     const n = aged.length + hiring.length;
@@ -71,7 +71,7 @@ export async function todayItems(sb: SupabaseClient): Promise<TodayItem[]> {
         ? 'Contract awards are demand months before a job is posted; an open advert is demand today.'
         : 'Contract awards are demand months before a job is posted.',
       from: hiring.length
-        ? 'leads with status = new in the last 7 days (fresh signals first, then fit), plus hiring-now companies under high pressure or naming a contact'
+        ? 'leads with status = new in the last 7 days (fresh signals first, then fit), plus hiring-now companies under high pressure, naming a contact or re-advertising a role'
         : 'leads with status = new in the last 7 days, fresh signals first, then by fit',
     });
   }
@@ -203,18 +203,20 @@ export const whenLabel = (item: TodayItem, index: number) => item.at ?? (index =
 /**
  * Hiring-now companies worth a call today.
  *
- * Two reasons qualify and no others. High pressure means the volume and the recency both say
+ * Three reasons qualify and no others. High pressure means the volume and the recency both say
  * they are short of people now. A contact printed on the advert means there is a named person
- * to ring, which is the difference between a task and a browse. A company already marked
- * "not for us" never comes back.
+ * to ring, which is the difference between a task and a browse. A role re-advertised on three or
+ * more days inside 180 (item 17) is a job that keeps not filling, and goes first. A company
+ * whose newest advert is ageing goes last and says so. A company already marked "not for us"
+ * never comes back.
  *
  * Guarded: the contact column and the row state both arrive with 0020, and naming a column that
  * does not exist fails the whole query rather than omitting a field.
  */
-async function hiringWorthCalling(sb: SupabaseClient): Promise<{ id: string; name: string; why: string }[]> {
+async function hiringWorthCalling(sb: SupabaseClient): Promise<{ id: string; name: string; why: string; ageing: boolean }[]> {
   const contacts = await hasPostingContact(sb);
   const state = await hasHiringState(sb);
-  const cols = `company_id, headcount, posted_at, first_seen_at${contacts ? ', contact_name' : ''}, companies!inner(name${state ? ', hiring_status' : ''})`;
+  const cols = `company_id, role, title, headcount, posted_at, first_seen_at${contacts ? ', contact_name' : ''}, companies!inner(name${state ? ', hiring_status' : ''})`;
   const { data, error } = await sb.from('job_posts').select(cols as '*')
     .eq('status', 'open').not('company_id', 'is', null).limit(400) as { data: any[] | null; error: any };
   if (error || !data) return [];
@@ -226,19 +228,27 @@ async function hiringWorthCalling(sb: SupabaseClient): Promise<{ id: string; nam
     (byCompany.get(k) ?? byCompany.set(k, []).get(k)!).push(p);
   }
 
-  const out: { id: string; name: string; why: string }[] = [];
+  const out: { id: string; name: string; why: string; ageing: boolean; sink: number }[] = [];
   for (const [id, ps] of byCompany) {
     const openings = ps.reduce((n, p) => n + (p.headcount && p.headcount > 0 ? p.headcount : 1), 0);
     const newest = ps.map((p) => p.posted_at ?? p.first_seen_at).filter(Boolean).sort().pop();
     const fresh = newest ? (Date.now() - Date.parse(newest)) / 86400000 <= 30 : false;
     const named = contacts ? ps.find((p) => p.contact_name) : null;
     const high = openings >= 5 && fresh;
-    if (!high && !named) continue;
+    const byRole = new Map<string, any[]>();
+    for (const p of ps) { const k = roleKey(p) || 'Trade role'; byRole.set(k, [...(byRole.get(k) ?? []), p]); }
+    const raised = [...byRole.entries()].map(([role, list]) => ({ role, ...reAdverts(list) })).find((r) => r.boosted);
+    if (!high && !named && !raised) continue;
+    const age = ps.map((p) => postingAge(p)).sort((a, b) => (a.days ?? Infinity) - (b.days ?? Infinity))[0];
     out.push({
       id,
       name: ps[0].companies?.name ?? 'a company',
-      why: high ? `${openings} openings, newest within a month` : `${named.contact_name} is named on the advert`,
+      why: raised
+        ? `${raised.role} re-advertised ${raised.count}× in ${REPOST_WINDOW_DAYS} days`
+        : high ? `${openings} openings, newest within a month` : `${named.contact_name} is named on the advert`,
+      ageing: !raised && age.state === 'flagged',
+      sink: ageSink(age.state, !!raised),
     });
   }
-  return out.slice(0, 5);
+  return out.sort((a, b) => a.sink - b.sink).slice(0, 5);
 }
