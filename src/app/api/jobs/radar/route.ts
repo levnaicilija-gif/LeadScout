@@ -12,7 +12,8 @@ import { countryFromText, regionFor } from '@/lib/geo';
 import { fitScore } from '@/lib/fit';
 import { ingestTedAwards, tedWindowFor } from '@/lib/tender/ingest';
 import { findSameContract, mergeSameContract } from '@/lib/same-contract';
-import { hasPublishedAtSource, hasRadarVerdicts } from '@/lib/schema-features';
+import { hasPublishedAtSource, hasRadarVerdicts, hasEmailPatterns } from '@/lib/schema-features';
+import { observePatterns, recordEmailPatterns } from '@/lib/email-pattern';
 import { evaluateNews, RULES_VERSION } from '@/lib/radar-filter';
 import { quotedInText } from '@/lib/quoted-contacts';
 import { canonCompany } from '@/lib/company-identity';
@@ -120,7 +121,7 @@ async function run(req: Request) {
   }
 
   const report: any[] = [];
-  const tally = { sources: 0, sourcesUnreachable: 0, linksFound: 0, alreadySeen: 0, fetchFailed: 0, tooShort: 0, articlesRead: 0, leads: 0, jobLeads: 0, rejected: 0, filtered: 0, lowConfidence: 0, modelEur: 0, budgetStopped: false, linksNotRead: 0, spentTodayBefore: Math.round(budget.totalToday * 10000) / 10000, cap };
+  const tally = { sources: 0, sourcesUnreachable: 0, linksFound: 0, alreadySeen: 0, fetchFailed: 0, tooShort: 0, articlesRead: 0, leads: 0, jobLeads: 0, rejected: 0, filtered: 0, lowConfidence: 0, emailPatterns: 0, modelEur: 0, budgetStopped: false, linksNotRead: 0, spentTodayBefore: Math.round(budget.totalToday * 10000) / 10000, cap };
   // Every attempt of every extraction call is logged and counted against the cap as it happens.
   const meter = (detail: string): UsageMeter => async (usage, model) => {
     const eur = workspaceId ? await logModelCall(db, workspaceId, model, detail, usage) : 0;
@@ -137,6 +138,24 @@ async function run(req: Request) {
   // Every judgement is kept, a rejection included — never dropped. Written once 0023 exists; until
   // then the run record's rejected list carries the same reasons.
   const verdictsOn = await hasRadarVerdicts(db);
+
+  // Item 14 (3): the shape of a company's addresses, kept from any page about it — a story that is
+  // not a lead included, because a press office's address still shows how the company writes them.
+  // Regex only (src/lib/email-pattern.ts); written once 0023 exists.
+  const patternsOn = await hasEmailPatterns(db);
+  const notePatterns = async (companyId: string | null | undefined, pageText: string, pageUrl: string, readAt: string) => {
+    if (!patternsOn || !workspaceId || !companyId || !pageText.includes('@')) return;
+    const { data: co } = await db.from('companies').select('name, domain').eq('id', companyId).maybeSingle();
+    if (!co) return;
+    const observations = observePatterns({ text: pageText, url: pageUrl, readAt }, co);
+    if (!observations.length) return;
+    try {
+      await recordEmailPatterns(db, workspaceId, companyId, observations);
+      tally.emailPatterns += observations.length;
+    } catch (e: any) {
+      report.push({ patternError: String(e?.message ?? e).slice(0, 160) });
+    }
+  };
   const recordVerdict = async (row: Record<string, unknown>) => {
     if (!verdictsOn || !workspaceId) return;
     const { error } = await db.from('radar_verdicts').upsert({ workspace_id: workspaceId, rules_version: RULES_VERSION, ...row }, { onConflict: 'article_id' });
@@ -237,6 +256,8 @@ async function run(req: Request) {
           if (v.verdict === 'lead' && people.length) {
             const leadId = await upsertWonLead(db, src.workspace_id, { ...res.lead, people }, article.id, url, page.fetchedAt, agencyNames, page.text);
             await recordVerdict({ ...verdictRow, lead_id: leadId });
+            const { data: saved } = await db.from('leads').select('company_id').eq('id', leadId).maybeSingle();
+            await notePatterns(saved?.company_id, page.text, url, page.fetchedAt);
             tally.leads++;
             report.push({ url, title: page.title, lead: true, company: res.lead.company, people: people.map((p) => `${p.name} (${p.title})`), contactWhy: v.contacts.why });
           } else {
@@ -245,6 +266,9 @@ async function run(req: Request) {
             if (verdict === 'rejected') tally.filtered++; else tally.lowConfidence++;
             rejected.push({ url, why: `item 14 ${verdict}: ${reason}`, rule: v.rules.map((r) => r.id).join(',') || 'rep_unverified' });
             await recordVerdict({ ...verdictRow, verdict, reason });
+            // A story that is not a lead creates no company; its addresses count only for one we already hold.
+            const known = await findOrCreateCompany(db, { workspaceId: src.workspace_id, name: res.lead.company!, agencyNames, dryRun: true });
+            if (known && !known.id.startsWith('dry:')) await notePatterns(known.id, page.text, url, page.fetchedAt);
           }
         } else {
           tally.rejected++;
