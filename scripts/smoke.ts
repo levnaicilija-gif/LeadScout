@@ -148,6 +148,13 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     const newsRow = tags.find((t) => t.text.includes('Smoke Offshore AS'));
     check(tenderRow?.source === 'tender' && /Tender award/.test(tenderRow.tag), 'a TED-sourced lead is tagged "Tender award"', JSON.stringify(tenderRow ? { source: tenderRow.source, tag: tenderRow.tag } : 'row not found'));
     check(newsRow?.source === 'news' && /News/.test(newsRow.tag), 'a news-sourced lead is tagged "News"', JSON.stringify(newsRow ? { source: newsRow.source, tag: newsRow.tag } : 'row not found'));
+    // The chip for the view you are on must look selected. `.chip` sits after the utilities in
+    // globals.css, so a plain bg-rail lost to it and "All" rendered white with its count in white.
+    const allChip = await page.evaluate(() => {
+      const a = document.querySelector('[data-source-filter] a') as HTMLElement | null;
+      return a ? { bg: getComputedStyle(a).backgroundColor, text: a.innerText } : null;
+    });
+    check(allChip?.bg === 'rgb(14, 26, 43)' && /All\s*\d+/.test(allChip.text), 'the "All" chip shows as selected, with its count', JSON.stringify(allChip));
     // The source filter narrows the table to one kind, and the other kind is gone from it.
     await page.goto(`${BASE}/app/radar?tab=won&source=tender`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForSelector('tr[data-lead-source]', { timeout: 60000 }).catch(() => {});
