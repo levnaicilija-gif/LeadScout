@@ -14,6 +14,8 @@ import { ingestTedAwards, tedWindowFor } from '@/lib/tender/ingest';
 import { findSameContract, mergeSameContract } from '@/lib/same-contract';
 import { hasPublishedAtSource } from '@/lib/schema-features';
 import { datelineFromText } from '@/lib/page-dates';
+import { Budget, logModelCall, DAILY_BUDGET_EUR } from '@/lib/cost';
+import type { UsageMeter } from '@/lib/ai/claude';
 export const maxDuration = 300;
 
 /**
@@ -76,9 +78,18 @@ async function run(req: Request) {
   // first costs nothing and makes the chain independent of whether this batch finishes.
   //
   // The chained request is abandoned on purpose: waiting for it would nest the 300 s budgets.
+  // The daily cap covers this crawl's own model calls. Until 2026-09-13 they went through askJson,
+  // which logged nothing: cost_log showed €1.05 for 10 September while 307 extraction calls had
+  // spent about €2.50 more, and the cap never saw a cent of it. ?cap= overrides it for one run.
+  //
+  // A spent cap hard-stops: no next batch is handed on, and no further page is fetched and stored.
+  const workspaceId = (sources ?? [])[0]?.workspace_id ?? (await db.from('workspaces').select('id').limit(1).maybeSingle()).data?.id ?? null;
+  const cap = Number(params.get('cap') ?? DAILY_BUDGET_EUR);
+  const budget = await Budget.open(db, workspaceId ?? '', cap);
+
   const more = (sources ?? []).length === take && take > 0;
   let next: string | null = null;
-  if (more && chain && batchesLeft > 1) {
+  if (more && chain && batchesLeft > 1 && !budget.exhausted) {
     const u = new URL(req.url);
     u.searchParams.set('cursor', String(cursor + take));
     u.searchParams.set('batch', String(batch));
@@ -106,19 +117,25 @@ async function run(req: Request) {
   }
 
   const report: any[] = [];
-  const tally = { sources: 0, sourcesUnreachable: 0, linksFound: 0, alreadySeen: 0, fetchFailed: 0, tooShort: 0, articlesRead: 0, leads: 0, jobLeads: 0, rejected: 0 };
+  const tally = { sources: 0, sourcesUnreachable: 0, linksFound: 0, alreadySeen: 0, fetchFailed: 0, tooShort: 0, articlesRead: 0, leads: 0, jobLeads: 0, rejected: 0, modelEur: 0, budgetStopped: false, linksNotRead: 0, spentTodayBefore: Math.round(budget.totalToday * 10000) / 10000, cap };
+  // Every attempt of every extraction call is logged and counted against the cap as it happens.
+  const meter = (detail: string): UsageMeter => async (usage, model) => {
+    const eur = workspaceId ? await logModelCall(db, workspaceId, model, detail, usage) : 0;
+    budget.add(eur);
+    tally.modelEur = Math.round((tally.modelEur + eur) * 10000) / 10000;
+  };
   const rejected: { url: string; why: string }[] = [];
   /** Which sources the free path could read, and which would need a paid browser. */
   const audit: { source: string; via: string; links: number; note?: string }[] = [];
 
   // Open the run record now, so a batch killed by the 300 s wall still leaves evidence of what
   // it was doing. Without this, "why did this morning produce nothing?" has no answer by lunch.
-  const workspaceId = (sources ?? [])[0]?.workspace_id ?? (await db.from('workspaces').select('id').limit(1).maybeSingle()).data?.id ?? null;
   const { data: runRow } = await db.from('radar_runs')
     .insert({ workspace_id: workspaceId, tier, cursor, batch: take })
     .select('id').maybeSingle();
 
   for (const src of sources ?? []) {
+    if (budget.exhausted) { tally.budgetStopped = true; continue; }
     tally.sources++;
     try {
       const rule = ruleFor(src.url, src.link_rule);
@@ -151,6 +168,12 @@ async function run(req: Request) {
        try {
         const { data: seen } = await db.from('articles').select('id').eq('url', url).maybeSingle();
         if (seen) { tally.alreadySeen++; continue; }
+        // Asked before the page is fetched and stored: a stored article counts as seen and is never
+        // read again, so storing one the cap then stops from being extracted would lose it for good.
+        // Measured 2026-09-13: €0.0077 per extraction, €0.0075 per job-post read; the estimate
+        // leaves room for askJson's one retry.
+        const estimate = src.type === 'job_board' || src.type === 'company_press' ? 0.03 : 0.016;
+        if (!budget.canAfford(estimate)) { tally.budgetStopped = true; tally.linksNotRead++; continue; }
         const page = await fetchPage(url);
         if (page.status !== 'live') { tally.fetchFailed++; rejected.push({ url, why: `page did not load — ${page.note ?? 'no reason given'}` }); continue; }
         if (page.text.length < 400) { tally.tooShort++; rejected.push({ url, why: `only ${page.text.length} characters of text — not an article` }); continue; }
@@ -169,13 +192,13 @@ async function run(req: Request) {
           // Ring-fenced: the job-post pass is a bonus on these sources, and it must never cost
           // the article its won-work extraction. It did — 18 articles in one run.
           try {
-            const job = await extractJobPost(page.text, url);
+            const job = await extractJobPost(page.text, url, { onUsage: meter(`radar job post ${new URL(url).hostname}`) });
             if (job) { await upsertJobLead(db, src.workspace_id, job, url, page.text, shotPath, agencyNames); tally.jobLeads++; }
           } catch (e: any) {
             report.push({ url, jobPostError: String(e?.message ?? e).replace(/\s+/g, ' ').slice(0, 150) });
           }
         }
-        const res = await extractLead(page.text, url);
+        const res = await extractLead(page.text, url, { onUsage: meter(`radar stage1 ${new URL(url).hostname}`) });
         if (res.ok) {
           await upsertWonLead(db, src.workspace_id, res.lead, article.id, url, page.fetchedAt, agencyNames, page.text);
           tally.leads++;
@@ -200,7 +223,7 @@ async function run(req: Request) {
   }
 
   // One line per batch, so the daily run is readable in the Vercel logs.
-  console.log(`[radar] cursor=${cursor} batch=${take} sources=${tally.sources} articles=${tally.articlesRead} leads=${tally.leads} rejected=${tally.rejected} next=${next ? cursor + take : 'done'}${tenders ? ` tenders=${tenders.error ? `error: ${tenders.error}` : `${tenders.leadsCreated} leads from ${tenders.noticesChecked} notices`}` : ''}`);
+  console.log(`[radar] cursor=${cursor} batch=${take} sources=${tally.sources} articles=${tally.articlesRead} leads=${tally.leads} rejected=${tally.rejected} model=€${tally.modelEur}${tally.budgetStopped ? ` STOPPED at the €${cap} cap (${tally.linksNotRead} links not read)` : ''} next=${next ? cursor + take : 'done'}${tenders ? ` tenders=${tenders.error ? `error: ${tenders.error}` : `${tenders.leadsCreated} leads from ${tenders.noticesChecked} notices`}` : ''}`);
 
   return NextResponse.json({ ok: true, browser: browserProvider(), cursor, batch: take, nextCursor: more ? cursor + take : null, chained: !!next, tally, tenders, audit, rejected, report });
 }

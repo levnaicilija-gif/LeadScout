@@ -24,7 +24,14 @@ function keysOf(schema: z.ZodTypeAny): string[] {
   return [];
 }
 
-export async function askJson<S extends z.ZodTypeAny>(schema: S, system: string, user: string, model = MODEL_EXTRACT, maxTokens = 2000): Promise<z.output<S>> {
+/**
+ * Told the tokens of every attempt askJson makes, so a caller can log and cap what it spends.
+ * askJson itself logged nothing, which is how Radar's extraction stayed outside cost_log and the
+ * daily cap for its first week.
+ */
+export type UsageMeter = (usage: { input_tokens?: number; output_tokens?: number }, model: string) => void | Promise<void>;
+
+export async function askJson<S extends z.ZodTypeAny>(schema: S, system: string, user: string, model = MODEL_EXTRACT, maxTokens = 2000, onUsage?: UsageMeter): Promise<z.output<S>> {
   const keys = keysOf(schema);
   const shape = keys.length ? ` The object must use exactly these top-level keys: ${keys.map((k) => `"${k}"`).join(', ')}.` : '';
   const base = `${system}\nReturn valid JSON only. Return a single JSON object, not an array.${shape} No prose, no markdown fences.`;
@@ -42,6 +49,8 @@ export async function askJson<S extends z.ZodTypeAny>(schema: S, system: string,
       system: attempt === 0 ? base : `${base}\n\nA previous attempt could not be used: ${lastProblem}\nReturn the whole object again, corrected. Keep every value complete — do not truncate.`,
       messages: [{ role: 'user', content: user }],
     });
+    // Every attempt is billed, the failed first one included.
+    if (onUsage) await onUsage(r.usage, model);
     const text = r.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
 
     try {

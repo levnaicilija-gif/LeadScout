@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { askJson, appearsIn } from './claude';
+import { askJson, appearsIn, MODEL_EXTRACT, type UsageMeter } from './claude';
 
 /**
  * A model asked for an optional field returns `null` about as often as it omits it, and zod's
@@ -72,8 +72,8 @@ Never guess an email or phone.`;
  */
 export type LeadResult = { ok: true; lead: RadarExtraction } | { ok: false; why: string };
 
-export async function extractLead(articleText: string, url: string): Promise<LeadResult> {
-  const out = await askJson(Schema, SYSTEM, `URL: ${url}\n\nARTICLE:\n${articleText.slice(0, 20000)}`);
+export async function extractLead(articleText: string, url: string, opts: { onUsage?: UsageMeter } = {}): Promise<LeadResult> {
+  const out = await askJson(Schema, SYSTEM, `URL: ${url}\n\nARTICLE:\n${articleText.slice(0, 20000)}`, MODEL_EXTRACT, 2000, opts.onUsage);
   if (!out.qualifies) return { ok: false, why: out.reason?.trim() || 'does not meet Stage 1 rules' };
   if (!out.company) return { ok: false, why: 'qualified but named no company' };
   if (!appearsIn(articleText, out.company)) return { ok: false, why: `company "${out.company}" is not in the article text` };
@@ -98,10 +98,10 @@ const JobSchema = z.object({
   contact: z.object({ name: str(), title: str(), email: str(), phone: str() }).nullish().transform((v) => v ?? undefined),
 });
 export type JobExtraction = z.output<typeof JobSchema>;
-export async function extractJobPost(pageText: string, url: string): Promise<JobExtraction | null> {
+export async function extractJobPost(pageText: string, url: string, opts: { onUsage?: UsageMeter } = {}): Promise<JobExtraction | null> {
   const out = await askJson(JobSchema, `You read a job posting page for a trades staffing agency. Copy company, role, location, dates, certs and any printed contact VERBATIM. If a field is not printed on the page, omit it. Never invent an email or phone.
 
-Always answer "is_job_post": true or false, even when everything else is omitted — that field is your verdict on the page, not something copied off it.`, `URL: ${url}\n\nPAGE:\n${pageText.slice(0, 15000)}`);
+Always answer "is_job_post": true or false, even when everything else is omitted — that field is your verdict on the page, not something copied off it.`, `URL: ${url}\n\nPAGE:\n${pageText.slice(0, 15000)}`, MODEL_EXTRACT, 2000, opts.onUsage);
   if (!out.is_job_post || !out.company) return null;
   if (out.contact) {
     if (!appearsIn(pageText, out.contact.name, out.contact.email, out.contact.phone)) out.contact = undefined;
