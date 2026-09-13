@@ -33,7 +33,10 @@ export async function POST(req: Request) {
     const p = await fetchPage(l.source_url);
     const ageDays = (Date.now() - new Date(l.created_at).getTime()) / 86400000;
     const status = p.status === 'not_found' ? 'not_found' : ageDays > 30 && l.kind === 'job_post' ? 'stale' : 'live';
-    await db.from('leads').update({ source_fetch_status: status, source_fetched_at: p.fetchedAt, ...(status === 'not_found' ? { status: 'stale' } : {}) }).eq('id', l.id);
+    // The source's state is flagged; the lead's status is the owner's to set. This used to write
+    // status 'stale' on a page that did not load, which hid the lead from Leads and Pitch on the
+    // strength of one failed fetch, without anyone deciding it.
+    await db.from('leads').update({ source_fetch_status: status, source_fetched_at: p.fetchedAt }).eq('id', l.id);
   }
   const soon = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
   const { data: vs } = await db.from('verifications').select('id, document_id, valid_until, documents(cert_body, extracted)').eq('result', 'valid').lte('valid_until', soon).limit(100);

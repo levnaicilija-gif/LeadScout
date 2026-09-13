@@ -8,6 +8,7 @@ import { groupByCompany } from '@/components/HiringNow';
 import { checkRightToWork } from '@/lib/right-to-work';
 import { currentUser } from '@/lib/supabase/server';
 import { leadSource, LEAD_SOURCE_LABEL, LEAD_SOURCE_BADGE } from '@/lib/lead-source';
+import { rankQuoted } from '@/lib/quoted-contacts';
 export const dynamic = 'force-dynamic';
 export default async function Radar({ searchParams }: { searchParams: { tab?: string; lead?: string; agencies?: string; company?: string; country?: string; trade?: string; employer?: string; pressure?: string; source?: string } }) {
   const sb = supabaseServer(); const tab = searchParams.tab === 'hiring' ? 'job_post' : 'won_work';
@@ -58,6 +59,13 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const hasContact = (l: any) => ((l.contacts?.length ?? 0) > 0 ? 1 : 0);
   const leads = [...((newsRes as any).data ?? []), ...((tenderRes as any).data ?? [])]
     .sort((a: any, b: any) => (b.fit_score - a.fit_score) || (hasContact(b) - hasContact(a)));
+  // The table and the drawer show contacts[0]; an embed has no order, so put the best one first by
+  // item 14's rank — whoever is closest to the work, above a group executive.
+  for (const l of leads as any[]) {
+    if ((l.contacts?.length ?? 0) < 2) continue;
+    const project = { name: l.project_name, location: l.project_location };
+    l.contacts = [...l.contacts].sort((a: any, b: any) => rankQuoted({ name: a.name, title: a.title ?? '' }, project).rank - rankQuoted({ name: b.name, title: b.title ?? '' }, project).rank);
+  }
   // Postgres puts NULLs first on DESC, so without the not-null filter this picked an
   // uncrawled source and 'Last read' always said never, however often Radar had run.
   const { data: last } = await sb.from('sources').select('last_crawled_at').not('last_crawled_at', 'is', null).order('last_crawled_at', { ascending: false }).limit(1).maybeSingle();

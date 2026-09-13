@@ -70,3 +70,8 @@ export const hasTestFlag = (sb: SupabaseClient) => hasColumn(sb, 'workspaces', '
 /** Where a date came from arrives with 0021. A date found only in text is written once it exists. */
 export const hasPublishedAtSource = (sb: SupabaseClient) => hasColumn(sb, 'articles', 'published_at_source');
 export const hasPostedAtSource = (sb: SupabaseClient) => hasColumn(sb, 'job_posts', 'posted_at_source');
+
+/** Item 14 arrives with 0023: Radar's verdicts, email patterns, source flags. */
+export const hasRadarVerdicts = (sb: SupabaseClient) => hasTable(sb, 'radar_verdicts');
+export const hasEmailPatterns = (sb: SupabaseClient) => hasTable(sb, 'company_email_patterns');
+export const hasSourceFlag = (sb: SupabaseClient) => hasColumn(sb, 'leads', 'source_flag');

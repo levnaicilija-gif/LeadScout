@@ -38,6 +38,8 @@ const Schema = z.object({
     ['name'],
     { name: ['company', 'company_name'] },
   ),
+  /** Whether the company does the work or commissions it — the one judgement a rank order cannot make. */
+  company_role: z.enum(['contractor_or_supplier', 'developer_or_owner', 'other']).nullish().catch(null),
   reason: str(),
 });
 export type RadarExtraction = z.output<typeof Schema>;
@@ -62,6 +64,10 @@ When qualifies=true you MUST fill these fields — a lead without them is useles
   from the article's wording. Return [] if the scope does not imply manual trades.
 - companies_mentioned: every other company named, with its role in the project and expected
   start of activity (verbatim dates only).
+- company_role: "contractor_or_supplier" when the company does or supplies the work;
+  "developer_or_owner" when it owns, develops, operates or commissions the project and others do
+  the work (a wind farm developer, an operator awarding a contract, a partnership building out its
+  own infrastructure); "other" when neither fits.
 
 Names, titles, quotes, values and dates must be copied VERBATIM from the article text.
 Never guess an email or phone.`;

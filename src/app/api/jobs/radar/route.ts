@@ -12,7 +12,10 @@ import { countryFromText, regionFor } from '@/lib/geo';
 import { fitScore } from '@/lib/fit';
 import { ingestTedAwards, tedWindowFor } from '@/lib/tender/ingest';
 import { findSameContract, mergeSameContract } from '@/lib/same-contract';
-import { hasPublishedAtSource } from '@/lib/schema-features';
+import { hasPublishedAtSource, hasRadarVerdicts } from '@/lib/schema-features';
+import { evaluateNews, RULES_VERSION } from '@/lib/radar-filter';
+import { quotedInText } from '@/lib/quoted-contacts';
+import { canonCompany } from '@/lib/company-identity';
 import { datelineFromText } from '@/lib/page-dates';
 import { Budget, logModelCall, DAILY_BUDGET_EUR } from '@/lib/cost';
 import type { UsageMeter } from '@/lib/ai/claude';
@@ -117,14 +120,28 @@ async function run(req: Request) {
   }
 
   const report: any[] = [];
-  const tally = { sources: 0, sourcesUnreachable: 0, linksFound: 0, alreadySeen: 0, fetchFailed: 0, tooShort: 0, articlesRead: 0, leads: 0, jobLeads: 0, rejected: 0, modelEur: 0, budgetStopped: false, linksNotRead: 0, spentTodayBefore: Math.round(budget.totalToday * 10000) / 10000, cap };
+  const tally = { sources: 0, sourcesUnreachable: 0, linksFound: 0, alreadySeen: 0, fetchFailed: 0, tooShort: 0, articlesRead: 0, leads: 0, jobLeads: 0, rejected: 0, filtered: 0, lowConfidence: 0, modelEur: 0, budgetStopped: false, linksNotRead: 0, spentTodayBefore: Math.round(budget.totalToday * 10000) / 10000, cap };
   // Every attempt of every extraction call is logged and counted against the cap as it happens.
   const meter = (detail: string): UsageMeter => async (usage, model) => {
     const eur = workspaceId ? await logModelCall(db, workspaceId, model, detail, usage) : 0;
     budget.add(eur);
     tally.modelEur = Math.round((tally.modelEur + eur) * 10000) / 10000;
   };
-  const rejected: { url: string; why: string }[] = [];
+  const rejected: { url: string; why: string; rule?: string }[] = [];
+
+  // Item 14's target accounts, narrow as the owner decided: a company with an active lead, or
+  // hiring marked pursued. A quoted person from another company counts only if it is one of these.
+  const { data: activeLeads } = await db.from('leads').select('companies(name)').in('status', ['pursue', 'contacted', 'replied', 'call', 'trial', 'framework']);
+  const { data: pursuedCompanies } = await db.from('companies').select('name').eq('hiring_status', 'pursued');
+  const targets = new Set<string>([...(activeLeads ?? []).map((l: any) => l.companies?.name), ...(pursuedCompanies ?? []).map((c: any) => c.name)].filter(Boolean).map((n: string) => canonCompany(n)));
+  // Every judgement is kept, a rejection included — never dropped. Written once 0023 exists; until
+  // then the run record's rejected list carries the same reasons.
+  const verdictsOn = await hasRadarVerdicts(db);
+  const recordVerdict = async (row: Record<string, unknown>) => {
+    if (!verdictsOn || !workspaceId) return;
+    const { error } = await db.from('radar_verdicts').upsert({ workspace_id: workspaceId, rules_version: RULES_VERSION, ...row }, { onConflict: 'article_id' });
+    if (error) report.push({ verdictWriteError: error.message.slice(0, 200) });
+  };
   /** Which sources the free path could read, and which would need a paid browser. */
   const audit: { source: string; via: string; links: number; note?: string }[] = [];
 
@@ -200,12 +217,39 @@ async function run(req: Request) {
         }
         const res = await extractLead(page.text, url, { onUsage: meter(`radar stage1 ${new URL(url).hostname}`) });
         if (res.ok) {
-          await upsertWonLead(db, src.workspace_id, res.lead, article.id, url, page.fetchedAt, agencyNames, page.text);
-          tally.leads++;
-          report.push({ url, title: page.title, lead: true, company: res.lead.company, people: res.lead.people.map((p) => `${p.name} (${p.title})`) });
+          // Item 14: a story Stage 1 qualified must still show a real business trigger and a quoted
+          // representative worth writing to. Judged by rules over the article's own sentences —
+          // no second model call — against everyone the page quotes, a client's people included.
+          const v = evaluateNews({
+            title: page.title, text: page.text, url, companyName: res.lead.company!,
+            project: { name: res.lead.project?.name, location: res.lead.project?.location },
+            people: [...res.lead.people, ...quotedInText(page.text)],
+            articleDate: new Date(published?.date ?? page.fetchedAt), targets, companyRole: res.lead.company_role,
+          });
+          const verdictRow = {
+            article_id: article.id, verdict: v.verdict, rules: v.rules.map((r) => r.id), reason: v.reason, evidence: v.rules, company_name: res.lead.company,
+            contacts: { kept: v.contacts.kept.map(({ name, title, rank, why }) => ({ name, title, rank, why })), excluded: v.contacts.excluded, unverified: v.contacts.unverified.map(({ name, title, why }) => ({ name, title, why })) },
+          };
+          // Only the representatives kept, best first, are saved as contacts: a client's quote or a
+          // consents lead's is evidence in the verdict, not someone to email.
+          const rankOf = (name: string) => v.contacts.kept.find((k) => k.name.toLowerCase() === name.toLowerCase())?.rank;
+          const people = res.lead.people.filter((p) => rankOf(p.name) !== undefined).sort((a, b) => rankOf(a.name)! - rankOf(b.name)!);
+          if (v.verdict === 'lead' && people.length) {
+            const leadId = await upsertWonLead(db, src.workspace_id, { ...res.lead, people }, article.id, url, page.fetchedAt, agencyNames, page.text);
+            await recordVerdict({ ...verdictRow, lead_id: leadId });
+            tally.leads++;
+            report.push({ url, title: page.title, lead: true, company: res.lead.company, people: people.map((p) => `${p.name} (${p.title})`), contactWhy: v.contacts.why });
+          } else {
+            const verdict = v.verdict === 'lead' ? 'low_confidence' : v.verdict;
+            const reason = v.verdict === 'lead' ? 'the representative kept is not among the people the extraction quoted, so there is no verbatim quote to save' : v.reason;
+            if (verdict === 'rejected') tally.filtered++; else tally.lowConfidence++;
+            rejected.push({ url, why: `item 14 ${verdict}: ${reason}`, rule: v.rules.map((r) => r.id).join(',') || 'rep_unverified' });
+            await recordVerdict({ ...verdictRow, verdict, reason });
+          }
         } else {
           tally.rejected++;
           rejected.push({ url, why: res.why });
+          await recordVerdict({ article_id: article.id, verdict: 'rejected', rules: ['stage1'], reason: res.why, evidence: [] });
         }
        } catch (e: any) {
         // One unreadable article must not cost us the rest of the source.
@@ -223,7 +267,7 @@ async function run(req: Request) {
   }
 
   // One line per batch, so the daily run is readable in the Vercel logs.
-  console.log(`[radar] cursor=${cursor} batch=${take} sources=${tally.sources} articles=${tally.articlesRead} leads=${tally.leads} rejected=${tally.rejected} model=€${tally.modelEur}${tally.budgetStopped ? ` STOPPED at the €${cap} cap (${tally.linksNotRead} links not read)` : ''} next=${next ? cursor + take : 'done'}${tenders ? ` tenders=${tenders.error ? `error: ${tenders.error}` : `${tenders.leadsCreated} leads from ${tenders.noticesChecked} notices`}` : ''}`);
+  console.log(`[radar] cursor=${cursor} batch=${take} sources=${tally.sources} articles=${tally.articlesRead} leads=${tally.leads} rejected=${tally.rejected} filtered=${tally.filtered} lowConfidence=${tally.lowConfidence} model=€${tally.modelEur}${tally.budgetStopped ? ` STOPPED at the €${cap} cap (${tally.linksNotRead} links not read)` : ''} next=${next ? cursor + take : 'done'}${tenders ? ` tenders=${tenders.error ? `error: ${tenders.error}` : `${tenders.leadsCreated} leads from ${tenders.noticesChecked} notices`}` : ''}`);
 
   return NextResponse.json({ ok: true, browser: browserProvider(), cursor, batch: take, nextCursor: more ? cursor + take : null, chained: !!next, tally, tenders, audit, rejected, report });
 }
@@ -274,6 +318,7 @@ async function upsertWonLead(db: any, ws: string, x: any, articleId: string, url
     );
     if (error) throw new Error(`could not save contact "${p.name}" for ${x.company}: ${error.code} ${error.message}`);
   }
+  return leadId as string;
 }
 async function upsertJobLead(db: any, ws: string, j: any, url: string, pageText: string, shot: string, agencyNames: string[]) {
   const co = await company(db, ws, j.company, agencyNames);
