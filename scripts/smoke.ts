@@ -48,6 +48,17 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
   }).select().single();
   await admin.from('contacts').insert({ lead_id: lead!.id, company_id: co!.id, name: 'Smoke Person', title: 'Head of Operations', email_status: 'unknown' });
 
+  // A lead from a contract award notice beside the news lead, so the Leads table has one of each
+  // source to tag. The path starts "smoke-": no real TED notice id starts with a word.
+  const { data: tenderCo } = await admin.from('companies').insert({ workspace_id: workspace, name: 'Smoke Tender Winner AS', employer_type: 'unknown', country: 'DK' }).select().single();
+  await markTest(admin, 'companies', [tenderCo!.id]);
+  const { data: tenderLead } = await admin.from('leads').insert({
+    workspace_id: workspace, company_id: tenderCo!.id, kind: 'won_work', project_name: 'Smoke quay award',
+    project_location: 'DNK', country: 'DK', trades_inferred: ['welder'], fit_score: 70, status: 'new',
+    source_url: `https://ted.europa.eu/en/notice/-/detail/smoke-${Date.now()}`, source_fetched_at: new Date().toISOString(),
+  }).select().single();
+  await markTest(admin, 'leads', [lead!.id, tenderLead!.id]);
+
   // A posting anchored on the COMPANY and not on a lead — the shape every careers-page and job
   // board posting has. Hiring now was empty for every user for days because RLS still keyed on
   // lead_id, and nothing here noticed: an RLS denial is an empty result, not an error.
@@ -126,6 +137,22 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     await page.waitForTimeout(1200);
     const leads = await bodyOf(page);
     check(/Smoke Offshore AS/.test(leads), 'Leads lists the seeded lead');
+    // Each row carries its source as an attribute and a visible word. Read both off the row that
+    // names the company, so the check cannot pass on a tag belonging to some other lead.
+    const tags = await page.evaluate(() => Array.from(document.querySelectorAll('tr[data-lead-source]')).map((tr) => ({
+      text: (tr as HTMLElement).innerText,
+      source: tr.getAttribute('data-lead-source'),
+      tag: (tr.querySelector('[data-source]') as HTMLElement | null)?.innerText ?? '',
+    })));
+    const tenderRow = tags.find((t) => t.text.includes('Smoke Tender Winner AS'));
+    const newsRow = tags.find((t) => t.text.includes('Smoke Offshore AS'));
+    check(tenderRow?.source === 'tender' && /Tender award/.test(tenderRow.tag), 'a TED-sourced lead is tagged "Tender award"', JSON.stringify(tenderRow ? { source: tenderRow.source, tag: tenderRow.tag } : 'row not found'));
+    check(newsRow?.source === 'news' && /News/.test(newsRow.tag), 'a news-sourced lead is tagged "News"', JSON.stringify(newsRow ? { source: newsRow.source, tag: newsRow.tag } : 'row not found'));
+    // The source filter narrows the table to one kind, and the other kind is gone from it.
+    await page.goto(`${BASE}/app/radar?tab=won&source=tender`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('tr[data-lead-source]', { timeout: 60000 }).catch(() => {});
+    const onlyTender = await page.evaluate(() => Array.from(document.querySelectorAll('tr[data-lead-source]')).map((tr) => ({ source: tr.getAttribute('data-lead-source'), text: (tr as HTMLElement).innerText })));
+    check(onlyTender.some((r) => r.text.includes('Smoke Tender Winner AS')) && onlyTender.every((r) => r.source === 'tender'), '?source=tender shows only award-notice leads', `${onlyTender.length} rows, kinds: ${[...new Set(onlyTender.map((r) => r.source))].join(',')}`);
 
     // 4b — Hiring now must show the company-anchored posting. This is the check that was
     // missing when Hiring now sat empty over forty real rows.
@@ -248,7 +275,9 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     await admin.from('contacts').delete().eq('lead_id', lead!.id);
     await admin.from('scores').delete().eq('lead_id', lead!.id);
     await admin.from('leads').delete().eq('id', lead!.id);
+    if (tenderLead) await admin.from('leads').delete().eq('id', tenderLead.id).eq('is_test', true);
     await admin.from('companies').delete().eq('id', co!.id);
+    if (tenderCo) await admin.from('companies').delete().eq('id', tenderCo.id).eq('is_test', true);
     await admin.auth.admin.deleteUser(uid);
     await admin.from('workspaces').delete().eq('id', workspace);
     console.log('\ncleaned up the probe user, its workspace and everything it created');

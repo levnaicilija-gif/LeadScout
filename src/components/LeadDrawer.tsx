@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { EmployerTypeOverride } from './EmployerTypeOverride';
 import { CountryPicker } from './CountryPicker';
 import { ScoredCandidate } from './ScoredCandidate';
+import { leadSource, LEAD_SOURCE_LABEL, LEAD_SOURCE_BADGE } from '@/lib/lead-source';
 export function LeadDrawer({ lead }: { lead: any }) {
   const r = useRouter(); const [tool, setTool] = useState<'jd' | 'pool' | 'xray' | 'q'>('jd');
   const [out, setOut] = useState<any>({}); const [busy, setBusy] = useState(''); const [draft, setDraft] = useState<any>(null);
@@ -50,13 +51,21 @@ export function LeadDrawer({ lead }: { lead: any }) {
     </div>
   ) : null;
   const c = lead.contacts?.[0];
+  const src = leadSource(lead.source_url);
+  // The other sources on the same contract: every linked article that is not the one the lead points at.
+  const others = (lead.lead_articles ?? []).map((la: any) => la.articles).filter((a: any) => a?.url && !String(lead.source_url ?? '').startsWith(a.url));
   return (<aside className="fixed top-0 right-0 h-screen w-full sm:w-[500px] max-w-full bg-panel border-l border-line shadow-[-16px_0_48px_rgba(14,26,43,.12)] overflow-auto p-5 sm:p-6 pb-12 z-20">
     <a href="?" className="absolute top-3 right-3 text-ink3 text-lg" aria-label="Close">×</a>
     <h2 className="text-[18px] font-semibold">{lead.companies?.name}</h2>
     <div className="text-ink3 text-[13px] mb-4">{lead.kind === 'won_work' ? `Won: ${lead.project_name}` : `Hiring: ${lead.job_posts?.[0]?.role}`} · {lead.project_location}</div>
 
     <div className="text-[12px] text-ink3 mb-2">Source</div>
-    <div className="flex items-center gap-2 text-[13px] mb-4"><span className={`st ${lead.source_fetch_status === 'live' ? 'st-ok' : 'st-bad'}`}>{lead.source_fetch_status}</span><a className="text-accent" href={lead.source_url} target="_blank" rel="noopener">Open source</a>{lead.confirmed_at ? <span className="text-ok">✓ confirmed</span> : <button className="btn" onClick={async () => { await call('confirm'); r.refresh(); }}>Confirm I checked it</button>}</div>
+    <div className="flex items-center gap-2 flex-wrap text-[13px] mb-4"><span data-source={src} className={LEAD_SOURCE_BADGE[src]}>{LEAD_SOURCE_LABEL[src]}</span><span className={`st ${lead.source_fetch_status === 'live' ? 'st-ok' : 'st-bad'}`}>{lead.source_fetch_status}</span><a className="text-accent" href={lead.source_url} target="_blank" rel="noopener">Open source</a>{lead.confirmed_at ? <span className="text-ok">✓ confirmed</span> : <button className="btn" onClick={async () => { await call('confirm'); r.refresh(); }}>Confirm I checked it</button>}</div>
+    {others.length > 0 && <div className="-mt-2 mb-4 text-[13px]" data-corroboration>
+      <div className="text-[12px] text-ink3 mb-1">Also reported — the same contract, linked here instead of a second lead</div>
+      <ul className="grid gap-1.5">{others.map((a: any) => { const k = leadSource(a.url); return (
+        <li key={a.url} className="flex items-baseline gap-2 min-w-0"><span data-source={k} className={LEAD_SOURCE_BADGE[k]}>{LEAD_SOURCE_LABEL[k]}</span><a className="text-accent truncate min-w-0" href={a.url} target="_blank" rel="noopener">{a.title || a.url}</a><span className="text-ink3 text-[12px] whitespace-nowrap">{a.published_at ? String(a.published_at).slice(0, 10) : `read ${String(a.fetched_at ?? '').slice(0, 10)}`}</span></li>); })}</ul>
+    </div>}
 
     <div className="text-[12px] text-ink3 mt-4 mb-2">What this company is</div>
     {lead.company_id && <EmployerTypeOverride companyId={lead.company_id} detected={lead.companies?.employer_type} override={lead.companies?.employer_type_override} setAt={lead.companies?.employer_type_set_at} />}
