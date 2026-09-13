@@ -126,3 +126,19 @@ export const ageSink = (state: AgeState, boosted = false) => (boosted ? -1 : sta
 export const AGE_TEXT: Record<AgeState, string> = { fresh: 'text-ink3', unknown: 'text-ink3', flagged: 'text-warn font-medium', stale: 'text-ink2 font-medium' };
 /** Deprioritised on screen, never hidden. */
 export const AGE_DIM: Record<AgeState, string> = { fresh: '', unknown: '', flagged: 'opacity-80', stale: 'opacity-60' };
+
+/**
+ * The "Latest activity" sort: Fresh, then Ageing, then Stale, then Age unknown. Unlike the default sorts,
+ * an undated row goes last here — this mode is about how recent something is, and "unknown" is not recent.
+ */
+export const LATEST_STATE_ORDER: Record<AgeState, number> = { fresh: 0, flagged: 1, stale: 2, unknown: 3 };
+
+/**
+ * Compare two ages for "Latest activity": state first, then the newer date first within a state. Each age
+ * was already judged against its own source's thresholds (news, award, posting), so a news lead and an
+ * award lead sit in one list honestly. Two undated rows compare equal, so the caller's own tiebreak decides.
+ */
+export function latestActivityCompare(a: Age, b: Age): number {
+  return LATEST_STATE_ORDER[a.state] - LATEST_STATE_ORDER[b.state]
+    || (a.date && b.date ? b.date.localeCompare(a.date) : 0);
+}

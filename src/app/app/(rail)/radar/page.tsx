@@ -8,12 +8,12 @@ import { groupByCompany } from '@/components/HiringNow';
 import { checkRightToWork } from '@/lib/right-to-work';
 import { currentUser } from '@/lib/supabase/server';
 import { leadSource, LEAD_SOURCE_LABEL, LEAD_SOURCE_BADGE, SOURCE_FLAG_LABEL, primaryArticle } from '@/lib/lead-source';
-import { newsLeadAge, tenderLeadAge, ageSink, AGE_TEXT, AGE_DIM, type Age } from '@/lib/lead-age';
+import { newsLeadAge, tenderLeadAge, ageSink, latestActivityCompare, AGE_TEXT, AGE_DIM, type Age } from '@/lib/lead-age';
 import { articlesByLead, peopleByLead } from '@/lib/lead-articles';
 import { rankQuoted } from '@/lib/quoted-contacts';
 import { OpenRow, OpenChevron } from '@/components/OpenRow';
 export const dynamic = 'force-dynamic';
-export default async function Radar({ searchParams }: { searchParams: { tab?: string; lead?: string; agencies?: string; company?: string; country?: string; trade?: string; employer?: string; pressure?: string; source?: string } }) {
+export default async function Radar({ searchParams }: { searchParams: { tab?: string; lead?: string; agencies?: string; company?: string; country?: string; trade?: string; employer?: string; pressure?: string; source?: string; sort?: string } }) {
   const sb = supabaseServer(); const tab = searchParams.tab === 'hiring' ? 'job_post' : 'won_work';
   const hiring = tab === 'job_post';
   // Migration 0012 may not be applied yet; naming a column that does not exist fails the whole
@@ -47,6 +47,10 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // with a quoted decision-maker, and 20 of the 25 open news leads fell off the page. Within the
   // merged list a quoted decision-maker wins a tie on fit. ?source= narrows to one kind.
   const source = searchParams.source === 'news' || searchParams.source === 'tender' ? searchParams.source : null;
+  // ?sort=latest — "Latest activity". It reads every open lead rather than the top 50 of each kind by fit:
+  // sorting only those would bury a recent award whose fit is low (BEIRENS and two others were not loaded at all).
+  const latest = searchParams.sort === 'latest';
+  const sortQs = latest ? '&sort=latest' : '';
   // 0024 gives an award notice its own award date; before it, an award lead ages from the notice's publication.
   const awardCols = (await hasAwardDate(sb)) ? ', award_date, award_date_basis' : '';
   const leadCols = `*, companies(name, employer_type, size_band${coOverride}), contacts(name, title, email_status, phone, linkedin_search_url, google_search_url), job_posts(role, headcount, certs_required, hiring_pressure, posted_at)`;
@@ -55,8 +59,8 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const TENDER_URL = 'https://ted.europa.eu/%';
   const none = { data: [] as any[], error: null as any };
   const [newsRes, tenderRes, newsCount, tenderCount] = hiring ? [none, none, { count: 0 }, { count: 0 }] : await Promise.all([
-    source === 'tender' ? none : openLeads(leadCols).or(NEWS_ONLY).order('fit_score', { ascending: false }).limit(50),
-    source === 'news' ? none : openLeads(leadCols).ilike('source_url', TENDER_URL).order('fit_score', { ascending: false }).limit(50),
+    source === 'tender' ? none : openLeads(leadCols).or(NEWS_ONLY).order('fit_score', { ascending: false }).limit(latest ? 1000 : 50),
+    source === 'news' ? none : openLeads(leadCols).ilike('source_url', TENDER_URL).order('fit_score', { ascending: false }).limit(latest ? 1000 : 50),
     openLeads('id', true).or(NEWS_ONLY),
     openLeads('id', true).ilike('source_url', TENDER_URL),
   ]);
@@ -79,7 +83,11 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   for (const l of loaded) l.lead_people = peopleBy.get(l.id) ?? [];
   const leads = loaded
     .map((l: any) => ({ ...l, age: ageOf(l) }))
-    .sort((a: any, b: any) => (ageSink(a.age.state) - ageSink(b.age.state)) || (b.fit_score - a.fit_score) || (hasContact(b) - hasContact(a)));
+    // Fit (the default): ageing and stale sink below fresh and undated, then fit. Latest activity: Fresh,
+    // Ageing, Stale, then Age unknown, newest first within each; fit breaks a tie, including between undated rows.
+    .sort((a: any, b: any) => latest
+      ? (latestActivityCompare(a.age, b.age) || (b.fit_score - a.fit_score) || (hasContact(b) - hasContact(a)))
+      : ((ageSink(a.age.state) - ageSink(b.age.state)) || (b.fit_score - a.fit_score) || (hasContact(b) - hasContact(a))));
   // The table and the drawer show contacts[0]; an embed has no order, so put the best one first by
   // item 14's rank — whoever is closest to the work, above a group executive.
   for (const l of leads as any[]) {
@@ -144,7 +152,7 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
     showAgencies,
     hiddenAgencies: agencyPostings.length,
     duplicates,
-    filters: { country: searchParams.country, trade: searchParams.trade, employer: searchParams.employer, pressure: searchParams.pressure },
+    filters: { country: searchParams.country, trade: searchParams.trade, employer: searchParams.employer, pressure: searchParams.pressure, sort: searchParams.sort },
     options,
     state,
     rightToWork,
@@ -157,7 +165,8 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
     <div className="flex gap-1 bg-panel border border-line rounded-[12px] p-1 w-max mb-3.5">{[['won', 'Won work'], ['hiring', 'Hiring now']].map(([t, l]) => <a key={t} href={`?tab=${t}`} className={`px-3.5 py-2 rounded-[9px] font-medium ${(t === 'hiring') === (tab === 'job_post') ? 'bg-rail text-white' : 'text-ink2 hover:bg-line2'}`}>{l}</a>)}</div>
     {hiring ? <HiringNow {...hiringProps} /> : (
     <>
-    <div className="flex items-center gap-1.5 flex-wrap mb-3" data-source-filter>{([[null, "All", (newsCount.count ?? 0) + (tenderCount.count ?? 0)], ["news", "News", newsCount.count ?? 0], ["tender", "Tender awards", tenderCount.count ?? 0]] as const).map(([k, label, n]) => <a key={label} href={k ? `?tab=won&source=${k}` : "?tab=won"} className={`chip ${source === k ? "!bg-rail !text-white !border-rail" : ""}`}>{label} <span className={source === k ? "text-white/70" : "text-ink3"}>{n}</span></a>)}</div>
+    <div className="flex items-center gap-1.5 flex-wrap mb-3" data-source-filter>{([[null, "All", (newsCount.count ?? 0) + (tenderCount.count ?? 0)], ["news", "News", newsCount.count ?? 0], ["tender", "Tender awards", tenderCount.count ?? 0]] as const).map(([k, label, n]) => <a key={label} href={k ? `?tab=won&source=${k}${sortQs}` : `?tab=won${sortQs}`} className={`chip ${source === k ? "!bg-rail !text-white !border-rail" : ""}`}>{label} <span className={source === k ? "text-white/70" : "text-ink3"}>{n}</span></a>)}</div>
+    <div data-sort-control className="flex items-center gap-1.5 flex-wrap mb-3 text-[13px]"><span className="text-ink3">Sort</span>{([[false, 'Fit'], [true, 'Latest activity']] as const).map(([isLatest, label]) => <a key={label} data-sort={isLatest ? 'latest' : 'fit'} href={`?tab=won${source ? `&source=${source}` : ''}${isLatest ? '&sort=latest' : ''}`} className={`chip ${latest === isLatest ? '!bg-rail !text-white !border-rail' : ''}`}>{label}</a>)}{latest && <span className="text-ink3 text-[12px]">Fresh, then ageing, then stale, then age unknown — newest first within each · all {leads.length} open leads{source ? '' : ', news and awards together'}</span>}</div>
     <div data-drawer-help className="text-[13px] mb-2"><span className="text-ink3">Click or tap a lead to open its drawer</span><Help title="What opens when you click a lead" intro="The lead's drawer: its source and whether you have confirmed it, what the company is, and the decision-maker with their quote and where any email or phone came from. Below that, the four tools (job description, score the pool, LinkedIn search, screening questions), a drafted email that needs the source confirmed first, and Mark pursued or Not for us." /></div>
     {leadsError && <div className="mb-3 text-bad text-[13px]">Leads could not be read: {leadsError.message}. The table below is incomplete, not empty.</div>}
     {linksError && <div className="mb-3 text-bad text-[13px]">The sources behind these leads could not be read: {linksError}. Ages and linked sources below are incomplete — a lead reading "age unknown" may have a date.</div>}
@@ -165,8 +174,8 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
     <div className="bg-panel border border-line rounded-card overflow-auto max-h-[calc(100vh-240px)]"><table className="tbl w-full min-w-[1100px] border-collapse">
       <thead><tr><th>Company</th><th>{tab === 'won_work' ? 'Won' : 'Open roles'}</th><th>Decision-maker</th><th>Trades</th><th>{tab === 'won_work' ? 'Phase' : 'Pressure'}</th><th>Fit</th><th>Verified</th></tr></thead>
       <tbody>{(leads ?? []).map((l: any) => { const c = l.contacts?.[0]; const jp = l.job_posts?.[0]; const src = leadSource(l.source_url); const also = Math.max(0, (l.lead_articles?.length ?? 0) - 1); return (
-        <OpenRow key={l.id} href={`/app/radar?tab=${searchParams.tab ?? 'won'}${source ? `&source=${source}` : ''}&lead=${l.id}`} selected={selected?.id === l.id} className={AGE_DIM[l.age.state as keyof typeof AGE_DIM]} attrs={{ 'data-lead-source': src, 'data-age': l.age.state }}>
-          <td><a href={`?tab=${searchParams.tab ?? 'won'}${source ? `&source=${source}` : ''}&lead=${l.id}`} className="block"><div className="font-medium whitespace-nowrap flex items-center gap-1.5">{l.companies?.name}<OpenChevron /></div><div className="text-ink3 text-[12px]">{l.project_location} · {l.companies?.employer_type?.replace('_', ' ')}{l.companies?.size_band ? ` · ${l.companies.size_band}` : ''}</div><div className="mt-1.5 flex items-center gap-1.5 flex-wrap"><span data-source={src} className={LEAD_SOURCE_BADGE[src]}>{LEAD_SOURCE_LABEL[src]}</span><span data-age-label title={l.age.why} className={`text-[12px] ${AGE_TEXT[l.age.state as keyof typeof AGE_TEXT]}`}>{l.age.label}</span>{also > 0 && <span className="text-ink3 text-[12px]" title="The same contract, reported by another source, linked to this lead">+{also} source{also === 1 ? '' : 's'}</span>}</div></a></td>
+        <OpenRow key={l.id} href={`/app/radar?tab=${searchParams.tab ?? 'won'}${source ? `&source=${source}` : ''}${sortQs}&lead=${l.id}`} selected={selected?.id === l.id} className={AGE_DIM[l.age.state as keyof typeof AGE_DIM]} attrs={{ 'data-lead-source': src, 'data-age': l.age.state, 'data-age-date': l.age.date ?? '' }}>
+          <td><a href={`?tab=${searchParams.tab ?? 'won'}${source ? `&source=${source}` : ''}${sortQs}&lead=${l.id}`} className="block"><div className="font-medium whitespace-nowrap flex items-center gap-1.5">{l.companies?.name}<OpenChevron /></div><div className="text-ink3 text-[12px]">{l.project_location} · {l.companies?.employer_type?.replace('_', ' ')}{l.companies?.size_band ? ` · ${l.companies.size_band}` : ''}</div><div className="mt-1.5 flex items-center gap-1.5 flex-wrap"><span data-source={src} className={LEAD_SOURCE_BADGE[src]}>{LEAD_SOURCE_LABEL[src]}</span><span data-age-label title={l.age.why} className={`text-[12px] ${AGE_TEXT[l.age.state as keyof typeof AGE_TEXT]}`}>{l.age.label}</span>{also > 0 && <span className="text-ink3 text-[12px]" title="The same contract, reported by another source, linked to this lead">+{also} source{also === 1 ? '' : 's'}</span>}</div></a></td>
           <td>{tab === 'won_work' ? l.project_name : jp?.role}<div className="text-ink3 text-[12px]">{tab === 'won_work' ? [l.phase, l.project_value].filter(Boolean).join(' · ') : `${jp?.headcount ? `×${jp.headcount} · ` : ''}posted ${jp?.posted_at ?? '—'}`}</div></td>
           <td>{c ? <><div className="font-medium">{c.name} <a href={c.linkedin_search_url} target="_blank" rel="noopener" className="ml-1 inline-grid place-items-center w-5 h-5 border border-line rounded text-[10px] font-semibold text-ink2">in</a> <a href={c.google_search_url} target="_blank" rel="noopener" className="inline-grid place-items-center w-5 h-5 border border-line rounded text-[10px] font-semibold text-ink2">G</a></div><div className="text-ink3 text-[12px]">{c.title} · email {c.email_status}{c.phone ? ' · phone found' : ''}</div></> : <span className="text-ink3">— {l.lead_people?.length ? `${l.lead_people.length} from attendee list` : src === 'tender' ? 'award notices name no person' : 'no named person'}</span>}</td>
           <td>{(l.trades_inferred ?? []).map((t: string) => <span key={t} className="inline-block text-[12px] px-2 py-0.5 rounded-md bg-line2 text-ink2 mr-1 mb-1">{t}</span>)}</td>

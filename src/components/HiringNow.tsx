@@ -1,6 +1,6 @@
 import { Help } from './Help';
 import { OpenRow, OpenChevron } from './OpenRow';
-import { postingAge, reAdverts, roleKey, ageSink, AGE_TEXT, AGE_DIM, REPOST_WINDOW_DAYS, type Age } from '@/lib/lead-age';
+import { postingAge, reAdverts, roleKey, ageSink, latestActivityCompare, AGE_TEXT, AGE_DIM, REPOST_WINDOW_DAYS, type Age } from '@/lib/lead-age';
 
 /**
  * Hiring now — one row per company, not per posting.
@@ -157,7 +157,7 @@ export function HiringNow({
   /** Board adverts that repeat a company's own careers page, dropped from the view. */
   duplicates?: number;
   /** What the page is currently filtered to, straight from the query string. */
-  filters?: { country?: string; trade?: string; employer?: string; pressure?: string };
+  filters?: { country?: string; trade?: string; employer?: string; pressure?: string; sort?: string };
   /** Every value present in the unfiltered data, so a chip is never offered for nothing. */
   options?: { countries: string[]; trades: string[]; employers: string[] };
   /** Per company: confirmed, pursued, not for us. */
@@ -172,10 +172,21 @@ export function HiringNow({
     && (!f.trade || g.trades.includes(f.trade))
     && (!f.employer || (g.employerType ?? 'unknown') === f.employer)
     && (!f.pressure || g.pressure === f.pressure));
+  // ?sort=latest — "Latest activity": a re-advertised row keeps its place at the top whatever the sort, then
+  // Fresh, Ageing, Stale, Age unknown by the newest advert, newest first within each, then pressure.
+  // Without it the order is groupByCompany's: re-advertised first, ageing last, then pressure.
+  const PRESSURE_RANK = { high: 0, medium: 1, low: 2 };
+  if (f.sort === 'latest') {
+    groups.sort((a, b) => (Number(b.boosted) - Number(a.boosted))
+      || latestActivityCompare(a.age, b.age)
+      || PRESSURE_RANK[a.pressure] - PRESSURE_RANK[b.pressure]
+      || b.postings.length - a.postings.length);
+  }
+  const sortQs = f.sort === 'latest' ? '&sort=latest' : '';
 
   return (<>
     <div className="flex items-center gap-3 mb-2 text-[13px]">
-      <a href={`?tab=hiring${showAgencies ? '' : '&agencies=1'}`} className="flex items-center gap-1.5 text-ink2">
+      <a href={`?tab=hiring${showAgencies ? '' : '&agencies=1'}${sortQs}`} className="flex items-center gap-1.5 text-ink2">
         <span className={`inline-block w-8 h-[18px] rounded-full transition-colors ${showAgencies ? 'bg-accent' : 'bg-line'}`}>
           <span className={`block w-3.5 h-3.5 mt-[2px] rounded-full bg-white transition-transform ${showAgencies ? 'translate-x-[16px]' : 'translate-x-[2px]'}`} />
         </span>
@@ -190,6 +201,20 @@ export function HiringNow({
     </div>
 
     {options && <Chips options={options} filters={f} showAgencies={showAgencies} shown={groups.length} total={all.length} />}
+
+    <div data-sort-control className="flex items-center gap-1.5 flex-wrap mb-2 text-[13px]">
+      <span className="text-ink3">Sort</span>
+      {([[false, 'Pressure'], [true, 'Latest activity']] as const).map(([isLatest, label]) => {
+        // Every filter and the agencies toggle survive a change of sort.
+        const q = new URLSearchParams({ tab: 'hiring' });
+        if (showAgencies) q.set('agencies', '1');
+        for (const [k, v] of Object.entries({ country: f.country, trade: f.trade, employer: f.employer, pressure: f.pressure })) if (v) q.set(k, v);
+        if (isLatest) q.set('sort', 'latest');
+        const on = (f.sort === 'latest') === isLatest;
+        return <a key={label} data-sort={isLatest ? 'latest' : 'pressure'} href={`?${q.toString()}`} className={`chip ${on ? '!bg-rail !text-white !border-rail' : ''}`}>{label}</a>;
+      })}
+      {f.sort === 'latest' && <span className="text-ink3 text-[12px]">Re-advertised first, then fresh, ageing, stale and age unknown — newest advert first within each</span>}
+    </div>
 
     <div data-drawer-help className="text-[13px] mb-2">
       <span className="text-ink3">Click or tap a company to open its drawer</span>
@@ -206,9 +231,9 @@ export function HiringNow({
         </thead>
         <tbody>
           {groups.map((g) => (
-            <OpenRow key={g.company} href={`/app/radar?tab=hiring&company=${g.companyId}${showAgencies ? '&agencies=1' : ''}`} className={`align-top ${g.boosted ? '' : AGE_DIM[g.age.state]}`} attrs={{ 'data-age': g.age.state, ...(g.boosted ? { 'data-boosted': 'true' } : {}) }}>
+            <OpenRow key={g.company} href={`/app/radar?tab=hiring&company=${g.companyId}${showAgencies ? '&agencies=1' : ''}${sortQs}`} className={`align-top ${g.boosted ? '' : AGE_DIM[g.age.state]}`} attrs={{ 'data-age': g.age.state, 'data-age-date': g.age.date ?? '', ...(g.boosted ? { 'data-boosted': 'true' } : {}) }}>
               <td>
-                <a href={`?tab=hiring&company=${g.companyId}${showAgencies ? '&agencies=1' : ''}`} className="flex items-center gap-1.5 font-medium whitespace-nowrap text-accent">{g.company}<OpenChevron /></a>
+                <a href={`?tab=hiring&company=${g.companyId}${showAgencies ? '&agencies=1' : ''}${sortQs}`} className="flex items-center gap-1.5 font-medium whitespace-nowrap text-accent">{g.company}<OpenChevron /></a>
                 <div className="text-ink3 text-[12px]">
                   {[g.country, g.employerType?.replace(/_/g, ' ')].filter(Boolean).join(' · ')}
                   {g.employerType === 'staffing_agency' && <span className="text-warn"> · agency</span>}
@@ -291,7 +316,7 @@ function Chips({
   options, filters, showAgencies, shown, total,
 }: {
   options: { countries: string[]; trades: string[]; employers: string[] };
-  filters: { country?: string; trade?: string; employer?: string; pressure?: string };
+  filters: { country?: string; trade?: string; employer?: string; pressure?: string; sort?: string };
   showAgencies: boolean;
   shown: number;
   total: number;

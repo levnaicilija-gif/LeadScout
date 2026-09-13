@@ -225,6 +225,33 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     check(unknownAt >= 0 && ageRows[unknownAt].age === 'unknown' && ageRows[unknownAt].label === 'age unknown' && ageRows[unknownAt].opacity === '1',
       'an undated lead says "age unknown" and is not dimmed', JSON.stringify(ageRows[unknownAt] ?? 'row not found'));
     check(unknownAt >= 0 && staleAt > unknownAt, 'the stale lead sorts below the undated one despite a higher fit', `undated at ${unknownAt}, stale at ${staleAt}`);
+
+    // "Latest activity" (?sort=latest): Fresh, Ageing, Stale, then Age unknown, newest first within each.
+    // The seeded 100-day story is stale and the award has no date, so here the story comes first — the
+    // reverse of the Fit sort just checked. The rule is checked row by row, not only for the seeded pair.
+    const LATEST_ORDER: Record<string, number> = { fresh: 0, flagged: 1, stale: 2, unknown: 3 };
+    const inLatestOrder = (rows: { age: string | null; date: string }[]) => rows.every((r, i) => {
+      if (i === 0) return true;
+      const p = rows[i - 1];
+      const step = LATEST_ORDER[r.age ?? 'unknown'] - LATEST_ORDER[p.age ?? 'unknown'];
+      return step > 0 || (step === 0 && (!p.date || !r.date || p.date >= r.date));
+    });
+    await page.goto(`${BASE}/app/radar?tab=won&sort=latest`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('tr[data-lead-source]', { timeout: 60000 }).catch(() => {});
+    const latestRows = await page.evaluate(() => Array.from(document.querySelectorAll('tr[data-lead-source]')).map((tr) => ({
+      name: (tr as HTMLElement).innerText.split('\n')[0], age: tr.getAttribute('data-age'), date: tr.getAttribute('data-age-date') ?? '',
+    })));
+    const latestChip = await page.evaluate(() => {
+      const a = document.querySelector('[data-sort-control] a[data-sort="latest"]') as HTMLElement | null;
+      return a ? getComputedStyle(a).backgroundColor : null;
+    });
+    const storyAt = latestRows.findIndex((r) => r.name.includes('Smoke Offshore AS'));
+    const awardAt = latestRows.findIndex((r) => r.name.includes('Smoke Tender Winner AS'));
+    check(latestChip === 'rgb(14, 26, 43)' && inLatestOrder(latestRows) && storyAt >= 0 && awardAt > storyAt,
+      'Leads, Latest activity: fresh, ageing, stale, then age unknown, newest first — the stale story now above the undated award',
+      JSON.stringify({ chip: latestChip, rows: latestRows.map((r) => `${r.name}:${r.age}:${r.date || '-'}`) }));
+    await page.goto(`${BASE}/app/radar`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('tr[data-lead-source]', { timeout: 60000 }).catch(() => {});
     // A row must say it opens something: a chevron drawn on the row (not only on hover), a hover
     // tint, and a click on a plain cell — not the company link — opens the drawer. The Trades cell
     // (the fourth) holds no link on either table.
@@ -287,6 +314,25 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       'a company whose newest advert is 70 days old reads "ageing", is dimmed and sorts last', JSON.stringify({ index: rowAt('Smoke Aged Hiring AS'), of: hiringRows.length, row: agedRow ?? 'not found' }));
     const freshRow = hiringRows[rowAt('Smoke Offshore AS')];
     check(freshRow?.age === 'fresh' && freshRow.opacity === '1' && /0 days old/.test(freshRow.label), 'a company first seen today is fresh and not dimmed', JSON.stringify(freshRow ?? 'not found'));
+
+    // Hiring now, Latest activity: the re-advertised company keeps first place whatever the sort, the rest
+    // follow the same state-then-date rule (the 70-day company last), and the agencies toggle keeps the sort.
+    await page.goto(`${BASE}/app/radar?tab=hiring&sort=latest`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('tr[data-row-href]', { timeout: 60000 }).catch(() => {});
+    const hiringLatest = await page.evaluate(() => Array.from(document.querySelectorAll('tr[data-row-href]')).map((tr) => ({
+      name: (tr as HTMLElement).innerText.split('\n')[0], age: tr.getAttribute('data-age'), date: tr.getAttribute('data-age-date') ?? '',
+      boosted: tr.getAttribute('data-boosted') === 'true',
+    })));
+    const toggleKeepsSort = await page.evaluate(() => {
+      const toggle = Array.from(document.querySelectorAll('a')).find((a) => /Show agencies/.test(a.textContent ?? '')) as HTMLAnchorElement | undefined;
+      return /[?&]sort=latest/.test(toggle?.href ?? '');
+    });
+    const agedLast = hiringLatest.findIndex((r) => r.name.includes('Smoke Aged Hiring AS')) === hiringLatest.length - 1;
+    check(!!hiringLatest[0]?.name.includes('Smoke Readvert AS') && hiringLatest[0].boosted && inLatestOrder(hiringLatest.filter((r) => !r.boosted)) && agedLast && toggleKeepsSort,
+      'Hiring now, Latest activity: re-advertised first, then fresh before ageing, newest first; the agencies toggle keeps the sort',
+      JSON.stringify({ toggleKeepsSort, rows: hiringLatest.map((r) => `${r.name}:${r.boosted ? 'raised' : r.age}:${r.date || '-'}`) }));
+    await page.goto(`${BASE}/app/radar?tab=hiring`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('tr[data-row-href]', { timeout: 60000 }).catch(() => {});
     await drawerHelp(page, 'What opens when you click a company', 'Hiring now');
     await rowOpens('Smoke Offshore AS', /[?&]company=/, 'Hiring now row');
 

@@ -5,7 +5,7 @@
  *
  * Exits 1 on any failure.
  */
-import { newsLeadAge, tenderLeadAge, postingAge, reAdverts, ageSink, daysSince } from '../src/lib/lead-age';
+import { newsLeadAge, tenderLeadAge, postingAge, reAdverts, ageSink, daysSince, latestActivityCompare } from '../src/lib/lead-age';
 import { awardText, awardDateFromText, type Award } from '../src/lib/tender/award';
 
 const NOW = new Date('2026-09-13T15:00:00Z');
@@ -76,6 +76,23 @@ const text = (d: Award['awardDate']) => awardText(award(d), { 'publication-numbe
 check(JSON.stringify(awardDateFromText(text({ date: '2026-05-02', which: 'award decision' }))) === JSON.stringify({ date: '2026-05-02', which: 'award decision' }), 'award decision date read back from the notice text');
 check(awardDateFromText(text({ date: '2026-04-30', which: 'contract concluded' }))?.which === 'contract concluded', 'contract conclusion date read back, with its kind');
 check(awardDateFromText(text(null)) === null, '"not stated in the notice" reads back as no date');
+
+// "Latest activity": Fresh, Ageing, Stale, then Age unknown; newest first within a state. News and award
+// leads in one list, each judged against its own thresholds — a 200-day award is ageing, a 50-day story too.
+const mixed = [
+  { id: 'undated', age: newsLeadAge({ publishedAt: null }, NOW) },
+  { id: 'story-100d', age: newsLeadAge({ publishedAt: ago(100) }, NOW) },
+  { id: 'story-20d', age: newsLeadAge({ publishedAt: ago(20) }, NOW) },
+  { id: 'award-200d', age: tenderLeadAge({ awardDate: ago(200), awardBasis: 'award decision' }, NOW) },
+  { id: 'story-3d', age: newsLeadAge({ publishedAt: ago(3) }, NOW) },
+  { id: 'story-50d', age: newsLeadAge({ publishedAt: ago(50) }, NOW) },
+  { id: 'award-100d', age: tenderLeadAge({ awardDate: ago(100), awardBasis: 'contract concluded' }, NOW) },
+];
+const latestOrder = [...mixed].sort((a, b) => latestActivityCompare(a.age, b.age)).map((r) => r.id).join(' > ');
+check(latestOrder === 'story-3d > story-20d > award-100d > story-50d > award-200d > story-100d > undated',
+  'latest activity: fresh, then ageing, then stale, then age unknown — newest first within each, across sources', latestOrder);
+check(latestActivityCompare(newsLeadAge({ publishedAt: null }, NOW), tenderLeadAge({}, NOW)) === 0,
+  'two undated rows compare equal, so the page\'s own tiebreak (fit or pressure) decides');
 
 console.log(failures === 0 ? '\nlead age: all checks passed' : `\nlead age: ${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);
