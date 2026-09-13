@@ -59,6 +59,16 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
   }).select().single();
   await markTest(admin, 'leads', [lead!.id, tenderLead!.id]);
 
+  // Item 17: the news lead's article is 100 days old — a stale signal. articles has no is_test
+  // column, so this row is marked by its example.invalid URL and deleted by id under that URL only.
+  const agedOn = new Date(Date.now() - 100 * 86_400_000).toISOString().slice(0, 10);
+  const { data: agedArticle, error: agedErr } = await admin.from('articles').insert({
+    url: `https://example.invalid/smoke-aged-story-${Date.now()}`, title: 'Smoke aged story',
+    text: 'Smoke Offshore AS won the smoke frame agreement.', published_at: agedOn,
+  }).select('id').single();
+  if (agedErr) console.log(`  ...  could not seed an aged article: ${agedErr.message}`);
+  else await admin.from('lead_articles').insert({ lead_id: lead!.id, article_id: agedArticle!.id });
+
   // A person read off a company's organisation page hangs from the company, not a lead. 0001's
   // contacts policy hid every such row from signed-in users, so Karstensens' drawer showed a
   // switchboard and no name while René Hansen sat in the table. Seed one and look for it on screen.
@@ -147,6 +157,10 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     await page.waitForTimeout(1200);
     const today = await bodyOf(page);
     check(!/Application error/.test(today) && today.length > 60, 'Today renders');
+    // Item 17: fresh-first. The news lead's article is 100 days old and its fit is higher (75); the
+    // award lead has no date (age unknown, fit 70). The award lead is named first, the other labelled.
+    check(/Smoke Tender Winner AS first/.test(today) && /Smoke Offshore AS \(stale signal\)/.test(today),
+      'Today names an undated lead before a stale signal and labels the stale one', today.match(/Read \d+ new leads?[^\n]*/)?.[0] ?? 'no new-leads item on Today');
 
     // 4 — Leads
     await page.goto(`${BASE}/app/radar`, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -171,6 +185,19 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       return a ? { bg: getComputedStyle(a).backgroundColor, text: a.innerText } : null;
     });
     check(allChip?.bg === 'rgb(14, 26, 43)' && /All\s*\d+/.test(allChip.text), 'the "All" chip shows as selected, with its count', JSON.stringify(allChip));
+    // Item 17: age on the row. The news lead's article is 100 days old — stale, dimmed, labelled and
+    // sorted below the undated award lead despite its higher fit. The award lead: age unknown, not dimmed.
+    const ageRows = await page.evaluate(() => Array.from(document.querySelectorAll('tr[data-lead-source]')).map((tr) => ({
+      name: (tr as HTMLElement).innerText.split('\n')[0], age: tr.getAttribute('data-age'), opacity: getComputedStyle(tr).opacity,
+      label: (tr.querySelector('[data-age-label]') as HTMLElement | null)?.innerText ?? '',
+    })));
+    const staleAt = ageRows.findIndex((r) => r.name.includes('Smoke Offshore AS'));
+    const unknownAt = ageRows.findIndex((r) => r.name.includes('Smoke Tender Winner AS'));
+    check(staleAt >= 0 && ageRows[staleAt].age === 'stale' && /stale signal · 100 days/.test(ageRows[staleAt].label) && ageRows[staleAt].opacity === '0.6',
+      'a news lead whose article is 100 days old reads "stale signal" and is dimmed', JSON.stringify(ageRows[staleAt] ?? 'row not found'));
+    check(unknownAt >= 0 && ageRows[unknownAt].age === 'unknown' && ageRows[unknownAt].label === 'age unknown' && ageRows[unknownAt].opacity === '1',
+      'an undated lead says "age unknown" and is not dimmed', JSON.stringify(ageRows[unknownAt] ?? 'row not found'));
+    check(unknownAt >= 0 && staleAt > unknownAt, 'the stale lead sorts below the undated one despite a higher fit', `undated at ${unknownAt}, stale at ${staleAt}`);
     // A row must say it opens something: a chevron drawn on the row (not only on hover), a hover
     // tint, and a click on a plain cell — not the company link — opens the drawer. The Trades cell
     // (the fourth) holds no link on either table.
@@ -271,6 +298,8 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     await page.goto(`${BASE}/app/radar?lead=${lead!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForTimeout(2000);
     check(await page.locator('aside').first().isVisible().catch(() => false), 'lead drawer opens');
+    const ageLine = await page.locator('aside [data-age]').first().innerText().catch(() => '');
+    check(/stale signal · 100 days — Article published \d{4}-\d{2}-\d{2}, 100 days ago/.test(ageLine), 'lead drawer states the age and the date it is measured from', ageLine || 'no age line');
     const jd = page.locator('aside button.btn-primary:has-text("Write JD")').first();
     if (await jd.count()) {
       await jd.click();
@@ -363,6 +392,8 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     await admin.from('scores').delete().eq('lead_id', lead!.id);
     await admin.from('leads').delete().eq('id', lead!.id);
     if (tenderLead) await admin.from('leads').delete().eq('id', tenderLead.id).eq('is_test', true);
+    // After the lead, whose delete removes the lead_articles link; the URL guard keeps this off real articles.
+    if (agedArticle) await admin.from('articles').delete().eq('id', agedArticle.id).like('url', 'https://example.invalid/%');
     await admin.from('companies').delete().eq('id', co!.id);
     if (tenderCo) await admin.from('companies').delete().eq('id', tenderCo.id).eq('is_test', true);
     await admin.auth.admin.deleteUser(uid);

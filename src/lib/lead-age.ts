@@ -71,10 +71,15 @@ export function newsLeadAge(a: { publishedAt?: string | null }, now = new Date()
   return judge('news', isoDay(a.publishedAt), 'article published', 'the article states no publication date', now);
 }
 
-export function tenderLeadAge(a: { awardDate?: string | null; awardBasis?: string | null; publishedAt?: string | null }, now = new Date()): Age {
+/**
+ * `awardDateRead` is false while migration 0024 is missing: the award date is then in the notice's
+ * text but not loaded, and the label must not claim the notice states none.
+ */
+export function tenderLeadAge(a: { awardDate?: string | null; awardBasis?: string | null; publishedAt?: string | null; awardDateRead?: boolean }, now = new Date()): Age {
   const award = isoDay(a.awardDate);
   if (award) return judge('tender', award, a.awardBasis || 'award date', '', now);
-  return judge('tender', isoDay(a.publishedAt), 'award notice published (the notice states no award date)', 'the notice states neither an award date nor a publication date', now);
+  const missing = a.awardDateRead === false ? 'award date not loaded yet' : 'the notice states no award date';
+  return judge('tender', isoDay(a.publishedAt), `award notice published (${missing})`, 'the notice states neither an award date nor a publication date', now);
 }
 
 export function postingAge(p: { posted_at?: string | null; first_seen_at?: string | null }, now = new Date()): Age {
@@ -116,3 +121,8 @@ export function reAdverts(adverts: { posted_at?: string | null; first_seen_at?: 
  * above both, even when its newest advert is ageing: repeated reposting is demand, not decay.
  */
 export const ageSink = (state: AgeState, boosted = false) => (boosted ? -1 : state === 'stale' ? 2 : state === 'flagged' ? 1 : 0);
+
+/** How each state reads. Ageing takes the warn colour — worth a look; stale is quiet ink, not "bad": an old signal is not a failure. */
+export const AGE_TEXT: Record<AgeState, string> = { fresh: 'text-ink3', unknown: 'text-ink3', flagged: 'text-warn font-medium', stale: 'text-ink2 font-medium' };
+/** Deprioritised on screen, never hidden. */
+export const AGE_DIM: Record<AgeState, string> = { fresh: '', unknown: '', flagged: 'opacity-80', stale: 'opacity-60' };

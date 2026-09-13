@@ -1,5 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { hasPostingContact, hasHiringState } from './schema-features';
+import { hasPostingContact, hasHiringState, hasAwardDate } from './schema-features';
+import { newsLeadAge, tenderLeadAge, ageSink } from './lead-age';
+import { leadSource, primaryArticle } from './lead-source';
+import { articlesByLead } from './lead-articles';
 
 /**
  * The day, in order. Six queries in a fixed priority — no model chooses any of this.
@@ -21,10 +24,12 @@ export type TodayItem = {
 const day = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
 
 export async function todayItems(sb: SupabaseClient): Promise<TodayItem[]> {
+  // 0024 gives an award notice its own award date; before it, an award lead ages from the notice's publication.
+  const awardCols = (await hasAwardDate(sb)) ? ', award_date, award_date_basis' : '';
   const [pending, noReply, newLeads, expiring, missingDocs, hiring] = await Promise.all([
     sb.from('verifications').select('id, issuer_email_sent_at, documents(candidate_id, extracted, candidates!candidate_id(reference_code))').eq('result', 'pending'),
     sb.from('outreach').select('id, sent_at, leads(project_name, companies(name))').eq('status', 'sent').is('reply_at', null).lte('sent_at', day(-3)),
-    sb.from('leads').select('id, kind, project_name, fit_score, trades_inferred, companies(name)').eq('status', 'new').gte('created_at', day(-7)).order('fit_score', { ascending: false }).limit(6),
+    sb.from('leads').select(`id, kind, project_name, fit_score, trades_inferred, source_url, companies(name)`).eq('status', 'new').gte('created_at', day(-7)).order('fit_score', { ascending: false }).limit(20),
     sb.from('verifications').select('id, valid_until, documents(cert_body, candidates!candidate_id(reference_code))').eq('result', 'valid').lte('valid_until', day(60).slice(0, 10)),
     campaignsMissingDocs(sb),
     hiringWorthCalling(sb),
@@ -37,11 +42,26 @@ export async function todayItems(sb: SupabaseClient): Promise<TodayItem[]> {
   // Won work and hiring now are one item, because they are one job: read what came in and
   // decide who to call. Each company is labelled with which it is, so a recruiter can see at a
   // glance whether the reason to call is a contract award or an open advert.
-  const leadNames = (newLeads.data ?? []).map((l: any) => l.companies?.name).filter(Boolean) as string[];
+  // Item 17: the six shown are chosen fresh-first, and an ageing or stale signal says so. Nothing is
+  // dropped for its age alone; age unknown counts as fresh.
+  // Articles are read with the service role for these leads only — no read policy until 0025. If that
+  // read fails, the leads still show, each "age unknown", rather than the item vanishing.
+  const { byLead } = await articlesByLead(((newLeads.data ?? []) as any[]).map((l) => l.id), awardCols);
+  for (const l of (newLeads.data ?? []) as any[]) l.lead_articles = byLead.get(l.id) ?? [];
+  const aged = ((newLeads.data ?? []) as any[]).map((l) => {
+    const a: any = primaryArticle(l.lead_articles, l.source_url);
+    const age = leadSource(l.source_url) === 'tender'
+      ? tenderLeadAge({ awardDate: a?.award_date, awardBasis: a?.award_date_basis, publishedAt: a?.published_at, awardDateRead: !!awardCols })
+      : newsLeadAge({ publishedAt: a?.published_at });
+    return { l, age };
+  }).sort((x, y) => (ageSink(x.age.state) - ageSink(y.age.state)) || ((y.l.fit_score ?? 0) - (x.l.fit_score ?? 0))).slice(0, 6);
+  const leadNames = aged
+    .map(({ l, age }) => l.companies?.name && `${l.companies.name}${age.state === 'stale' ? ' (stale signal)' : age.state === 'flagged' ? ' (ageing)' : ''}`)
+    .filter(Boolean) as string[];
   const hiringNames = hiring.map((h) => `${h.name} (hiring now)`);
   const allNames = [...leadNames, ...hiringNames];
   if (allNames.length) {
-    const n = (newLeads.data ?? []).length + hiring.length;
+    const n = aged.length + hiring.length;
     items.push({
       dot: '',
       title: `Read ${n} new lead${n === 1 ? '' : 's'}${allNames[0] ? ` — ${allNames[0]} first` : ''}`,
@@ -51,8 +71,8 @@ export async function todayItems(sb: SupabaseClient): Promise<TodayItem[]> {
         ? 'Contract awards are demand months before a job is posted; an open advert is demand today.'
         : 'Contract awards are demand months before a job is posted.',
       from: hiring.length
-        ? 'leads with status = new in the last 7 days, plus hiring-now companies under high pressure or naming a contact'
-        : 'leads with status = new in the last 7 days, by fit',
+        ? 'leads with status = new in the last 7 days (fresh signals first, then fit), plus hiring-now companies under high pressure or naming a contact'
+        : 'leads with status = new in the last 7 days, fresh signals first, then by fit',
     });
   }
 
