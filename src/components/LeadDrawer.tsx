@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { EmployerTypeOverride } from './EmployerTypeOverride';
 import { CountryPicker } from './CountryPicker';
 import { ScoredCandidate } from './ScoredCandidate';
-import { leadSource, LEAD_SOURCE_LABEL, LEAD_SOURCE_BADGE } from '@/lib/lead-source';
+import { leadSource, LEAD_SOURCE_LABEL, LEAD_SOURCE_BADGE, SOURCE_FLAG_LABEL } from '@/lib/lead-source';
 export function LeadDrawer({ lead }: { lead: any }) {
   const r = useRouter(); const [tool, setTool] = useState<'jd' | 'pool' | 'xray' | 'q'>('jd');
   const [out, setOut] = useState<any>({}); const [busy, setBusy] = useState(''); const [draft, setDraft] = useState<any>(null);
@@ -61,6 +61,7 @@ export function LeadDrawer({ lead }: { lead: any }) {
 
     <div className="text-[12px] text-ink3 mb-2">Source</div>
     <div className="flex items-center gap-2 flex-wrap text-[13px] mb-4"><span data-source={src} className={LEAD_SOURCE_BADGE[src]}>{LEAD_SOURCE_LABEL[src]}</span><span className={`st ${lead.source_fetch_status === 'live' ? 'st-ok' : 'st-bad'}`}>{lead.source_fetch_status}</span><a className="text-accent" href={lead.source_url} target="_blank" rel="noopener">Open source</a>{lead.confirmed_at ? <span className="text-ok">✓ confirmed</span> : <button className="btn" onClick={async () => { await call('confirm'); r.refresh(); }}>Confirm I checked it</button>}</div>
+    {lead.source_flag && lead.source_flag !== 'ok' && <div data-source-flag={lead.source_flag} className="-mt-2 mb-4 text-[13px] text-warn">{SOURCE_FLAG_LABEL[lead.source_flag] ?? lead.source_flag}{lead.source_flag_why ? ` — ${lead.source_flag_why}` : ''}</div>}
     {others.length > 0 && <div className="-mt-2 mb-4 text-[13px]" data-corroboration>
       <div className="text-[12px] text-ink3 mb-1">Also reported — the same contract, linked here instead of a second lead</div>
       <ul className="grid gap-1.5">{others.map((a: any) => { const k = leadSource(a.url); return (

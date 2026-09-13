@@ -7,7 +7,7 @@ import { HiringDrawer } from '@/components/HiringDrawer';
 import { groupByCompany } from '@/components/HiringNow';
 import { checkRightToWork } from '@/lib/right-to-work';
 import { currentUser } from '@/lib/supabase/server';
-import { leadSource, LEAD_SOURCE_LABEL, LEAD_SOURCE_BADGE } from '@/lib/lead-source';
+import { leadSource, LEAD_SOURCE_LABEL, LEAD_SOURCE_BADGE, SOURCE_FLAG_LABEL } from '@/lib/lead-source';
 import { rankQuoted } from '@/lib/quoted-contacts';
 export const dynamic = 'force-dynamic';
 export default async function Radar({ searchParams }: { searchParams: { tab?: string; lead?: string; agencies?: string; company?: string; country?: string; trade?: string; employer?: string; pressure?: string; source?: string } }) {
@@ -148,7 +148,7 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
           <td>{(l.trades_inferred ?? []).map((t: string) => <span key={t} className="inline-block text-[12px] px-2 py-0.5 rounded-md bg-line2 text-ink2 mr-1 mb-1">{t}</span>)}</td>
           <td>{tab === 'won_work' ? <span className="text-[13px]">{l.phase_start ?? l.phase ?? '—'}</span> : <span className={`st ${jp?.hiring_pressure === 'high' ? 'st-bad' : jp?.hiring_pressure === 'medium' ? 'st-warn' : ''}`}>{jp?.hiring_pressure ?? 'low'}</span>}</td>
           <td><span className="inline-flex items-center gap-2 font-semibold"><i className="inline-block w-[56px] h-[6px] rounded-full bg-line overflow-hidden"><i className="block h-full rounded-full bg-tool-leads" style={{ width: `${l.fit_score}%` }} /></i>{l.fit_score}</span></td>
-          <td className="whitespace-nowrap"><span className={`badge ${l.source_fetch_status === 'live' ? (l.confirmed_at ? 'badge-ok' : 'badge-info') : 'badge-bad'}`}>{l.confirmed_at ? '✓ ' : ''}{l.source_fetch_status}{l.confirmed_at ? ' · confirmed' : ' · not confirmed'}</span><div className="text-[12px] mt-1"><a href={l.source_url} target="_blank" rel="noopener" className="text-accent font-medium">Open source</a></div></td>
+          <td className="whitespace-nowrap"><span className={`badge ${l.source_fetch_status === 'live' ? (l.confirmed_at ? 'badge-ok' : 'badge-info') : 'badge-bad'}`}>{l.confirmed_at ? '✓ ' : ''}{l.source_fetch_status}{l.confirmed_at ? ' · confirmed' : ' · not confirmed'}</span><div className="text-[12px] mt-1"><a href={l.source_url} target="_blank" rel="noopener" className="text-accent font-medium">Open source</a></div>{l.source_flag && l.source_flag !== 'ok' && <div data-source-flag={l.source_flag} title={l.source_flag_why ?? ''} className="text-[12px] mt-1 text-warn">{SOURCE_FLAG_LABEL[l.source_flag] ?? l.source_flag}</div>}</td>
         </tr>); })}
       {(leads ?? []).length === 0 && <tr><td colSpan={7} className="text-ink3 p-6">No leads yet. Radar reads your sources and the TED award notices every morning at 06:00.</td></tr>}
       </tbody></table></div></>)}

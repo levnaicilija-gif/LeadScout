@@ -21,6 +21,11 @@ export function leadSource(url: string | null | undefined): LeadSource {
 
 export const LEAD_SOURCE_LABEL: Record<LeadSource, string> = { tender: 'Tender award', news: 'News' };
 
+/** How a flagged source reads on screen. The rules that set a flag are in source-quality.ts. */
+export const SOURCE_FLAG_LABEL: Record<string, string> = {
+  broken: 'source is gone', unreachable: 'source did not load', landing: 'link lands on a landing page', paywall: 'source is behind a paywall', sign_in: 'source needs a sign-in',
+};
+
 /**
  * The tag's look, as whole class names (Tailwind cannot build one at runtime). Neither a status
  * colour nor a tool colour: where a lead came from is not how a fact stands, and not which screen

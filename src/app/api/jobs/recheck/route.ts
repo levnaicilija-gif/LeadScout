@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { fetchPage } from '@/lib/fetch-page';
 import { runLookup } from '@/lib/verify/adapters';
+import { leadSource } from '@/lib/lead-source';
+import { sourceFlag } from '@/lib/source-quality';
+import { hasSourceFlag } from '@/lib/schema-features';
 export const maxDuration = 300;
 /**
  * Nightly: (1) re-fetch lead source pages → live/stale/not_found; (2) re-check certs expiring
@@ -28,15 +31,20 @@ export async function POST(req: Request) {
   await kick('/api/jobs/careers-discovery?batch=25&batchesLeft=30');
   await kick('/api/jobs/job-posts?batch=10&batchesLeft=30');
   const { data: leads } = await db.from('leads').select('id, source_url, kind, created_at').not('status', 'in', '("stale","not_for_us")').limit(200);
+  const flagOn = await hasSourceFlag(db);
   for (const l of leads ?? []) {
     if (!l.source_url) continue;
+    // An award notice is read from the TED API; its web page answers a burst of requests with 429,
+    // which would mark every award lead "not found" each night.
+    if (leadSource(l.source_url) === 'tender') continue;
     const p = await fetchPage(l.source_url);
     const ageDays = (Date.now() - new Date(l.created_at).getTime()) / 86400000;
     const status = p.status === 'not_found' ? 'not_found' : ageDays > 30 && l.kind === 'job_post' ? 'stale' : 'live';
     // The source's state is flagged; the lead's status is the owner's to set. This used to write
     // status 'stale' on a page that did not load, which hid the lead from Leads and Pitch on the
     // strength of one failed fetch, without anyone deciding it.
-    await db.from('leads').update({ source_fetch_status: status, source_fetched_at: p.fetchedAt }).eq('id', l.id);
+    const flag = sourceFlag(p, { requestedUrl: l.source_url });
+    await db.from('leads').update({ source_fetch_status: status, source_fetched_at: p.fetchedAt, ...(flagOn ? { source_flag: flag.flag, source_flag_why: flag.why, source_flag_at: new Date().toISOString() } : {}) }).eq('id', l.id);
   }
   const soon = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
   const { data: vs } = await db.from('verifications').select('id, document_id, valid_until, documents(cert_body, extracted)').eq('result', 'valid').lte('valid_until', soon).limit(100);

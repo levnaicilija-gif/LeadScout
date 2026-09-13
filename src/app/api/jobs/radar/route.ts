@@ -14,6 +14,8 @@ import { ingestTedAwards, tedWindowFor } from '@/lib/tender/ingest';
 import { findSameContract, mergeSameContract } from '@/lib/same-contract';
 import { hasPublishedAtSource, hasRadarVerdicts, hasEmailPatterns } from '@/lib/schema-features';
 import { observePatterns, recordEmailPatterns } from '@/lib/email-pattern';
+import { sourceFlag } from '@/lib/source-quality';
+import { hasSourceFlag } from '@/lib/schema-features';
 import { evaluateNews, RULES_VERSION } from '@/lib/radar-filter';
 import { quotedInText } from '@/lib/quoted-contacts';
 import { canonCompany } from '@/lib/company-identity';
@@ -121,7 +123,7 @@ async function run(req: Request) {
   }
 
   const report: any[] = [];
-  const tally = { sources: 0, sourcesUnreachable: 0, linksFound: 0, alreadySeen: 0, fetchFailed: 0, tooShort: 0, articlesRead: 0, leads: 0, jobLeads: 0, rejected: 0, filtered: 0, lowConfidence: 0, emailPatterns: 0, modelEur: 0, budgetStopped: false, linksNotRead: 0, spentTodayBefore: Math.round(budget.totalToday * 10000) / 10000, cap };
+  const tally = { sources: 0, sourcesUnreachable: 0, linksFound: 0, alreadySeen: 0, fetchFailed: 0, tooShort: 0, articlesRead: 0, leads: 0, jobLeads: 0, rejected: 0, filtered: 0, lowConfidence: 0, emailPatterns: 0, sourceFlagged: 0, modelEur: 0, budgetStopped: false, linksNotRead: 0, spentTodayBefore: Math.round(budget.totalToday * 10000) / 10000, cap };
   // Every attempt of every extraction call is logged and counted against the cap as it happens.
   const meter = (detail: string): UsageMeter => async (usage, model) => {
     const eur = workspaceId ? await logModelCall(db, workspaceId, model, detail, usage) : 0;
@@ -213,6 +215,8 @@ async function run(req: Request) {
         const page = await fetchPage(url);
         if (page.status !== 'live') { tally.fetchFailed++; rejected.push({ url, why: `page did not load — ${page.note ?? 'no reason given'}` }); continue; }
         if (page.text.length < 400) { tally.tooShort++; rejected.push({ url, why: `only ${page.text.length} characters of text — not an article` }); continue; }
+        // Item 14 (4): a paywall, a sign-in wall or a landing page is not the story the link promised.
+        const flag = sourceFlag(page, { requestedUrl: url, sourcePaywalled: !!src.paywalled });
 
         const shotPath = `radar/${Date.now()}-${Math.abs(hash(url))}.png`;
         if (page.screenshot) await db.storage.from('screenshots').upload(shotPath, page.screenshot, { contentType: 'image/png' });
@@ -223,6 +227,14 @@ async function run(req: Request) {
         const published = page.published ?? (dateSource ? datelineFromText(page.text, page.fetchedAt) : null);
         const { data: article } = await db.from('articles').insert({ source_id: src.id, url, title: page.title, text: page.text, screenshot_path: shotPath, last_fetch_status: 'live', last_fetch_at: page.fetchedAt, published_at: published?.date ?? null, ...(dateSource && published ? { published_at_source: published.via } : {}) }).select().single();
         tally.articlesRead++;
+        // Stored, so the link is not read again, and flagged — but not sent to extraction: a model
+        // reading a paywall's teaser or a section page would be judging a page that is not the story.
+        if (flag.flag !== 'ok') {
+          tally.sourceFlagged++;
+          rejected.push({ url, why: `source ${flag.flag}: ${flag.why}`, rule: `source_${flag.flag}` });
+          await recordVerdict({ article_id: article.id, verdict: 'rejected', rules: [`source_${flag.flag}`], reason: flag.why, evidence: [] });
+          continue;
+        }
 
         if (src.type === 'job_board' || src.type === 'company_press') {
           // Ring-fenced: the job-post pass is a bonus on these sources, and it must never cost
@@ -258,6 +270,7 @@ async function run(req: Request) {
             await recordVerdict({ ...verdictRow, lead_id: leadId });
             const { data: saved } = await db.from('leads').select('company_id').eq('id', leadId).maybeSingle();
             await notePatterns(saved?.company_id, page.text, url, page.fetchedAt);
+            if (await hasSourceFlag(db)) await db.from('leads').update({ source_flag: flag.flag, source_flag_why: flag.why, source_flag_at: new Date().toISOString() }).eq('id', leadId);
             tally.leads++;
             report.push({ url, title: page.title, lead: true, company: res.lead.company, people: people.map((p) => `${p.name} (${p.title})`), contactWhy: v.contacts.why });
           } else {

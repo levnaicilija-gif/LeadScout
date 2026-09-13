@@ -19,6 +19,8 @@ export type Fetched = {
   published?: FoundDate | null;
   /** A vacancy's own posting date, when its JobPosting data states one. */
   posted?: FoundDate | null;
+  /** Where the request ended up after redirects — a story link that lands on a home page is not the story. */
+  finalUrl?: string;
 };
 
 const miss = (url: string, note: string, via: Fetched['via'] = 'none'): Fetched => ({
@@ -86,7 +88,7 @@ export async function fetchPage(url: string, opts: { allowBrowser?: boolean; for
     }).get().filter(Boolean))];
 
     const problem = needsBrowser(res.body, text, links.length);
-    if (!problem) return { url, status: 'live', title, text, links, screenshot: null, fetchedAt: now(), via: 'http', ...dates };
+    if (!problem) return { url, status: 'live', title, text, links, screenshot: null, fetchedAt: now(), via: 'http', finalUrl: res.url, ...dates };
 
     // The page itself was thin — try its advertised feed before paying for a browser.
     const feedHref = $('link[rel="alternate"][type*="rss"], link[rel="alternate"][type*="atom"]').first().attr('href');
@@ -127,7 +129,7 @@ async function viaBrowser(url: string, why: string): Promise<Fetched> {
     const links: string[] = await page.evaluate(() => Array.from(new Set(Array.from(document.querySelectorAll('a[href]')).map((a) => (a as HTMLAnchorElement).href))));
     const dates = datesFromHtml(await page.content(), new Date().toISOString());
     const screenshot = await page.screenshot({ fullPage: false });
-    return { url, status: 'live', title, text, links, screenshot, fetchedAt: new Date().toISOString(), via: 'browser', note: `plain fetch insufficient: ${why}`, ...dates };
+    return { url, status: 'live', title, text, links, screenshot, fetchedAt: new Date().toISOString(), via: 'browser', note: `plain fetch insufficient: ${why}`, finalUrl: page.url(), ...dates };
   } catch (e: any) {
     return miss(url, `browser failed: ${String(e?.message ?? e).split('\n')[0]}`, 'browser');
   } finally {
