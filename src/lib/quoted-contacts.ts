@@ -37,6 +37,8 @@ export function companyAliases(name: string, domain?: string | null): string[] {
   const inner = name.match(/\(([^)]+)\)/)?.[1];
   add(inner);
   add(name.replace(/\([^)]*\)/g, ''));
+  // A lead on two companies at once — "Entr and Unitech Power Systems" — answers to each of them.
+  for (const part of name.replace(/\([^)]*\)/g, '').split(/\s+(?:and|&)\s+/i)) if (part !== name) add(part);
   for (const t of name.match(/\b[A-Z]{2,6}\b/g) ?? []) add(t);
   const label = canonDomain(domain).split('.')[0];
   if (label) add(label.replace(/-/g, ' '));
@@ -67,6 +69,10 @@ function otherOrgInTitle(title: string, aliases: string[]): string | null {
   const candidates: string[] = [];
   for (const m of title.matchAll(/\bat\s+((?:[A-Z][\p{L}&.-]*(?:['’]s)?\s?){1,4})/gu)) candidates.push(m[1]);
   for (const m of title.matchAll(/\b([A-Z][\p{L}&.-]{1,})['’]s\b/gu)) candidates.push(m[1]);
+  // An organisation written before the role: "D-CRBN CEO", "Nadara Portfolio Director".
+  const lead = title.match(/^((?:[A-Z][\p{L}\p{N}&.-]*\s){1,3})(CEO|CFO|COO|CTO|Chair\w*|President|Founder|Managing Director|Director|Manager|Head)\b/u);
+  const ROLEWORD = /^(senior|vice|executive|group|chief|global|regional|general|deputy|assistant|associate|project|country|business|technical|commercial|operations|offshore|onshore|site|sales|hr|marketing)$/i;
+  if (lead && !lead[1].trim().split(/\s+/).every((w) => ROLEWORD.test(w))) candidates.push(lead[1].trim());
   for (const raw of candidates) {
     const org = raw.replace(/['’]s\b/g, '').trim();
     const first = org.split(/\s+/)[0];

@@ -53,6 +53,15 @@ async function lead(id: string) {
     check(!!b && b.rule === 'rep_other_company' && /EWE/.test(b.why), 'Jantje Bolduan excluded as a representative of EWE, not DWT', b?.why ?? JSON.stringify(v.contacts.excluded));
   }
 
+  console.log('\ntriggers on real titles and sentences:');
+  {
+    const base = { url: 'https://www.worley.com/x', companyName: 'Worley', project: {}, people: [{ name: 'Chris Ashton', title: 'Chief Executive Officer of Worley' }], articleDate: new Date('2026-09-10'), targets: new Set<string>() };
+    const heartland = evaluateNews({ ...base, title: 'Worley awarded EPC contract for Heartland Extraction Plant - Worley', text: 'Worley has been awarded a contract by Pembina Pipeline Corporation (Pembina) to provide engineering, procurement, fabrication and construction (EPC) services for the Heartland Extraction Plant (HEP) in Strathcona County, Alberta, Canada. “This award is further evidence of Worley’s expertise in delivering integrated gas projects and continues our long-standing relationship with Pembina, reflecting their ongoing confidence in Worley as a full project delivery partner,” said Chris Ashton, Chief Executive Officer of Worley.' });
+    check(heartland.verdict === 'lead', 'an EPC award stays a lead though a quote calls the contractor "a full project delivery partner"', `${heartland.verdict}: ${heartland.reason}`);
+    const bechtel = evaluateNews({ ...base, companyName: 'Bechtel', people: [{ name: 'Richard Freer', title: 'Managing Director of Public Infrastructure, Australia, Bechtel' }], title: 'Bechtel awarded Delivery Partner role for Newcastle to Sydney High Speed Rail in Australia - Bechtel', text: 'Bechtel has been appointed as Delivery Partner for the development phase of the Newcastle to Sydney High Speed Rail project, said Richard Freer, Managing Director of Public Infrastructure, Australia, Bechtel.' });
+    check(bechtel.verdict === 'rejected' && bechtel.rules.some((r) => r.id === 'early_stage'), 'a delivery-partner role for a development phase is not a trigger', `${bechtel.verdict}: ${bechtel.rules.map((r) => r.id).join(', ')}`);
+  }
+
   console.log('\ntimelines (article dated 2026-09-10):');
   const at = new Date('2026-09-10');
   const months = (s: string) => timeline(s, at)?.months ?? null;

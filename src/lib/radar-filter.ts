@@ -35,18 +35,36 @@ export function sentences(text: string): string[] {
   return String(text ?? '').split(/(?<=[.!?])\s+|\n+/).map((s) => s.trim()).filter((s) => s.length > 20);
 }
 
-/** The title and the opening sentences that name the company — where a story says what happened. */
+/**
+ * A sentence someone wrote, as opposed to site chrome. Stored pages open with navigation glued
+ * together — "CompanyAbout UsNews & InsightsInvestors…The McDermott Difference" — which names the
+ * company and says nothing; the first version of this filter read those as the story and let a
+ * letter of intent and a consultancy framework through. Prose has ordinary lower-case words.
+ */
+const isProse = (s: string) => (s.match(/\b[a-z]{2,}\b/g) ?? []).length >= 6;
+
+/** The title and the opening prose that names the company — where a story says what happened. */
 export function lede(title: string, text: string, aliases: string[]): string {
   const canon = (s: string) => ` ${s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ')} `;
-  const naming = sentences(text).filter((s) => aliases.some((a) => canon(s).includes(` ${a} `))).slice(0, 3);
-  return [title, ...(naming.length ? naming : [String(text ?? '').slice(0, 1500)])].join('\n');
+  const prose = sentences(text).filter(isProse);
+  const naming = prose.filter((s) => aliases.some((a) => canon(s).includes(` ${a} `))).slice(0, 6);
+  return [title, ...naming, ...prose.slice(0, 4)].join('\n');
 }
 
 const firstMatch = (text: string, re: RegExp) => sentences(text).find((s) => re.test(s)) ?? null;
 
 const CONSENTING = /\b(scoping (report|request|opinion)|environmental impact assessment|EIA\b|habitats regulations|consent application|development consent|planning (application|permission|consent)|licen[cs]e application|permit application|pre-application|public consultation)/i;
 const AWARDED = /\b(awarded|awards|wins|won|secures?|selected|signs?|signed|order)\b/i;
-const EARLY = /\b(pre-?FEED|FEED\b|front[- ]end engineering|concept (study|select|design)|feasibility stud(y|ies)|(electrical|infrastructure|engineering|technical) studies|letter of intent|LOI\b|memorandum of understanding|MoU\b|development phase|delivery partner|project management consultancy|(ahead of|subject to|pending|towards?) (a |the )?(final investment decision|FID)|(final investment decision|FID) (is )?(planned|expected|targeted|pending|anticipated))/i;
+const EARLY = /\b(pre-?FEED|FEED\b|front[- ]end engineering|concept (study|select|design|development)|(feasibility|safety|cost|design|options?|electrical|infrastructure|engineering|technical) (and \w+ )?stud(y|ies)|letter of intent|LOI\b|memorandum of understanding|MoU\b|development phase|(awarded|selected|appointed)[^.]{0,40}\bdelivery partner\b|project management consultancy|(ahead of|subject to|pending|towards?|to support) (a |the )?(final investment decision|FID)|(targeted|expected|planned|anticipated) (final investment decision|FID)|(final investment decision|FID) (is )?(planned|expected|targeted|pending|anticipated))/i;
+
+/**
+ * An award for engineering or design services alone. The owner ruled concept studies are not a
+ * trigger; an engineering-only award is the same thing at a later stage — Worley engineering
+ * D-CRBN's plant, designing BCEI's energy centres — work done in offices, before anyone is hired
+ * to build. It stands only when the opening lines name no build contract.
+ */
+const ENGINEERING_ONLY = /\bengineering(,| and| &) (detailed )?design (and procurement support )?services\b|\bengineering services( contracts?)?\b/i;
+const BUILD_CONTRACT = /\b(EPC\w*|construction (contract|services|work)|installation (contract|services|work)|fabrication|maintenance (contract|agreement)|service agreement|subsea contract|frame agreement|drilling)\b/i;
 const DEVELOPER = /\b(auction|winning bid|seabed (lease|rights)|(development|concession) rights|won the rights?)\b|\b(awarded|wins?|won|secures?)\b.{0,80}\b(wind|solar)\b.{0,30}\b(projects?|farms?|sites?|zones?)\b.{0,60}\b(tender|auction|lease)\b/i;
 
 /** Work starting, as opposed to operating, completing or being delivered. */
@@ -99,6 +117,8 @@ export function evaluateNews(i: NewsInput): Verdict {
   if (consent && !AWARDED.test(i.title)) rules.push({ id: 'excluded_trigger', why: 'consenting, planning or an impact assessment — a regulatory step, not work won', evidence: consent });
   const early = firstMatch(head, EARLY);
   if (early) rules.push({ id: 'early_stage', why: 'FEED, a study, a letter of intent or work pending an investment decision — not yet work that needs trades', evidence: early });
+  const engineeringOnly = firstMatch(head, ENGINEERING_ONLY);
+  if (engineeringOnly && !early && !BUILD_CONTRACT.test(head)) rules.push({ id: 'early_stage', why: 'engineering or design services only — no construction, installation or maintenance contract named', evidence: engineeringOnly });
   const developer = firstMatch(head, DEVELOPER);
   if (developer || i.companyRole === 'developer_or_owner') rules.push({ id: 'developer_or_auction', why: 'a developer or owner winning a site or an auction, not a contractor winning work', evidence: developer ?? `extraction: company_role = ${i.companyRole}` });
 
