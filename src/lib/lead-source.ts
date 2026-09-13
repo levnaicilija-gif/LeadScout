@@ -35,3 +35,9 @@ export const LEAD_SOURCE_BADGE: Record<LeadSource, string> = {
   tender: 'badge bg-panel border border-ink3 text-ink',
   news: 'badge',
 };
+
+/** The article a lead stands on: the one its source URL points at (an award's carries #winner-N), else the first linked. */
+export function primaryArticle<T extends { url?: string | null }>(links: { articles: T | null }[] | null | undefined, sourceUrl: string | null | undefined): T | null {
+  const list = (links ?? []).map((x) => x.articles).filter(Boolean) as T[];
+  return list.find((a) => a.url && String(sourceUrl ?? '').startsWith(a.url)) ?? list[0] ?? null;
+}

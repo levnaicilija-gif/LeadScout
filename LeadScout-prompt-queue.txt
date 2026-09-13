@@ -228,3 +228,35 @@ recruiter triggers). Report: calls and spend per tool for the first metered week
 and what the true daily total was against the €2.00 cap.
 
 Commit after each step, two lines per step.
+
+-------------------------------------------------------------------------------
+17. LEAD-AGE THRESHOLDS
+-------------------------------------------------------------------------------
+Dates are now captured (migration 0021). Nothing currently acts on them. Add
+staleness/priority thresholds so "will be hiring soon" leads actually decay when
+the signal goes cold, and reposted job postings surface as a stronger signal
+rather than a repeated one:
+
+- News-sourced won-work lead: flag at 45 days since the article's published_at,
+  mark stale at 90. A flagged/stale lead stays visible but visually deprioritized
+  — never auto-deleted or hidden.
+- Tender-award lead: flag at 180 days since the award date, stale at 365 — awards
+  have a longer real staffing runway than a news mention.
+- Hiring now posting: flag at 60 days since posted_at (or first-seen date if
+  posted_at is missing).
+- A posting re-advertised 2+ times within a 180-day window: raise its priority
+  rather than lower it — repeated reposting is a stronger demand signal, not
+  staleness.
+- Leads/postings with no date at all should not be penalized for a missing date
+  — treat as "age unknown," neither flagged nor boosted, and show that plainly
+  rather than defaulting to either extreme.
+
+Apply this as a computed/displayed state, not a background job that silently
+changes status — a flag or stale marker is informational, matching the earlier
+decision that automated processes flag rather than auto-set recruiter-owned
+status fields.
+
+Commit after each step, two lines per step. Full release gate before every
+commit. Report: how many current leads/postings would be flagged or stale under
+these thresholds, broken down by category, so you can see the real impact before
+it's live.

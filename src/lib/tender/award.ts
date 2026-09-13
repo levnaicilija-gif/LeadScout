@@ -172,3 +172,9 @@ export const buyersFromAwardText = (text: string) =>
 
 /** The TED publication date written by awardText, read back. */
 export const publishedFromAwardText = (text: string) => text.match(/^Published on TED: (\d{4}-\d{2}-\d{2})$/m)?.[1] ?? null;
+
+/** The award date written by awardText, read back with which kind of date it is. */
+export const awardDateFromText = (text: string): AwardDate | null => {
+  const m = text.match(/^Award date: (\d{4}-\d{2}-\d{2}) \((award decision|contract concluded)\)$/m);
+  return m ? { date: m[1], which: m[2] as AwardDate['which'] } : null;
+};
