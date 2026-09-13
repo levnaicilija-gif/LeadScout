@@ -88,5 +88,32 @@ async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>) {
   console.log(`\npostings without a date: ${posts.length}`);
   for (const [k, v] of Object.entries(ptally).sort((a, b) => b[1] - a[1])) console.log(`  ${String(v).padStart(4)}  ${k}`);
 
+  // ------------------------------------------------ sources for dates written before 0021
+  // A date written before the column existed has no recorded source. Read the page again and
+  // record the source only when it still yields that exact date; otherwise leave it unrecorded
+  // rather than label a date with a source that did not produce it.
+  if (articleSource && postingSource) {
+    const undocumented = await all<any>((f) => db.from('articles').select('id, url, text, fetched_at, published_at').not('published_at', 'is', null).is('published_at_source', null).not('url', 'like', `${TED}%`).range(f, f + 999));
+    const src: Record<string, number> = {};
+    await pool(undocumented, 6, async (a) => {
+      const res = await httpGet(a.url, {}, 20000);
+      const meta = res.ok ? datesFromHtml(res.body, a.fetched_at).published : null;
+      const line = datelineFromText(a.text ?? '', a.fetched_at);
+      const via = meta && meta.date === a.published_at ? meta.via : line && line.date === a.published_at ? line.via : null;
+      src[via ?? 'no source reproduces the stored date — left unrecorded'] = (src[via ?? 'no source reproduces the stored date — left unrecorded'] ?? 0) + 1;
+      if (via && WRITE) await db.from('articles').update({ published_at_source: via }).eq('id', a.id).is('published_at_source', null);
+    });
+    const undocPosts = await all<any>((f) => db.from('job_posts').select('id, source_url, posted_at').not('posted_at', 'is', null).is('posted_at_source', null).range(f, f + 999));
+    await pool(undocPosts, 4, async (p) => {
+      const res = await httpGet(p.source_url, {}, 20000);
+      const found = res.ok ? datesFromHtml(res.body, new Date().toISOString()).posted : null;
+      const via = found && found.date === p.posted_at ? found.via : null;
+      src[`posting: ${via ?? 'no source reproduces the stored date — left unrecorded'}`] = (src[`posting: ${via ?? 'no source reproduces the stored date — left unrecorded'}`] ?? 0) + 1;
+      if (via && WRITE) await db.from('job_posts').update({ posted_at_source: via }).eq('id', p.id).is('posted_at_source', null);
+    });
+    console.log(`\ndates written before 0021 (${undocumented.length} articles, ${undocPosts.length} postings), source recorded where the page still gives the same date:`);
+    for (const [k, v] of Object.entries(src).sort((x, y) => y[1] - x[1])) console.log(`  ${String(v).padStart(4)}  ${k}`);
+  }
+
   process.exit(failures ? 1 : 0);
 })();

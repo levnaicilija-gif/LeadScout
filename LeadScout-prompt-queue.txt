@@ -203,3 +203,28 @@ broken, resolves to a landing/index page, sits behind a paywall, or requires
 sign-in.
 
 Commit after each step, two lines per step.
+
+-------------------------------------------------------------------------------
+16. METER EVERY MODEL CALL
+-------------------------------------------------------------------------------
+Radar's extraction now logs every attempt to cost_log and counts against the daily
+cap (askJson takes an onUsage meter). Everything else that calls a model still does
+not, so "Spent today" and the cap still undercount. Bring each of these under the
+same metering, with real token usage rather than estimates:
+
+(1) The recruiter tools in src/lib/ai/documents.ts — CV parsing, anonymised bullets
+and summary, candidate scoring, job description from a lead, screening questions,
+outreach drafts, the PII model review — and every route that calls them.
+(2) Verify intake (src/app/api/verify/intake) and the anonymiser
+(src/app/api/anonymize), which call the model directly.
+(3) The hiring-contacts job, which logs a flat €0.01 per read instead of the
+tokens it actually used.
+
+For each: log model, tokens and EUR per attempt against the user's workspace;
+decide per call whether the daily cap should stop it (automated jobs: yes, hard
+stop, as Radar) or only record it (a recruiter pressing a button: record, never
+block a person mid-task — confirm with the owner before blocking anything a
+recruiter triggers). Report: calls and spend per tool for the first metered week,
+and what the true daily total was against the €2.00 cap.
+
+Commit after each step, two lines per step.

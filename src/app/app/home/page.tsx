@@ -4,6 +4,7 @@ import { SignOut } from '@/components/SignOut';
 import { todayItems, whenLabel, HOW_THIS_LIST_IS_MADE } from '@/lib/today';
 import { HomeCards } from '@/components/HomeCards';
 import { Logo } from '@/components/Logo';
+import { DAILY_BUDGET_EUR } from '@/lib/cost';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -39,6 +40,10 @@ export default async function Home() {
   ]);
 
   const spentToday = (spend.data ?? []).reduce((a: number, r: any) => a + Number(r.eur ?? 0), 0);
+  // The cap hard-stops automated crawls, so a spent cap shows up as a morning that read nothing —
+  // which looks exactly like a quiet news day. Say it instead: amber from 80% of the cap, red at it.
+  const capShare = DAILY_BUDGET_EUR > 0 ? spentToday / DAILY_BUDGET_EUR : 0;
+  const spendTone: 'ok' | 'warn' | 'bad' = capShare >= 1 ? 'bad' : capShare >= 0.8 ? 'warn' : 'ok';
   const readToday = radar.data?.length ?? 0;
   const firstRead = radar.data?.[0]?.fetched_at
     ? new Date(radar.data[0].fetched_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
@@ -50,9 +55,9 @@ export default async function Home() {
   const newLeadsToRead = wonWork.count ?? 0;
   const freeBy = new Date(Date.now() + 30 * 86400000).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
 
-  const Pulse = ({ tone, children }: { tone: 'ok' | 'warn'; children: React.ReactNode }) => (
-    <span className="bg-panel border border-line rounded-full px-3.5 py-1.5 text-[13px] text-ink2 inline-flex items-center gap-2">
-      <i className={`w-2 h-2 rounded-full ${tone === 'warn' ? 'bg-warn' : 'bg-ok'}`} />{children}
+  const Pulse = ({ tone, children, hook }: { tone: 'ok' | 'warn' | 'bad'; children: React.ReactNode; hook?: string }) => (
+    <span data-pulse={hook} data-tone={tone} className={`border rounded-full px-3.5 py-1.5 text-[13px] inline-flex items-center gap-2 ${tone === 'bad' ? 'bg-badsoft border-bad text-bad' : tone === 'warn' ? 'bg-warnsoft border-warn text-ink2' : 'bg-panel border-line text-ink2'}`}>
+      <i className={`w-2 h-2 rounded-full ${tone === 'bad' ? 'bg-bad' : tone === 'warn' ? 'bg-warn' : 'bg-ok'}`} />{children}
     </span>
   );
 
@@ -93,7 +98,7 @@ export default async function Home() {
           {/* Each pill is one query. A dot is amber only where something is actually waiting. */}
           <div className="flex gap-2.5 flex-wrap">
             <Pulse tone={readToday > 0 ? 'ok' : 'warn'}>Radar <b className="text-ink font-semibold">{readToday > 0 ? 'ran' : 'not run'}</b>{firstRead ? ` ${firstRead}` : ''}</Pulse>
-            <Pulse tone="ok">Spent today <b className="text-ink font-semibold">€{spentToday.toFixed(2)}</b></Pulse>
+            <Pulse tone={spendTone} hook="spend">Spent today <b className="text-ink font-semibold">€{spentToday.toFixed(2)}</b>{spendTone !== 'ok' && <> of the €{DAILY_BUDGET_EUR.toFixed(2)} cap{spendTone === 'bad' ? ' — automated crawls have stopped for today' : ' — close to the cap'}</>}</Pulse>
             <Pulse tone={waitingOnIssuers > 0 ? 'warn' : 'ok'}><b className="text-ink font-semibold">{waitingOnIssuers}</b> waiting on issuers</Pulse>
           </div>
         </div>
