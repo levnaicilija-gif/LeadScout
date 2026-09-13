@@ -74,9 +74,18 @@ export async function POST(req: Request) {
 
       // Anyone read off the company's own organisation or leadership page. contacts.lead_id is
       // nullable, so these hang from the company with no lead invented for them.
-      const { data: onFile } = await sb.from('contacts')
+      //
+      // Read with the service role, and only for this company. contacts' policy from 0001 lets a
+      // user see a contact only through a lead in their workspace, so every contact that hangs
+      // from a company alone — all three the organisation-page pass had ever found, René Hansen at
+      // Karstensens among them — came back as an empty list for every signed-in user, while the
+      // job that wrote them saw them fine. 0022 fixes the policy; until it is applied this read
+      // is the fix. It cannot reach another workspace's rows: `co` was loaded through the user's
+      // own RLS above, so a company outside their workspace has already returned 404.
+      const { data: onFile, error: onFileError } = await supabaseAdmin().from('contacts')
         .select('name, title, email, email_status, email_source_url, phone, phone_source_url, source_url, linkedin_search_url, google_search_url, found_at')
         .eq('company_id', co.id).limit(10);
+      if (onFileError) return NextResponse.json({ error: `Contacts on file for ${co.name} could not be read: ${onFileError.message}` }, { status: 500 });
       const orgContacts: FoundContact[] = (onFile ?? [])
         .filter((c: any) => c.source_url)
         .map((c: any) => ({

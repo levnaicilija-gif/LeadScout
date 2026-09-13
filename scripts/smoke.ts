@@ -59,6 +59,22 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
   }).select().single();
   await markTest(admin, 'leads', [lead!.id, tenderLead!.id]);
 
+  // A person read off a company's organisation page hangs from the company, not a lead. 0001's
+  // contacts policy hid every such row from signed-in users, so Karstensens' drawer showed a
+  // switchboard and no name while René Hansen sat in the table. Seed one and look for it on screen.
+  const { data: orgCo } = await admin.from('companies').insert({ workspace_id: workspace, name: 'Smoke Org Page AS', employer_type: 'end_client', country: 'NO' }).select().single();
+  await markTest(admin, 'companies', [orgCo!.id]);
+  await admin.from('job_posts').insert({
+    company_id: orgCo!.id, source_url: `https://example.invalid/smoke-org-job-${Date.now()}`,
+    title: 'Smoke Fitter', role: 'Smoke Fitter', trades: ['fitter'], location: 'Bergen, NO', country: 'NO', status: 'open', via: 'http',
+    is_trade: true, first_seen_at: new Date().toISOString(), last_seen_at: new Date().toISOString(), is_test: true,
+  });
+  const { data: orgContact, error: orgErr } = await admin.from('contacts').insert({
+    company_id: orgCo!.id, lead_id: null, name: 'Smoke Orgpage Person', title: 'Production Manager',
+    source_url: 'https://example.invalid/smoke-organization', email_status: 'unknown', is_test: true,
+  }).select('id').single();
+  if (orgErr) console.log(`  ...  could not seed an organisation-page contact: ${orgErr.message}`);
+
   // A posting anchored on the COMPANY and not on a lead — the shape every careers-page and job
   // board posting has. Hiring now was empty for every user for days because RLS still keyed on
   // lead_id, and nothing here noticed: an RLS denial is an empty result, not an error.
@@ -189,6 +205,15 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     // Nobody was seeded with a contact, so the honest answer is searches — never a made-up name.
     check(/searches to run/.test(hd), 'drawer offers searches when nobody was found');
 
+    // 4d — a contact on the company alone, as the organisation-page pass stores them.
+    await page.goto(`${BASE}/app/radar?tab=hiring&company=${orgCo!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForFunction(
+      () => { const a = document.querySelector('aside'); return !!a && !a.innerText.includes('Reading what we hold'); },
+      undefined, { timeout: 60000 },
+    ).catch(() => {});
+    const orgDrawer = await page.locator('aside').first().innerText().catch(() => '');
+    check(/Smoke Orgpage Person/.test(orgDrawer) && /Production Manager/.test(orgDrawer), 'an organisation-page contact on the company is shown to a signed-in user', /Smoke Orgpage Person/.test(orgDrawer) ? '' : orgDrawer.replace(/\s+/g, ' ').slice(0, 200));
+
     // 5 — lead drawer: one tool, end to end
     await page.goto(`${BASE}/app/radar?lead=${lead!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForTimeout(2000);
@@ -278,6 +303,8 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     for (const c of cands ?? []) await admin.from('candidates').delete().eq('id', c.id);
     await admin.from('documents').delete().eq('workspace_id', workspace);
     await admin.from('job_posts').delete().eq('company_id', co!.id);
+    if (orgContact) await admin.from('contacts').delete().eq('id', orgContact.id).eq('is_test', true);
+    if (orgCo) { await admin.from('job_posts').delete().eq('company_id', orgCo.id).eq('is_test', true); await admin.from('companies').delete().eq('id', orgCo.id).eq('is_test', true); }
     await admin.from('outreach').delete().eq('lead_id', lead!.id);
     await admin.from('contacts').delete().eq('lead_id', lead!.id);
     await admin.from('scores').delete().eq('lead_id', lead!.id);
