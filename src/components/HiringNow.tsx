@@ -1,4 +1,5 @@
 import { Help } from './Help';
+import { OpenRow, OpenChevron } from './OpenRow';
 
 /**
  * Hiring now — one row per company, not per posting.
@@ -174,9 +175,9 @@ export function HiringNow({
         </thead>
         <tbody>
           {groups.map((g) => (
-            <tr key={g.company} className="hover:bg-[#F9FAFB] align-top cursor-pointer">
+            <OpenRow key={g.company} href={`/app/radar?tab=hiring&company=${g.companyId}${showAgencies ? '&agencies=1' : ''}`} className="align-top">
               <td>
-                <a href={`?tab=hiring&company=${g.companyId}${showAgencies ? '&agencies=1' : ''}`} className="block font-medium whitespace-nowrap text-accent">{g.company}</a>
+                <a href={`?tab=hiring&company=${g.companyId}${showAgencies ? '&agencies=1' : ''}`} className="flex items-center gap-1.5 font-medium whitespace-nowrap text-accent">{g.company}<OpenChevron /></a>
                 <div className="text-ink3 text-[12px]">
                   {[g.country, g.employerType?.replace(/_/g, ' ')].filter(Boolean).join(' · ')}
                   {g.employerType === 'staffing_agency' && <span className="text-warn"> · agency</span>}
@@ -211,7 +212,7 @@ export function HiringNow({
                   <span className="text-ink3"> · via {g.postings[0].via ?? '—'}</span>
                 </div>
               </td>
-            </tr>
+            </OpenRow>
           ))}
 
           {groups.length === 0 && (

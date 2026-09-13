@@ -171,6 +171,24 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       return a ? { bg: getComputedStyle(a).backgroundColor, text: a.innerText } : null;
     });
     check(allChip?.bg === 'rgb(14, 26, 43)' && /All\s*\d+/.test(allChip.text), 'the "All" chip shows as selected, with its count', JSON.stringify(allChip));
+    // A row must say it opens something: a chevron drawn on the row (not only on hover), a hover
+    // tint, and a click on a plain cell — not the company link — opens the drawer. The Trades cell
+    // (the fourth) holds no link on either table.
+    const rowOpens = async (rowText: string, param: RegExp, what: string) => {
+      const row = page.locator('tr[data-row-href]', { hasText: rowText }).first();
+      const cell = row.locator('td').nth(3);
+      const chevron = await row.locator('[data-row-open]').isVisible().catch(() => false);
+      const before = await cell.evaluate((td) => getComputedStyle(td).backgroundColor).catch(() => '');
+      await cell.hover({ position: { x: 4, y: 4 } }).catch(() => {});
+      const after = await cell.evaluate((td) => getComputedStyle(td).backgroundColor).catch(() => '');
+      await cell.click({ position: { x: 4, y: 4 } }).catch(() => {});
+      await page.waitForURL(param, { timeout: 30000 }).catch(() => {});
+      const drawer = await page.locator('aside').first().isVisible().catch(() => false);
+      // The designed tint (#F2F6FC), not merely "changed": the old near-white hover also changed.
+      check(chevron && after === 'rgb(242, 246, 252)' && before !== after && param.test(page.url()) && drawer, `${what}: chevron on the row, hover tint, a click on a plain cell opens the drawer`, JSON.stringify({ chevron, before, after, url: page.url().replace(BASE, ''), drawer }));
+    };
+    await rowOpens('Smoke Offshore AS', /[?&]lead=/, 'Leads row');
+    await page.goto(`${BASE}/app/radar`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     // The source filter narrows the table to one kind, and the other kind is gone from it.
     await page.goto(`${BASE}/app/radar?tab=won&source=tender`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForSelector('tr[data-lead-source]', { timeout: 60000 }).catch(() => {});
@@ -187,6 +205,27 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     // the table has something to show. The message varies, so match the shapes it can take.
     check(!/No trade postings open|No careers pages found yet|Nothing from an employer/.test(hiring),
       'Hiring now shows the table rather than an empty state');
+    await rowOpens('Smoke Offshore AS', /[?&]company=/, 'Hiring now row');
+
+    // The same at 390px on a touch screen. There is no hover there, so the chevron must already be
+    // on screen inside the first column, and a tap on the row must open the drawer.
+    const phone = await browser.newContext({ storageState: await page.context().storageState(), viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    try {
+      const m = await phone.newPage();
+      for (const [path, param, what] of [['/app/radar', /[?&]lead=/, 'Leads row'], ['/app/radar?tab=hiring', /[?&]company=/, 'Hiring now row']] as const) {
+        await m.goto(`${BASE}${path}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await m.waitForSelector('tr[data-row-href]', { timeout: 60000 }).catch(() => {});
+        const row = m.locator('tr[data-row-href]', { hasText: 'Smoke Offshore AS' }).first();
+        const box = await row.locator('[data-row-open]').boundingBox().catch(() => null);
+        const onScreen = !!box && box.width > 0 && box.x >= 0 && box.x + box.width <= 390;
+        await row.locator('td').nth(3).tap({ position: { x: 4, y: 4 } }).catch(() => {});
+        await m.waitForURL(param, { timeout: 30000 }).catch(() => {});
+        const drawer = await m.locator('aside').first().isVisible().catch(() => false);
+        check(onScreen && param.test(m.url()) && drawer, `${what} at 390px, touch: chevron on screen without hover, a tap opens the drawer`, JSON.stringify({ chevron: box && { x: Math.round(box.x), w: Math.round(box.width) }, url: m.url().replace(BASE, ''), drawer }));
+      }
+    } finally {
+      await phone.close();
+    }
 
     // 4c — the Hiring now drawer. A row a recruiter cannot open is a table, not a screen.
     await page.goto(`${BASE}/app/radar?tab=hiring&company=${co!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
