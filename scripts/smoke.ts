@@ -170,6 +170,13 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     const home = await bodyOf(page);
     check(/Today, in order/.test(home) && /How this list is made/.test(home), 'Home renders');
     check((await page.locator('input[type=search], input[placeholder*="Search" i]').count()) === 0, 'Home has no search bar');
+    // The data access check is on Home for everyone. Never red here: the gate's own sweep has just
+    // passed. Amber only while no result is kept (before 0026) or no run has reported in 36 hours.
+    const rlsPill = await page.evaluate(() => {
+      const p = document.querySelector('[data-pulse="rls"]') as HTMLElement | null;
+      return p ? { tone: p.getAttribute('data-tone'), text: p.innerText } : null;
+    });
+    check(!!rlsPill && rlsPill.tone !== 'bad' && /Data access check/.test(rlsPill.text), 'Home shows the data access check, and it is not red', JSON.stringify(rlsPill));
 
     // 3 — Today
     await page.goto(`${BASE}/app/today`, { waitUntil: 'domcontentloaded', timeout: 60000 });

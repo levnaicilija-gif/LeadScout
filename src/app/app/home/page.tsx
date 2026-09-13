@@ -5,6 +5,7 @@ import { todayItems, whenLabel, HOW_THIS_LIST_IS_MADE } from '@/lib/today';
 import { HomeCards } from '@/components/HomeCards';
 import { Logo } from '@/components/Logo';
 import { DAILY_BUDGET_EUR } from '@/lib/cost';
+import { hasHealthChecks } from '@/lib/schema-features';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -20,10 +21,12 @@ export default async function Home() {
   const iso = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
   const date = (n: number) => iso(n).slice(0, 10);
   const today = date(0);
+  // 0026 keeps the RLS sweep's results. Asked first, so the query below only names the table once it exists.
+  const healthOn = await hasHealthChecks(sb);
 
   const [
     items, wonWork, hiringNow, weekOk, weekBad, pool, expiring,
-    availableNow, freeSoon, prioritySources, spend, radar,
+    availableNow, freeSoon, prioritySources, spend, radar, lastSweep,
   ] = await Promise.all([
     todayItems(sb),
     sb.from('leads').select('id', { count: 'exact', head: true }).eq('kind', 'won_work').eq('status', 'new'),
@@ -37,6 +40,9 @@ export default async function Home() {
     sb.from('sources').select('id', { count: 'exact', head: true }).eq('tier', 'priority').eq('enabled', true),
     sb.from('cost_log').select('eur').eq('day', today),
     sb.from('articles').select('fetched_at').gte('fetched_at', `${today}T00:00:00Z`).order('fetched_at', { ascending: true }),
+    healthOn
+      ? sb.from('health_checks').select('ok, source, ran_at, detail').eq('kind', 'rls_sweep').order('ran_at', { ascending: false }).limit(1).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   const spentToday = (spend.data ?? []).reduce((a: number, r: any) => a + Number(r.eur ?? 0), 0);
@@ -48,6 +54,22 @@ export default async function Home() {
   const firstRead = radar.data?.[0]?.fetched_at
     ? new Date(radar.data[0].fetched_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
     : null;
+
+  // The RLS sweep, from the release gate or the nightly cron. A table a signed-in user cannot read looks
+  // exactly like a table with nothing in it, so the check's own result is on Home for everyone: red
+  // naming the tables, amber when nothing is kept yet or the nightly run has not reported in 36 hours.
+  const sweep = ((lastSweep as any)?.data ?? null) as { ok: boolean; source: string; ran_at: string; detail: any } | null;
+  const sweepAgeHours = sweep ? (Date.now() - Date.parse(sweep.ran_at)) / 3600000 : null;
+  const hiddenTables = [...new Set<string>([...(sweep?.detail?.suspects ?? []), ...(sweep?.detail?.catalog?.noPolicy ?? [])])];
+  const sweepWhen = sweep ? new Date(sweep.ran_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null;
+  const sweepTone: 'ok' | 'warn' | 'bad' = !sweep ? 'warn' : !sweep.ok ? 'bad' : (sweepAgeHours ?? 0) > 36 ? 'warn' : 'ok';
+  const sweepText = !healthOn ? 'results not kept yet (migration 0026)'
+    : !sweep ? 'has not run yet'
+      : !sweep.ok
+        ? (sweep.detail?.error
+          ? `could not run on ${sweepWhen}: ${sweep.detail.error}`
+          : `${hiddenTables.length} table${hiddenTables.length === 1 ? '' : 's'} hidden from users — ${hiddenTables.join(', ')}`)
+        : (sweepAgeHours ?? 0) > 36 ? `last passed ${sweepWhen}; the nightly run has not reported since` : `passed ${sweepWhen}`;
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
@@ -100,6 +122,7 @@ export default async function Home() {
             <Pulse tone={readToday > 0 ? 'ok' : 'warn'}>Radar <b className="text-ink font-semibold">{readToday > 0 ? 'ran' : 'not run'}</b>{firstRead ? ` ${firstRead}` : ''}</Pulse>
             <Pulse tone={spendTone} hook="spend">Spent today <b className="text-ink font-semibold">€{spentToday.toFixed(2)}</b>{spendTone !== 'ok' && <> of the €{DAILY_BUDGET_EUR.toFixed(2)} cap{spendTone === 'bad' ? ' — automated crawls have stopped for today' : ' — close to the cap'}</>}</Pulse>
             <Pulse tone={waitingOnIssuers > 0 ? 'warn' : 'ok'}><b className="text-ink font-semibold">{waitingOnIssuers}</b> waiting on issuers</Pulse>
+            <Pulse tone={sweepTone} hook="rls">Data access check <b className={sweepTone === 'bad' ? 'font-semibold' : 'text-ink font-semibold'}>{sweepText}</b></Pulse>
           </div>
         </div>
 

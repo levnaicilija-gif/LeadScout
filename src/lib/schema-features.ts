@@ -78,3 +78,6 @@ export const hasSourceFlag = (sb: SupabaseClient) => hasColumn(sb, 'leads', 'sou
 
 /** Item 17 arrives with 0024: an award notice's decision or conclusion date, as a column. */
 export const hasAwardDate = (sb: SupabaseClient) => hasColumn(sb, 'articles', 'award_date');
+
+/** 0026 keeps the RLS sweep's results (src/lib/rls-sweep.ts) where Home can show them. */
+export const hasHealthChecks = (sb: SupabaseClient) => hasTable(sb, 'health_checks');
