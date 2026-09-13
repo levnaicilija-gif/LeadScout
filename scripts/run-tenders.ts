@@ -24,6 +24,7 @@ const flag = (name: string) => process.argv.includes(`--${name}`);
     dryRun: flag('dry-run'),
     notices: arg('notices')?.split(',').map((s) => s.trim()).filter(Boolean),
     ignoreCpv: flag('ignore-cpv'),
+    reprocess: flag('reprocess'),
   });
   const { leads, rejected, merged, ...tally } = report;
   console.log(JSON.stringify(tally, null, 2));

@@ -45,6 +45,8 @@ export type IngestOptions = {
   notices?: string[];
   /** Only with dryRun and notices: see what a notice outside the trade list would have made. */
   ignoreCpv?: boolean;
+  /** Only with notices: read a notice already stored again, for a winner the first pass could not use. */
+  reprocess?: boolean;
 };
 
 export type LeadLine = {
@@ -149,12 +151,14 @@ export async function ingestTedAwards(db: SupabaseClient, opts: IngestOptions) {
     }
 
     const { data: stored } = await db.from('articles').select('id').eq('url', a.url).maybeSingle();
-    if (stored && !opts.dryRun) { report.alreadyStored++; return; }
+    if (stored && !opts.dryRun && !opts.reprocess) { report.alreadyStored++; return; }
 
     const fetchedAt = new Date().toISOString();
     const text = awardText(a, record, fetchedAt);
-    let articleId: string | null = null;
-    if (!opts.dryRun) {
+    // Re-reading a stored notice keeps its article: the leads it already made are found by URL
+    // below, so only a winner that was missed the first time gets a lead now.
+    let articleId: string | null = stored && opts.reprocess ? stored.id : null;
+    if (!opts.dryRun && !articleId) {
       const { data: art, error } = await db.from('articles').insert({
         source_id: src?.id ?? null, url: a.url, title: a.title, text,
         published_at: a.publishedOn || null, last_fetch_status: 'live', last_fetch_at: fetchedAt,

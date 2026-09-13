@@ -33,7 +33,20 @@ export async function findOrCreateCompany(db: SupabaseClient, input: CompanyInpu
   if (!name || name.length < 2) return null;
   const domain = canonDomain(input.domain);
   const key = canonCompany(name);
-  if (!key) return null;
+  if (!key) {
+    // Nothing comparable is left — a name that is all punctuation, or only a legal form. It is
+    // still what the source printed, so keep it exactly as written rather than dropping the
+    // record, and match it only on the identical string: no rule can say it is anyone else.
+    const { data: same } = await db.from('companies').select('id, name').eq('workspace_id', input.workspaceId).eq('name', name).maybeSingle();
+    const why = 'the name has nothing comparable to match on — kept exactly as written, matched only on the identical name';
+    if (same) return { id: same.id, name: same.name, created: false, matchedOn: why };
+    if (input.dryRun) return { id: `dry:raw:${name}`, name, created: true, matchedOn: `dry run — ${why}` };
+    const { data, error } = await db.from('companies').insert({
+      workspace_id: input.workspaceId, name, employer_type: 'unknown',
+      country: input.country ?? null, source: input.source ?? null, source_url: input.sourceUrl ?? null,
+    }).select('id, name').single();
+    return error ? null : { id: data.id, name: data.name, created: true, matchedOn: why };
+  }
 
   // Look only at plausible neighbours: the same canonical name, or the same domain. Anything
   // else cannot match under sameCompany, so there is no point reading it.

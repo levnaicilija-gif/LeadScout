@@ -15,15 +15,28 @@
  * Shell Energy.
  */
 
-/** Legal forms only. Nothing that could be part of a company's actual identity. */
-const LEGAL = /\b(a\/s|aps|as|asa|ab|oy|oyj|gmbh|mbh|b\.?v\.?|n\.?v\.?|ltd|limited|llc|inc|plc|s\.?a\.?|sas|s\.?p\.?a\.?|sp\.? z o\.?o\.?|s\.?l\.?|ag|kg|kft|d\.?o\.?o\.?|a\.?s\.?)\b/gi;
+/**
+ * Legal forms only. Nothing that could be part of a company's actual identity.
+ *
+ * Bounded by letters in any script, not by \b: JavaScript's \b only knows ASCII, so "Søas" read
+ * the "as" after ø as a separate word and lost it.
+ */
+const LEGAL = /(?<![\p{L}\p{N}])(a\/s|aps|as|asa|ab|oy|oyj|gmbh|mbh|b\.?v\.?|n\.?v\.?|ltd|limited|llc|inc|plc|s\.?a\.?|sas|s\.?p\.?a\.?|sp\.? z o\.?o\.?|s\.?l\.?|ag|kg|kft|d\.?o\.?o\.?|a\.?s\.?)(?![\p{L}\p{N}])/giu;
 
+/**
+ * A name in one comparable spelling: lower case, accents off, legal form and punctuation gone.
+ *
+ * Letters in every script are kept. The rule used to keep a-z and 0-9 only, which turned
+ * "Ørsted" into "rsted" and a Bulgarian winner, "ЕКОВАТ - БЪЛГАРИЯ ЕООД", into nothing at all — so
+ * the TED pass rejected a real award as "not a usable company name". Nothing is transliterated:
+ * "Ørsted" and "Orsted" stay two spellings, because guessing that they are one is a merge.
+ */
 export const canonCompany = (name: string) =>
   name.toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/\s*\([^)]*\)/g, '')
     .replace(LEGAL, ' ')
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
 
 /** The domain, in one spelling. */
