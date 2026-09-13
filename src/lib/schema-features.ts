@@ -75,3 +75,6 @@ export const hasPostedAtSource = (sb: SupabaseClient) => hasColumn(sb, 'job_post
 export const hasRadarVerdicts = (sb: SupabaseClient) => hasTable(sb, 'radar_verdicts');
 export const hasEmailPatterns = (sb: SupabaseClient) => hasTable(sb, 'company_email_patterns');
 export const hasSourceFlag = (sb: SupabaseClient) => hasColumn(sb, 'leads', 'source_flag');
+
+/** Item 17 arrives with 0024: an award notice's decision or conclusion date, as a column. */
+export const hasAwardDate = (sb: SupabaseClient) => hasColumn(sb, 'articles', 'award_date');

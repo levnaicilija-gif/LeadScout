@@ -27,6 +27,7 @@ import { regionFor } from '@/lib/geo';
 import { fitScore } from '@/lib/fit';
 import { appearsIn } from '@/lib/ai/claude';
 import { logCost } from '@/lib/cost';
+import { hasAwardDate } from '@/lib/schema-features';
 
 /** The sources row the notices are filed under. Radar's HTML crawl of this page reads nothing. */
 export const TED_SOURCE_URL = 'https://ted.europa.eu/';
@@ -162,6 +163,9 @@ export async function ingestTedAwards(db: SupabaseClient, opts: IngestOptions) {
       const { data: art, error } = await db.from('articles').insert({
         source_id: src?.id ?? null, url: a.url, title: a.title, text,
         published_at: a.publishedOn || null, last_fetch_status: 'live', last_fetch_at: fetchedAt,
+        // 0024: the award's own date, which ages the lead (src/lib/lead-age.ts). Until the column
+        // exists it stays in the text only, and the lead is aged from the notice's publication.
+        ...(a.awardDate && (await hasAwardDate(db)) ? { award_date: a.awardDate.date, award_date_basis: a.awardDate.which } : {}),
       }).select('id').single();
       if (error) throw new Error(`could not store the notice: ${error.code} ${error.message}`);
       articleId = art.id;
