@@ -5,9 +5,11 @@ import { runLookup } from '@/lib/verify/adapters';
 import { leadSource } from '@/lib/lead-source';
 import { sourceFlag } from '@/lib/source-quality';
 import { hasSourceFlag } from '@/lib/schema-features';
+import { runRlsSweep, recordRlsSweep, sweepSummary } from '@/lib/rls-sweep';
 export const maxDuration = 300;
 /**
- * Nightly: (1) re-fetch lead source pages → live/stale/not_found; (2) re-check certs expiring
+ * Nightly: (0) the RLS sweep, recorded for Home (src/lib/rls-sweep.ts);
+ * (1) re-fetch lead source pages → live/stale/not_found; (2) re-check certs expiring
  * ≤ 90 days; (3) start the careers work.
  *
  * Careers discovery and the job-post crawl ride this cron rather than taking cron slots of their
@@ -30,6 +32,11 @@ export async function POST(req: Request) {
   };
   await kick('/api/jobs/careers-discovery?batch=25&batchesLeft=30');
   await kick('/api/jobs/job-posts?batch=10&batchesLeft=30');
+  // The RLS sweep next: seconds, and no page fetches. The release gate catches a table that a code
+  // change or a migration leaves unreadable; only a scheduled run catches one switched on in the
+  // Supabase dashboard between commits — which is how articles, lead_articles and lead_people went dark.
+  const sweep = await runRlsSweep();
+  const sweepNotKept = await recordRlsSweep(db, sweep, 'cron');
   const { data: leads } = await db.from('leads').select('id, source_url, kind, created_at').not('status', 'in', '("stale","not_for_us")').limit(200);
   const flagOn = await hasSourceFlag(db);
   for (const l of leads ?? []) {
@@ -53,5 +60,8 @@ export async function POST(req: Request) {
     const r = await runLookup(d.cert_body, { number: d.extracted?.number, holder: d.extracted?.holder });
     if (r.result !== 'not_supported') await db.from('verifications').insert({ document_id: v.document_id, method: 'browser_lookup', checked_where: r.checkedWhere, checked_at: r.checkedAt, result: r.result, valid_until: r.validUntil ?? v.valid_until, notes: 'nightly re-check' });
   }
-  return NextResponse.json({ ok: true, leads: leads?.length ?? 0, certs: vs?.length ?? 0 });
+  return NextResponse.json({
+    ok: true, leads: leads?.length ?? 0, certs: vs?.length ?? 0,
+    rls: { ok: sweep.ok, summary: sweepSummary(sweep), recorded: sweepNotKept === null, notRecorded: sweepNotKept },
+  });
 }

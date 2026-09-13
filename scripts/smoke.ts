@@ -330,6 +330,15 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     const orgDrawer = await page.locator('aside').first().innerText().catch(() => '');
     check(/Smoke Orgpage Person/.test(orgDrawer) && /Production Manager/.test(orgDrawer), 'an organisation-page contact on the company is shown to a signed-in user', /Smoke Orgpage Person/.test(orgDrawer) ? '' : orgDrawer.replace(/\s+/g, ' ').slice(0, 200));
 
+    // The RLS sweep as the nightly cron runs it, while this run's own test workspace holds rows: the
+    // route answers behind the cron secret, and no table reads less for a signed-in user than it should.
+    // ?record=0 keeps a test run out of the history Home shows.
+    const sweepRes = await fetch(`${BASE}/api/jobs/rls-sweep?record=0`, { method: 'POST', headers: { 'x-cron-secret': process.env.CRON_SECRET ?? '' } })
+      .then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) as any }))
+      .catch((e) => ({ status: 0, body: { error: String(e) } as any }));
+    check(sweepRes.status === 200 && sweepRes.body?.ok === true && (sweepRes.body?.tables ?? 0) > 20,
+      'the nightly RLS sweep runs behind the cron secret and finds no hidden table', JSON.stringify({ status: sweepRes.status, tables: sweepRes.body?.tables, summary: sweepRes.body?.summary ?? sweepRes.body?.error }));
+
     // Item 17: each advert in the Hiring now drawer says how old it is and from which date.
     await page.goto(`${BASE}/app/radar?tab=hiring&company=${agedCo!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForSelector('aside [data-age]', { timeout: 60000 }).catch(() => {});

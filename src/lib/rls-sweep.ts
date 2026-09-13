@@ -43,6 +43,32 @@ const count = async (c: SupabaseClient, table: string, scope?: { column: string;
   return error ? `error ${error.code ?? ''} ${error.message.slice(0, 60)}` : (n ?? 0);
 };
 
+const counted = async (q: PromiseLike<{ count: number | null; error: any }>): Promise<number | string> => {
+  const { count: n, error } = await q;
+  return error ? `error ${error.code ?? ''} ${String(error.message).slice(0, 60)}` : (n ?? 0);
+};
+
+/**
+ * Tables with no workspace_id of their own, counted through the parent that scopes them — the same
+ * path their policies take. Counting every row instead made a correct table look hidden the moment a
+ * second workspace held rows in it: a smoke run's seeded contacts, a probe's, one day a second client's.
+ */
+const THROUGH_PARENT: Record<string, (a: SupabaseClient, ws: string) => Promise<number | string>> = {
+  contacts: async (a, ws) => {
+    const onLeads = await counted(a.from('contacts').select('id, leads!inner(workspace_id)', { count: 'exact', head: true }).eq('leads.workspace_id', ws));
+    const onCompanies = await counted(a.from('contacts').select('id, companies!inner(workspace_id)', { count: 'exact', head: true }).is('lead_id', null).eq('companies.workspace_id', ws));
+    return typeof onLeads === 'number' && typeof onCompanies === 'number' ? onLeads + onCompanies : (typeof onLeads === 'string' ? onLeads : onCompanies);
+  },
+  lead_articles: (a, ws) => counted(a.from('lead_articles').select('lead_id, leads!inner(workspace_id)', { count: 'exact', head: true }).eq('leads.workspace_id', ws)),
+  lead_people: (a, ws) => counted(a.from('lead_people').select('lead_id, leads!inner(workspace_id)', { count: 'exact', head: true }).eq('leads.workspace_id', ws)),
+  outreach: (a, ws) => counted(a.from('outreach').select('id, leads!inner(workspace_id)', { count: 'exact', head: true }).eq('leads.workspace_id', ws)),
+  verifications: (a, ws) => counted(a.from('verifications').select('id, documents!inner(workspace_id)', { count: 'exact', head: true }).eq('documents.workspace_id', ws)),
+  scores: (a, ws) => counted(a.from('scores').select('id, candidates!inner(workspace_id)', { count: 'exact', head: true }).eq('candidates.workspace_id', ws)),
+  sends: (a, ws) => counted(a.from('sends').select('id, candidates!inner(workspace_id)', { count: 'exact', head: true }).eq('candidates.workspace_id', ws)),
+  anonymized_cvs: (a, ws) => counted(a.from('anonymized_cvs').select('id, candidates!inner(workspace_id)', { count: 'exact', head: true }).eq('candidates.workspace_id', ws)),
+  campaign_candidates: (a, ws) => counted(a.from('campaign_candidates').select('campaign_id, campaigns!inner(workspace_id)', { count: 'exact', head: true }).eq('campaigns.workspace_id', ws)),
+};
+
 export async function runRlsSweep(opts: { workspaceName?: string } = {}): Promise<SweepResult> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -91,15 +117,19 @@ export async function runRlsSweep(opts: { workspaceName?: string } = {}): Promis
       const all = await count(admin, t);
       const expected = t === 'workspaces' ? await count(admin, t, { column: 'id', value: workspaceId! })
         : scoped ? await count(admin, t, { column: 'workspace_id', value: workspaceId! })
-          : t === 'articles' ? linkedArticles : all;
+          : t === 'articles' ? linkedArticles
+            : THROUGH_PARENT[t] ? await THROUGH_PARENT[t](admin, workspaceId!) : all;
+      const judgedInWorkspace = scoped || t === 'articles' || !!THROUGH_PARENT[t];
       const seen = await count(user, t);
       let verdict = 'ok';
       if (typeof seen === 'string') { verdict = `SUSPECT — the user gets ${seen}`; result.suspects.push(t); }
       else if (all === 0) { verdict = 'not judged — no rows'; result.unjudged.push(t); }
+      // A scoping query that failed is not a pass: say the table could not be judged.
+      else if (typeof expected === 'string') { verdict = `not judged — the workspace's rows could not be counted: ${expected}`; result.unjudged.push(t); }
       else if (typeof expected === 'number' && seen < expected) { verdict = `SUSPECT — the user sees ${seen} of ${expected}`; result.suspects.push(t); }
       else if (typeof expected === 'number' && seen > expected) verdict = 'ok — shared rows beyond the workspace';
       else if (expected === 0) verdict = 'ok — no rows in this workspace';
-      result.rows.push({ table: t, service: all, expected: scoped || t === 'articles' ? expected : null, user: seen, verdict });
+      result.rows.push({ table: t, service: all, expected: judgedInWorkspace ? expected : null, user: seen, verdict });
     }
     result.ok = result.suspects.length === 0 && result.catalog.noPolicy.length === 0;
   } catch (e: any) {
@@ -115,12 +145,15 @@ export async function runRlsSweep(opts: { workspaceName?: string } = {}): Promis
 /**
  * Keep the result where Home can show it (0026's health_checks). Returns why it was not kept, or null.
  * Before 0026 there is nowhere to keep it, and that is said rather than treated as a failed sweep.
+ *
+ * Verdicts only — which tables, never how many rows: every signed-in user can read health_checks, and
+ * per-table counts would show other workspaces' volumes.
  */
 export async function recordRlsSweep(admin: SupabaseClient, r: SweepResult, source: 'gate' | 'cron' | 'manual'): Promise<string | null> {
   if (!(await hasTable(admin, 'health_checks'))) return 'health_checks does not exist yet (migration 0026)';
   const { error } = await admin.from('health_checks').insert({
     kind: 'rls_sweep', ok: r.ok, source, ran_at: r.ranAt,
-    detail: { suspects: r.suspects, unjudged: r.unjudged, catalog: r.catalog, error: r.error, rows: r.rows },
+    detail: { suspects: r.suspects, unjudged: r.unjudged, catalog: r.catalog, error: r.error, tables: r.rows.length },
   });
   return error ? error.message : null;
 }
