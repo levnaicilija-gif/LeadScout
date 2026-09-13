@@ -260,3 +260,103 @@ Commit after each step, two lines per step. Full release gate before every
 commit. Report: how many current leads/postings would be flagged or stale under
 these thresholds, broken down by category, so you can see the real impact before
 it's live.
+
+-------------------------------------------------------------------------------
+18. INDUSTRY CLASSIFICATION, COUNTRY FILTER, RECRUITER FOLLOW, COVERAGE GROWTH
+-------------------------------------------------------------------------------
+Five parts. A note on the whole item before the parts: classification accuracy
+is reported honestly, never forced toward a target. A lead that doesn't clearly
+fit a category stays "Other/Uncategorized" — that is a correct, useful answer,
+not a failure to hide or minimize. Do not tune the classifier to reduce the
+Other/Uncategorized count; tune it only to be more correct. The hit-rate report
+in this item exists so real gaps are visible and can be closed deliberately with
+real sources later, the same way a real gap should be found and reported before being fixed, rather than guessed at —
+not by guessing harder now.
+
+Part 1 — country filter on Leads/Won work: Hiring now already has country filter
+chips built only from values present in the data. Add the same pattern to the
+Leads/Won work tab, which doesn't have it today.
+
+Part 2 — industry classification. Taxonomy (17 categories):
+1. Renewable Energy (General Transition Projects) — cross-cutting fallback
+2. Offshore Wind
+3. Onshore Wind
+4. Solar (Utility-Scale)
+5. Hydrogen / PtX / Green Hydrogen / Ammonia / e-Fuels
+6. Grid / Transmission / Interconnectors
+7. Oil & Gas (Transition, Maintenance, Brownfield, Decommissioning)
+8. Petrochemical
+9. Marine & Offshore Construction
+10. Fabrication Yards & Heavy Industry
+11. Industrial Coatings & Corrosion Protection
+12. Carbon Capture & Storage
+13. Mining & Metals
+14. Data Centers
+15. Pharma & Life Sciences
+16. Infrastructure & Energy Services (rail, roads, civil, general energy infra)
+17. Other / Uncategorized
+
+Classify every lead and Hiring now company using ONLY signals already present:
+- Tender-award leads: map trade-relevant CPV codes already in item 12's verified
+  vocabulary to an industry. Don't guess codes not already confirmed.
+- News leads and Hiring now companies: keyword match against article/company
+  text already fetched. No model call — regex/keyword matching, same pattern as
+  item 14's email-pattern capture.
+- Multiple industries can apply to one lead (e.g. an EPC contractor doing both
+  wind and grid) — store as a list, not a single value.
+- Offshore Wind and Onshore Wind stay separate, precise tags on the underlying
+  data, but a recruiter's "follow" choice offers a single combined "Wind" option
+  mapping to both — don't make a recruiter tick two near-identical categories
+  separately. Apply the same judgment to any other pair this closely related;
+  report which categories you grouped this way and why.
+- Report the classification hit rate broken down by all 17 categories. This is
+  a diagnostic, not a target.
+
+Part 3 — per-recruiter industry follow.
+- Mandatory first-time onboarding: a new user must pick at least one industry
+  (Wind shown as one combined option per Part 2) before reaching any other
+  screen. "All industries" is itself a selectable option — a real choice, not a
+  bypass.
+- Immediate results, no empty state: the moment onboarding finishes, the
+  dashboard shows the EXISTING leads and postings immediately, filtered to the
+  choice made. If the choice has few or no current matches, say so plainly
+  ("no current leads in your selected industries yet — here's everything else")
+  with a one-click switch to All, never a bare empty screen.
+- Existing users before this ships: treated as "All industries" automatically,
+  never retroactively forced into onboarding or an empty view.
+- Settings: editable anytime, not just at signup.
+- Filters the DEFAULT view only, never hides anything permanently — All is
+  always one click away.
+- A senior can see, read-only, which industries each recruiter follows, to spot
+  team coverage gaps. A senior cannot set another recruiter's preference.
+- Today respects the same preference: followed industries surface first,
+  everything else still reachable via All.
+
+This needs a per-user preference, not per-workspace — build on the existing
+users table (e.g. hiring_confirmed_by references users(id)), not a new auth
+system.
+
+Part 4 — company watchlist for followed industries. Does NOT change which
+sources get crawled, and does NOT create per-recruiter crawling — sourcing stays
+shared and workspace-wide. Once a company is classified into an industry that at
+least one recruiter actively follows, add it to a lightweight watchlist that
+Radar and Hiring now re-check more frequently than an unwatched company (new
+postings, follow-up news, repeat contract activity). Report which companies
+qualify today, and the estimated incremental daily cost — this must respect the
+existing €2.00 cap and item 16's metering, not bypass it.
+
+Part 5 — coverage growth, honestly reported. For each of the 17 categories,
+report how many current leads/postings fall into it, and whether that count
+looks thin relative to the others. Do NOT auto-add sources to fix a thin
+category — flag it explicitly in the report as a candidate for a future,
+deliberately-scoped source-addition item, the same way Spain was surfaced by
+data rather than assumption. This is a report, not a build step, this round.
+
+Commit after each step, two lines per step. Full release gate before every
+commit, screen checks as a signed-in user, both widths. Report: classification
+hit rate per category (stated plainly, including any weak categories, with no
+pressure implied to make the number look better than it is), confirmation of the
+Wind grouping and any other groupings made, watchlist candidates and their cost,
+thin-category flags for future sourcing work, and a walk-through of the actual
+first-time-user experience end to end confirming no empty/broken state is
+possible.
