@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# The full release gate. Run before every commit (CLAUDE.md, "Before every commit").
+#
+#   bash scripts/release-gate.sh [port]        # default port 3100
+#
+# Runs every step even after one fails, so a single run shows everything that is wrong, then exits 1
+# if any step failed. The log is .cache/gate-<date>-<time>.log; screenshots go to .cache/shots.
+set -u
+PORT="${1:-3100}"
+cd "$(dirname "$0")/.." || exit 1
+mkdir -p .cache
+LOG=".cache/gate-$(date +%Y%m%d-%H%M%S).log"
+: > "$LOG"
+FAILED=()
+
+nap() { node -e "setTimeout(() => {}, $1)"; }
+step() {
+  local name="$1"; shift
+  echo "=== $name" | tee -a "$LOG"
+  "$@" >> "$LOG" 2>&1
+  local code=$?
+  if [ "$code" -eq 0 ]; then echo "    pass" | tee -a "$LOG"; else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("$name"); fi
+}
+killport() {
+  for pid in $(netstat -ano 2>/dev/null | grep -E ":$PORT .*LISTENING" | awk '{print $NF}' | sort -u); do
+    taskkill //PID "$pid" //F >/dev/null 2>&1 || kill "$pid" 2>/dev/null
+  done
+}
+
+step typecheck npx tsc --noEmit
+step build npx next build
+# Straight after the build and before anything reads as a user. A table a signed-in user cannot read
+# fails the gate here, whatever caused it: code, a migration, or a toggle in the Supabase dashboard.
+RLS_SWEEP_SOURCE=gate step rls-sweep npx tsx --env-file=.env.local scripts/rls-sweep.ts
+
+if [[ " ${FAILED[*]-} " == *" build "* ]]; then
+  echo "=== the build failed, so nothing was served or tested against it" | tee -a "$LOG"
+else
+  # A stale server on the port serves old chunks and fails correct code.
+  killport
+  npx next start -p "$PORT" > ".cache/server-$PORT.log" 2>&1 &
+  for _ in $(seq 1 60); do curl -s -o /dev/null "http://localhost:$PORT/api/health" && break; nap 2000; done
+  BASE="http://localhost:$PORT"
+  step pdf-check npx tsx --env-file=.env.local scripts/pdf-check.ts
+  step pdf-name-audit npx tsx --env-file=.env.local scripts/pdf-name-audit.ts
+  step verify-e2e npx tsx --env-file=.env.local scripts/verify-e2e.ts "$BASE"
+  step lead-drawer-e2e npx tsx --env-file=.env.local scripts/lead-drawer-e2e.ts "$BASE"
+  step smoke npx tsx --env-file=.env.local scripts/smoke.ts "$BASE"
+  step design-shots env SCREEN_BASE="$BASE" SHOT_DIR=".cache/shots" npx tsx --env-file=.env.local scripts/design-shots.ts
+  killport
+fi
+
+echo | tee -a "$LOG"
+if [ "${#FAILED[@]}" -gt 0 ]; then
+  echo "GATE FAILED: ${FAILED[*]} — details in $LOG" | tee -a "$LOG"
+  exit 1
+fi
+echo "GATE PASSED — $LOG" | tee -a "$LOG"
