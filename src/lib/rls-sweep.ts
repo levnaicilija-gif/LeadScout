@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { markWorkspaceTest } from '@/lib/test-data';
+import { markWorkspaceTest, deleteTestWorkspace } from '@/lib/test-data';
 import { hasTable } from '@/lib/schema-features';
 
 /**
@@ -34,6 +34,8 @@ export type SweepResult = {
   catalog: { checked: boolean; noPolicy: string[] };
   /** Why the sweep could not run, when it could not. */
   error: string | null;
+  /** The throwaway user or workspace that could not be removed afterwards. Not an RLS failure; never hidden either. */
+  cleanupError: string | null;
 };
 
 const count = async (c: SupabaseClient, table: string, scope?: { column: string; value: string }): Promise<number | string> => {
@@ -74,7 +76,7 @@ export async function runRlsSweep(opts: { workspaceName?: string } = {}): Promis
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
   const ranAt = new Date().toISOString();
-  const result: SweepResult = { ok: false, ranAt, rows: [], suspects: [], unjudged: [], catalog: { checked: false, noPolicy: [] }, error: null };
+  const result: SweepResult = { ok: false, ranAt, rows: [], suspects: [], unjudged: [], catalog: { checked: false, noPolicy: [] }, error: null, cleanupError: null };
   const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
 
   let uid: string | null = null;
@@ -136,8 +138,16 @@ export async function runRlsSweep(opts: { workspaceName?: string } = {}): Promis
     result.error = String(e?.message ?? e).slice(0, 300);
     result.ok = false;
   } finally {
-    if (uid) await admin.auth.admin.deleteUser(uid).catch(() => {});
-    if (throwaway && throwaway !== workspaceId) await admin.from('workspaces').delete().eq('id', throwaway).eq('is_test', true);
+    // Kept on the result, not swallowed: this runs unattended every night, and an ignored delete would
+    // leave one throwaway workspace behind per night with nothing to say so.
+    const leftovers: string[] = [];
+    if (uid) {
+      const { error: userError } = await admin.auth.admin.deleteUser(uid);
+      if (userError) leftovers.push(`the sweep user ${uid} was not deleted: ${userError.message}`);
+    }
+    const notDeleted = await deleteTestWorkspace(admin, throwaway, workspaceId);
+    if (notDeleted) leftovers.push(notDeleted);
+    result.cleanupError = leftovers.length ? leftovers.join('; ') : null;
   }
   return result;
 }
@@ -153,17 +163,18 @@ export async function recordRlsSweep(admin: SupabaseClient, r: SweepResult, sour
   if (!(await hasTable(admin, 'health_checks'))) return 'health_checks does not exist yet (migration 0026)';
   const { error } = await admin.from('health_checks').insert({
     kind: 'rls_sweep', ok: r.ok, source, ran_at: r.ranAt,
-    detail: { suspects: r.suspects, unjudged: r.unjudged, catalog: r.catalog, error: r.error, tables: r.rows.length },
+    detail: { suspects: r.suspects, unjudged: r.unjudged, catalog: r.catalog, error: r.error, cleanupError: r.cleanupError, tables: r.rows.length },
   });
   return error ? error.message : null;
 }
 
 /** One line a person can act on. */
 export function sweepSummary(r: SweepResult): string {
-  if (r.error) return `rls sweep could not run: ${r.error}`;
+  const cleanup = r.cleanupError ? ` · CLEANUP FAILED: ${r.cleanupError}` : '';
+  if (r.error) return `rls sweep could not run: ${r.error}${cleanup}`;
   const parts: string[] = [];
   if (r.suspects.length) parts.push(`${r.suspects.length} table(s) a signed-in user reads less of than they should — ${r.suspects.join(', ')}`);
   if (r.catalog.noPolicy.length) parts.push(`RLS on with no policy — ${r.catalog.noPolicy.join(', ')}`);
-  if (parts.length) return `rls sweep: ${parts.join('; ')}`;
-  return `rls sweep: every table with rows reads the same for a signed-in user as for the service role${r.catalog.checked ? '; the catalogue shows no table with RLS on and no policy' : ''}`;
+  if (parts.length) return `rls sweep: ${parts.join('; ')}${cleanup}`;
+  return `rls sweep: every table with rows reads the same for a signed-in user as for the service role${r.catalog.checked ? '; the catalogue shows no table with RLS on and no policy' : ''}${cleanup}`;
 }

@@ -11,7 +11,7 @@ import fs from 'fs';
 import { execSync } from 'node:child_process';
 import { createClient } from '@supabase/supabase-js';
 import { chromium, type Page } from 'playwright';
-import { markWorkspaceTest, markTest } from '../src/lib/test-data';
+import { markWorkspaceTest, markTest, removeProbe } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'https://leadscout-rfbt.vercel.app';
 const EMAIL = `smoke+${Date.now()}@rfbt-recruitment.com`;
@@ -392,7 +392,7 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       if (!(await fileInput.count())) { await page.reload({ waitUntil: 'domcontentloaded' }); await page.waitForTimeout(3000); }
       await page.locator('input[type=file]').first().setInputFiles([CV]).catch(async (e) => { check(false, 'Verify drop zone present', String(e?.message ?? e).slice(0, 80)); throw e; });
       await page.waitForFunction(
-        () => /recognised and handled/.test(document.body.innerText) && !/Reading |Checking |Preparing |Writing /.test(document.body.innerText),
+        () => /recognised and handled/.test(document.body.innerText) && !!document.querySelector('[data-verify-busy="false"]'),
         undefined, { timeout: 280000 },
       ).catch(() => {});
       const verify = await bodyOf(page);
@@ -459,9 +459,11 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     }
     await admin.from('companies').delete().eq('id', co!.id);
     if (tenderCo) await admin.from('companies').delete().eq('id', tenderCo.id).eq('is_test', true);
-    await admin.auth.admin.deleteUser(uid);
-    await admin.from('workspaces').delete().eq('id', workspace);
-    console.log('\ncleaned up the probe user, its workspace and everything it created');
+    // Both deletes are read. An ignored delete is how an empty test workspace sat in the real database
+    // with nothing said (design-shots, 2026-09-13); a leftover now fails this run.
+    const leftBehind = await removeProbe(admin, uid, workspace, null, { clearContent: true });
+    if (leftBehind) { failures++; console.log(`\n  FAIL  cleanup — ${leftBehind}`); }
+    else console.log('\ncleaned up the probe user, its workspace and everything it created');
   }
   console.log(failures === 0 ? 'smoke: all flows passed' : `smoke: ${failures} check(s) failed`);
   process.exit(failures === 0 ? 0 : 1);

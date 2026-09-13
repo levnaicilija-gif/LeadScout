@@ -6,7 +6,10 @@ export function friendlyError(raw: string, what: 'cv' | 'certificate' = 'cv'): s
   const t = (raw ?? '').toLowerCase();
   const thing = what === 'cv' ? 'CV' : 'certificate';
 
-  if (t.includes('unsupported file type') || t.includes('cannot read')) return `That file type can't be read. Use a PDF, DOCX, JPG or PNG.`;
+  // "cannot read" used to be part of this test, so a crash inside our own code — "Cannot read properties of
+  // null (reading '0')" — told a recruiter holding a good .docx to use a PDF, DOCX, JPG or PNG (2026-09-14).
+  if (t.includes('unsupported file type')) return `That file type can't be read. Use a PDF, DOCX, JPG or PNG.`;
+  if (t.includes('cannot read properties') || t.includes('is not a function') || t.includes('undefined is not')) return `Something went wrong on our side reading this ${thing} — not a problem with the file. Try again.`;
   if (t.includes('no readable text')) return `There was no readable text in this ${thing}. If it is a scan, a clearer photo or a PDF usually works.`;
   if (t.includes('expected object') || t.includes('expected string') || t.includes('invalid_type') || t.includes('unrecognized') || t.includes('json')) {
     return `Couldn't read this ${thing} — try again, or use a PDF version.`;

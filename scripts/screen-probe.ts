@@ -12,7 +12,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
-import { markWorkspaceTest } from '../src/lib/test-data';
+import { markWorkspaceTest, removeProbe } from '../src/lib/test-data';
 
 const BASE = process.env.SCREEN_BASE ?? 'https://leadscout-rfbt.vercel.app';
 const PATH = process.argv[2] ?? '/app/radar?tab=hiring';
@@ -56,8 +56,9 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SU
     await page.screenshot({ path: '.cache/screen.png', fullPage: true });
   } finally {
     await browser.close();
-    await admin.auth.admin.deleteUser(uid);
-    if (throwaway && throwaway !== ws.id) await admin.from('workspaces').delete().eq('id', throwaway);
-    console.log('\n(probe user removed; the workspace was not otherwise touched)');
+    // Its own throwaway workspace only, never the real one it borrowed. A leftover is said, and exits 1.
+    const leftBehind = await removeProbe(admin, uid, throwaway, ws.id);
+    if (leftBehind) { console.log(`\nCLEANUP FAILED — ${leftBehind}`); process.exitCode = 1; }
+    else console.log('\n(probe user and its own workspace removed; the real workspace was not otherwise touched)');
   }
 })();

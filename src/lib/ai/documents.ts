@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { askJson, claude, MODEL_EXTRACT } from './claude';
+import { jsonFromReply } from './json-reply';
 import { checkRightToWork, type Rtw } from '../right-to-work';
 
 export const CertSchema = z.object({
@@ -26,12 +27,7 @@ export async function extractDocument(base64: string, mediaType: string): Promis
   const source = asText
     ? [{ type: 'text', text: Buffer.from(base64, 'base64').toString('utf8').slice(0, 30000) }]
     : [{ type: mediaType === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: mediaType, data: base64 } }];
-  const r = await claude.messages.create({
-    model: MODEL_EXTRACT, max_tokens: 800,
-    // The key names are not negotiable. Asked in prose, the model returns sensible names of
-    // its own ("document_type", "certificate_number", "issuing_body") and every parse fails,
-    // which is exactly how Verify came to reject every document it was ever given.
-    system: `Read this document for a recruitment agency and copy the fields exactly as printed.
+  const system = `Read this document for a recruitment agency and copy the fields exactly as printed.
 
 Return ONLY this JSON object, using these exact keys and no others:
 {
@@ -62,11 +58,34 @@ doc_type and unreadable are required. Omit any other key whose value is not on t
 
 contract means an employment agreement between a person and an employer: parties, position, dates, workplace. It is NOT a CV. holder must be the person named on the document, copied exactly as printed — if you cannot find a name, omit holder rather than shortening or inventing one.
 
-NEVER return pay rate, allowances, pension, bonus or bank details, on any document type. They are not wanted and must not appear in the JSON. Return the JSON only, with no prose and no markdown fences.`,
-    messages: [{ role: 'user', content: [...(source as any[]), { type: 'text', text: 'Extract.' }] as any }],
-  });
-  const text = r.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
-  return CertSchema.parse(JSON.parse(text.match(/\{[\s\S]*\}/)![0]));
+NEVER return pay rate, allowances, pension, bonus or bank details, on any document type. They are not wanted and must not appear in the JSON. Return the JSON only, with no prose and no markdown fences.`;
+  const content = [...(source as any[]), { type: 'text', text: 'Extract.' }] as any;
+  // Two attempts, as askJson makes for text-only requests — askJson cannot carry a PDF or an image, so
+  // this cannot use it. A reply with no JSON in it (prose, a refusal, an empty answer) used to reach
+  // `text.match(/\{[\s\S]*\}/)![0]` and throw "Cannot read properties of null (reading '0')": on
+  // 2026-09-14 the release gate's CV came back "unreadable" that way, and Verify called the .docx the
+  // wrong file type. Now the problem is described back once, and a second failure says what it was.
+  let problem = '';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const r = await claude.messages.create({
+      model: MODEL_EXTRACT, max_tokens: attempt === 0 ? 800 : 1600,
+      // The key names are not negotiable. Asked in prose, the model returns sensible names of
+      // its own ("document_type", "certificate_number", "issuing_body") and every parse fails,
+      // which is exactly how Verify came to reject every document it was ever given.
+      system: attempt === 0 ? system : `${system}\n\nA previous attempt could not be used: ${problem}\nReturn the whole JSON object again, corrected, with no prose.`,
+      messages: [{ role: 'user', content }],
+    });
+    const text = r.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
+    try {
+      return CertSchema.parse(jsonFromReply(text));
+    } catch (e: any) {
+      if (attempt === 1) throw new Error(`the document could not be read into fields after two attempts: ${String(e?.message ?? e).slice(0, 160)}`);
+      problem = e instanceof z.ZodError
+        ? e.issues.map((i) => `${i.path.join('.') || '(root)'} — ${i.message}`).join('; ')
+        : String(e?.message ?? e).slice(0, 160);
+    }
+  }
+  throw new Error('unreachable');
 }
 
 export const ProfileSchema = z.object({

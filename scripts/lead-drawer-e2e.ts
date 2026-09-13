@@ -10,7 +10,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
-import { markWorkspaceTest } from '../src/lib/test-data';
+import { markWorkspaceTest, removeProbe } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'http://localhost:3000';
 const EMAIL = `drawer-e2e+${Date.now()}@rfbt-recruitment.com`;
@@ -116,9 +116,10 @@ const check = (ok: boolean, what: string, detail = '') => {
     await admin.from('scores').delete().eq('lead_id', lead!.id);
     await admin.from('leads').delete().eq('id', lead!.id);
     await admin.from('companies').delete().eq('id', co!.id);
-    await admin.auth.admin.deleteUser(uid);
-    await admin.from('workspaces').delete().eq('id', workspace);
-    console.log('\ncleaned up the probe user, its workspace and its lead');
+    // Both deletes are read; a leftover fails this run instead of waiting to be found.
+    const leftBehind = await removeProbe(admin, uid, workspace);
+    if (leftBehind) { failures++; console.log(`\n  FAIL  cleanup — ${leftBehind}`); }
+    else console.log('\ncleaned up the probe user, its workspace and its lead');
   }
   console.log(failures === 0 ? '\nlead drawer: all checks passed' : `\nlead drawer: ${failures} check(s) failed`);
   process.exit(failures === 0 ? 0 : 1);

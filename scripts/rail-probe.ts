@@ -5,6 +5,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
+import { markWorkspaceTest, removeProbe } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'http://localhost:3000';
 const EMAIL = `rail-probe+${Date.now()}@rfbt-recruitment.com`;
@@ -52,8 +53,10 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SU
   } finally {
     await browser.close();
     const { data: u } = await admin.from('users').select('workspace_id').eq('id', uid).maybeSingle();
-    await admin.auth.admin.deleteUser(uid);
-    if (u?.workspace_id) await admin.from('workspaces').delete().eq('id', u.workspace_id);
-    console.log('cleaned up');
+    // Its own workspace, made for this new user at signup: marked as test data, then removed with both deletes read.
+    if (u?.workspace_id) await markWorkspaceTest(admin, u.workspace_id);
+    const leftBehind = await removeProbe(admin, uid, u?.workspace_id);
+    if (leftBehind) { console.log(`\nCLEANUP FAILED — ${leftBehind}`); process.exitCode = 1; }
+    else console.log('cleaned up');
   }
 })();

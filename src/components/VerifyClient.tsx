@@ -146,7 +146,9 @@ export function VerifyClient({ senior }: { senior?: boolean }) {
         <b className="block font-display text-[18px] font-bold">Drop any candidate documents here</b>
         <div className="text-ink3 text-[13px] mt-1">CVs, certificates, passport, contract, medical, A1, welding test report · PDF, DOCX or photo · any language · several at once</div>
         <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.docx,.txt" className="hidden" disabled={!!busy} onChange={(e) => e.target.files && run(e.target.files)} />
-        <div className="text-tool-verify font-semibold text-[13px] mt-2.5">{busy || 'or click to choose'}</div>
+        {/* data-verify-busy is what scripts wait on. Waiting on the words "Reading / Checking / Preparing / Writing"
+            never finished once a certificate card said "Writing or approving procedures — that is level 3". */}
+        <div data-verify-busy={busy ? 'true' : 'false'} className="text-tool-verify font-semibold text-[13px] mt-2.5">{busy || 'or click to choose'}</div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-5 text-left">
           {[

@@ -10,7 +10,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
-import { markWorkspaceTest } from '../src/lib/test-data';
+import { markWorkspaceTest, deleteTestWorkspace } from '../src/lib/test-data';
 import fs from 'node:fs';
 
 const BASE = process.env.SCREEN_BASE ?? 'https://leadscout-rfbt.vercel.app';
@@ -78,8 +78,15 @@ const SIGNED_IN = [
     }
   } finally {
     await browser.close();
-    await admin.auth.admin.deleteUser(uid);
-    if (throwaway && throwaway !== ws.id) await admin.from('workspaces').delete().eq('id', throwaway);
+    // Both deletes are read now. The gate on 2026-09-13 left an empty "Design Shots" workspace behind
+    // and nothing said so, because the answer to the workspace delete was never looked at.
+    const { error: userError } = await admin.auth.admin.deleteUser(uid);
+    if (userError) problems.push(`cleanup: the probe user ${uid} was not deleted: ${userError.message}`);
+    const notDeleted = await deleteTestWorkspace(admin, throwaway, ws.id);
+    if (notDeleted) problems.push(`cleanup: ${notDeleted}`);
   }
   console.log(problems.length ? `\nPROBLEMS\n${problems.map((p) => '  ' + p).join('\n')}` : '\nno problems found');
+  // The release gate reads the exit code. Problems used to be printed and the script still exited 0,
+  // so a page that scrolled sideways, rendered an error or could not sign in never failed the gate.
+  process.exit(problems.length ? 1 : 0);
 })();

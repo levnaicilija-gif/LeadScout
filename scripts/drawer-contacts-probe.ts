@@ -13,7 +13,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
-import { markWorkspaceTest } from '../src/lib/test-data';
+import { markWorkspaceTest, removeProbe } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'http://localhost:3100';
 const EMAIL = `contacts-probe+${Date.now()}@rfbt-recruitment.com`;
@@ -72,8 +72,9 @@ const check = (ok: boolean, what: string, detail = '') => {
     }
   } finally {
     await browser.close();
-    await admin.auth.admin.deleteUser(uid);
-    if (throwaway && throwaway !== ws!.id) await admin.from('workspaces').delete().eq('id', throwaway).eq('is_test', true);
+    // Its own throwaway workspace only, never the real one it borrowed; a leftover fails this run.
+    const leftBehind = await removeProbe(admin, uid, throwaway, ws!.id);
+    if (leftBehind) { failures++; console.log(`\n  FAIL  cleanup — ${leftBehind}`); }
   }
   console.log(failures === 0 ? '\ndrawer contacts: all checks passed' : `\ndrawer contacts: ${failures} check(s) failed`);
   process.exit(failures === 0 ? 0 : 1);

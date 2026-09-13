@@ -8,6 +8,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
+import { markWorkspaceTest, removeProbe } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'http://localhost:3000';
 const EMAIL = `verify-e2e+${Date.now()}@rfbt-recruitment.com`;
@@ -23,6 +24,8 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SU
   const uid = created.user!.id;
   const { data: me } = await admin.from('users').select('workspace_id').eq('id', uid).maybeSingle();
   const workspace = me?.workspace_id as string;
+  // Marked before anything is created, so the cleanup's is_test filter can only reach this probe's rows.
+  await markWorkspaceTest(admin, workspace);
   console.log(`probe user ${EMAIL}\nworkspace ${workspace}\n`);
 
   const browser = await chromium.launch();
@@ -68,7 +71,7 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SU
     ]);
     const started = Date.now();
     await page.waitForFunction(
-      () => /recognised and handled/.test(document.body.innerText) && !/Reading |Checking |Preparing |Writing /.test(document.body.innerText),
+      () => /recognised and handled/.test(document.body.innerText) && !!document.querySelector('[data-verify-busy="false"]'),
       undefined, { timeout: 280000 },
     ).catch(() => console.log('   (still working after 280s)'));
     console.log(`   settled in ${Math.round((Date.now() - started) / 1000)}s`);
@@ -90,8 +93,8 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SU
     const { data: cands } = await admin.from('candidates').select('id').eq('workspace_id', workspace);
     for (const c of cands ?? []) await admin.from('candidates').delete().eq('id', c.id);
     await admin.from('documents').delete().eq('workspace_id', workspace);
-    await admin.auth.admin.deleteUser(uid);
-    await admin.from('workspaces').delete().eq('id', workspace);
-    console.log('cleaned up probe user, workspace and everything it created');
+    const leftBehind = await removeProbe(admin, uid, workspace, null, { clearContent: true });
+    if (leftBehind) { console.log(`CLEANUP FAILED — ${leftBehind}`); process.exitCode = 1; }
+    else console.log('cleaned up probe user, workspace and everything it created');
   }
 })();

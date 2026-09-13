@@ -54,5 +54,94 @@ export async function deleteTestRows(db: SupabaseClient, table: TestTable, colum
   return q;
 }
 
+/**
+ * Delete a probe's throwaway workspace, and say whether it went.
+ *
+ * Probes used to fire this delete and ignore the answer. On 2026-09-13 the release gate's design-shots
+ * run left an empty "Design Shots" workspace behind with nothing printed, found only by counting
+ * is_test rows afterwards. This never deletes the workspace a probe borrowed (`keep`), filters on
+ * is_test when the flag exists, tries twice, confirms the row is gone, and returns why it is not —
+ * or null once it is.
+ */
+export async function deleteTestWorkspace(db: SupabaseClient, workspaceId: string | null | undefined, keep?: string | null): Promise<string | null> {
+  if (!workspaceId || workspaceId === keep) return null;
+  const flag = await haveFlag(db);
+  let why = '';
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    let q = db.from('workspaces').delete().eq('id', workspaceId);
+    if (flag) q = q.eq('is_test', true);
+    const { error } = await q;
+    const { data: still, error: readError } = await db.from('workspaces').select('id').eq('id', workspaceId).maybeSingle();
+    if (!error && !readError && !still) return null;
+    why = error
+      ? `${error.code ?? ''} ${error.message}`.trim()
+      : readError ? `could not confirm it was gone: ${readError.message}` : 'it is still there after the delete — is it marked is_test?';
+    if (attempt === 1) await new Promise((r) => setTimeout(r, 2000));
+  }
+  return `workspace ${workspaceId} was not deleted: ${why}`;
+}
+
+/**
+ * Empty a probe's own test workspace of the rows a signed-in flow creates in it, in foreign-key order.
+ *
+ * Found 2026-09-13: verify-e2e's gate run at 20:06 UTC left its user, its workspace, a candidate
+ * (RFBT-P-0196), that candidate's anonymised CV and three documents behind. candidates.created_by and
+ * documents.uploaded_by point at the user with no cascade, so while either row stands the user cannot
+ * be deleted, and while the user stands the workspace cannot — and none of those deletes was read.
+ * Candidates go first (their documents, verifications, anonymised CVs and downloads cascade), then any
+ * document without a candidate. Refuses a workspace that is `keep` or is not marked is_test.
+ */
+export async function clearTestWorkspace(db: SupabaseClient, workspaceId: string | null | undefined, keep?: string | null): Promise<string | null> {
+  if (!workspaceId || workspaceId === keep) return null;
+  if (await haveFlag(db)) {
+    const { data: ws } = await db.from('workspaces').select('is_test').eq('id', workspaceId).maybeSingle();
+    if (!ws) return null; // already gone
+    if (!ws.is_test) return `workspace ${workspaceId} is not marked is_test, so its content was not touched`;
+  }
+  const problems: string[] = [];
+  for (const table of ['candidates', 'documents'] as const) {
+    const { error } = await db.from(table).delete().eq('workspace_id', workspaceId);
+    if (error) problems.push(`${table} in workspace ${workspaceId} were not deleted: ${error.message}`);
+  }
+  return problems.length ? problems.join('; ') : null;
+}
+
+/**
+ * A probe's whole cleanup: optionally its workspace's content, then its auth user, then its own
+ * workspace. Returns what was left behind, or null.
+ *
+ * Every probe and gate script ran these deletes and read none of the answers. A caller counts a
+ * non-null result as a failure, so a leftover is heard the run it happens rather than found later by
+ * counting rows. The workspace must be marked is_test first (markWorkspaceTest). The whole sequence is
+ * tried twice, five seconds apart: a flow that has only just settled on screen can still be writing on
+ * the server, which is the likeliest way verify-e2e's candidate appeared after its deletes had run.
+ */
+export async function removeProbe(
+  db: SupabaseClient,
+  uid: string | null | undefined,
+  workspaceId: string | null | undefined,
+  keep?: string | null,
+  opts: { clearContent?: boolean } = {},
+): Promise<string | null> {
+  let left: string[] = [];
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    left = [];
+    if (opts.clearContent) {
+      const notCleared = await clearTestWorkspace(db, workspaceId, keep);
+      if (notCleared) left.push(notCleared);
+    }
+    if (uid) {
+      const { error } = await db.auth.admin.deleteUser(uid);
+      // Already gone — removed by the first attempt — is what was wanted.
+      if (error && !/not.?found/i.test(error.message)) left.push(`the probe user ${uid} was not deleted: ${error.message}`);
+    }
+    const notDeleted = await deleteTestWorkspace(db, workspaceId, keep);
+    if (notDeleted) left.push(notDeleted);
+    if (!left.length) return null;
+    if (attempt === 1) await new Promise((r) => setTimeout(r, 5000));
+  }
+  return left.join('; ');
+}
+
 /** Is the flag available? For a script that wants to say so in its output. */
 export const testFlagAvailable = (db: SupabaseClient) => haveFlag(db);

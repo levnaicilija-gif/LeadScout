@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
+import { jsonFromReply } from './json-reply';
 export const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // Sonnet 5: newer than 4-6 and cheaper with it ($2/$10 per Mtok against $3/$15).
 export const MODEL_EXTRACT = 'claude-sonnet-5';
@@ -54,13 +55,7 @@ export async function askJson<S extends z.ZodTypeAny>(schema: S, system: string,
     const text = r.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
 
     try {
-      const m = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-      let parsed = JSON.parse(m ? m[0] : text);
-      // The model sometimes wraps the object in an array — a real CV failed with
-      // "Expected object, received array". Every schema here describes one object, so unwrap it
-      // rather than losing the extraction to a bracket.
-      if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object' && parsed[0] !== null) parsed = parsed[0];
-      return schema.parse(parsed);
+      return schema.parse(jsonFromReply(text));
     } catch (e: any) {
       if (attempt === 1) throw e;
       lastProblem = e instanceof z.ZodError

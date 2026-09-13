@@ -30,5 +30,7 @@ import { runRlsSweep, recordRlsSweep, sweepSummary } from '../src/lib/rls-sweep'
     console.log(notKept ? `result not recorded: ${notKept}` : 'result recorded for Home');
   }
   console.log(sweepSummary(r));
-  process.exit(r.ok ? 0 : 1);
+  // A leftover throwaway user or workspace fails the gate too: it is not an RLS failure, but a cleanup
+  // nobody hears about is how test rows pile up in the real database.
+  process.exit(r.ok && !r.cleanupError ? 0 : 1);
 })().catch((e) => { console.error(e); process.exit(1); });

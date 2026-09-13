@@ -4,6 +4,7 @@
  *   npx tsx --env-file=.env.local scripts/rls-probe.ts
  */
 import { createClient } from '@supabase/supabase-js';
+import { markWorkspaceTest, removeProbe } from '../src/lib/test-data';
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const admin = createClient(URL, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
@@ -36,8 +37,10 @@ const PASSWORD = 'probe-password-0123456789';
     }
   } finally {
     const { data: u } = await admin.from('users').select('workspace_id').eq('id', uid).maybeSingle();
-    await admin.auth.admin.deleteUser(uid);
-    if (u?.workspace_id) await admin.from('workspaces').delete().eq('id', u.workspace_id);
-    console.log('\ncleaned up probe user');
+    // Its own workspace, made for this new user at signup: marked as test data, then removed with both deletes read.
+    if (u?.workspace_id) await markWorkspaceTest(admin, u.workspace_id);
+    const leftBehind = await removeProbe(admin, uid, u?.workspace_id);
+    if (leftBehind) { console.log(`\nCLEANUP FAILED — ${leftBehind}`); process.exitCode = 1; }
+    else console.log('\ncleaned up probe user');
   }
 })();
