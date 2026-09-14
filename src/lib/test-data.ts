@@ -145,3 +145,14 @@ export async function removeProbe(
 
 /** Is the flag available? For a script that wants to say so in its output. */
 export const testFlagAvailable = (db: SupabaseClient) => haveFlag(db);
+
+/**
+ * A probe account that is not testing onboarding follows every industry, so it reaches the screen it came to check.
+ * From 0032 a new account is sent to choose industries before any other screen. Before 0032 there is nothing to
+ * set; any other failure is returned for the caller to report.
+ */
+export async function followAllForProbe(db: SupabaseClient, uid: string): Promise<string | null> {
+  const { error } = await db.from('users').update({ industry_follow: ['all'], industry_follow_set_at: new Date().toISOString() }).eq('id', uid);
+  if (!error || error.code === '42703' || /industry_follow/.test(error.message) && /does not exist|schema cache/i.test(error.message)) return null;
+  return `the probe account could not be set to follow all industries: ${error.message}`;
+}

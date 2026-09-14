@@ -1,8 +1,10 @@
 import { supabaseServer } from '@/lib/supabase/server';
+import { followedIndustries, inFollowed } from '@/lib/industry-follow';
+import { FOLLOW_OPTIONS } from '@/lib/industry';
 import { Help } from '@/components/Help';
 import { LeadDrawer } from '@/components/LeadDrawer';
 import { HiringNow, HiringHelp } from '@/components/HiringNow';
-import { hasEmployerOverride, hasJobBoardFields, hasHiringState, hasPostingContact, hasAwardDate } from '@/lib/schema-features';
+import { hasEmployerOverride, hasJobBoardFields, hasHiringState, hasPostingContact, hasAwardDate, hasIndustries } from '@/lib/schema-features';
 import { HiringDrawer } from '@/components/HiringDrawer';
 import { groupByCompany } from '@/components/HiringNow';
 import { checkRightToWork } from '@/lib/right-to-work';
@@ -13,9 +15,19 @@ import { articlesByLead, peopleByLead } from '@/lib/lead-articles';
 import { rankQuoted } from '@/lib/quoted-contacts';
 import { OpenRow, OpenChevron } from '@/components/OpenRow';
 export const dynamic = 'force-dynamic';
-export default async function Radar({ searchParams }: { searchParams: { tab?: string; lead?: string; agencies?: string; company?: string; country?: string; trade?: string; employer?: string; pressure?: string; source?: string; sort?: string } }) {
+export default async function Radar({ searchParams }: { searchParams: { tab?: string; lead?: string; agencies?: string; company?: string; country?: string; trade?: string; employer?: string; pressure?: string; source?: string; sort?: string; industries?: string } }) {
   const sb = supabaseServer(); const tab = searchParams.tab === 'hiring' ? 'job_post' : 'won_work';
   const hiring = tab === 'job_post';
+  // Item 18 part 3: Leads and Hiring now open on the industries this person follows. ?industries=all shows everything,
+  // one click away on every view; the entitlement caps what is followed, never what can be seen. A lead or company
+  // not yet classified (0031 before its backfill) is shown, not hidden.
+  const viewer = await currentUser();
+  const industriesOn = await hasIndustries(sb);
+  const followed = followedIndustries((viewer as any)?.industry_follow);
+  const showAll = searchParams.industries === 'all';
+  const industryFilter = industriesOn && !showAll && followed !== 'all' ? followed : null;
+  const viewQs = showAll ? '&industries=all' : '';
+  const followedNames = followed === 'all' ? [] : FOLLOW_OPTIONS.filter((o) => o.industries.some((i) => (followed as string[]).includes(i))).map((o) => o.label);
   // Migration 0012 may not be applied yet; naming a column that does not exist fails the whole
   // query, so the override is only asked for once it is there.
   const ovr = await hasEmployerOverride(sb);
@@ -31,7 +43,7 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // behind it, and inventing one to hang it off would be a lead nobody decided to create.
   const { data: postings } = hiring
     ? await sb.from('job_posts')
-      .select(`id, company_id, title, role, location, country, trades, certs_required, rotation, contract_type, headcount, posted_at, first_seen_at, source_url, via${jpBoard}${jpContact}, companies!inner(name, employer_type, country, domain${coOverride}${coState})`)
+      .select(`id, company_id, title, role, location, country, trades, certs_required, rotation, contract_type, headcount, posted_at, first_seen_at, source_url, via${jpBoard}${jpContact}, companies!inner(name, employer_type, country, domain${coOverride}${coState}${industriesOn ? ', industries' : ''})`)
       .eq('status', 'open').not('company_id', 'is', null)
       .order('posted_at', { ascending: false, nullsFirst: false }).order('first_seen_at', { ascending: false }).limit(400)
     : { data: null };
@@ -54,13 +66,14 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // Item 18 part 1: ?country= on Won work, as Hiring now has. The chips come from the countries the open won-work
   // leads actually carry — all of them, not the 50 per kind on screen, or a country outside the top 50 has no chip.
   const country = !hiring && typeof searchParams.country === 'string' && /^[A-Z]{2}$/.test(searchParams.country) ? searchParams.country : null;
-  const countryQs = country ? `&country=${country}` : '';
+  const countryQs = (country ? `&country=${country}` : '') + viewQs;
   // 0024 gives an award notice its own award date; before it, an award lead ages from the notice's publication.
   const awardCols = (await hasAwardDate(sb)) ? ', award_date, award_date_basis' : '';
   const leadCols = `*, companies(name, employer_type, size_band${coOverride}), contacts(name, title, email_status, phone, linkedin_search_url, google_search_url), job_posts(role, headcount, certs_required, hiring_pressure, posted_at)`;
   const openLeads = (cols: string, head = false) => {
     const q = sb.from('leads').select(cols, head ? { count: 'exact', head: true } : undefined).eq('kind', tab).not('status', 'in', '("stale","not_for_us")');
-    return country ? q.eq('country', country) : q;
+    const inCountry = country ? q.eq('country', country) : q;
+    return industryFilter ? inCountry.or(`industries.ov.{${industryFilter.join(',')}},industries.eq.{}`) : inCountry;
   };
   const NEWS_ONLY = 'source_url.is.null,source_url.not.ilike.https://ted.europa.eu/*';
   const TENDER_URL = 'https://ted.europa.eu/%';
@@ -72,6 +85,9 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
     openLeads('id', true).ilike('source_url', TENDER_URL),
   ]);
   const leadsError = (newsRes as any).error ?? (tenderRes as any).error ?? null;
+  const { count: everyIndustry } = !hiring && industryFilter
+    ? await (() => { const q = sb.from('leads').select('id', { count: 'exact', head: true }).eq('kind', tab).not('status', 'in', '("stale","not_for_us")'); return country ? q.eq('country', country) : q; })()
+    : { count: null as number | null };
   const { data: countryRows, error: countriesError } = hiring
     ? { data: null, error: null }
     : await sb.from('leads').select('country').eq('kind', 'won_work').not('status', 'in', '("stale","not_for_us")').not('country', 'is', null).limit(5000);
@@ -121,8 +137,9 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const agencyPostings = shown.filter(isAgency);
   // A row marked "not for us" is a decision, and it stays taken: it leaves the table.
   const notRejected = (p: any) => (p.companies?.hiring_status ?? 'new') !== 'not_for_us';
-  const live = shown.filter(notRejected);
-  const rejected = shown.length - live.length;
+  const liveEvery = shown.filter(notRejected);
+  const live = industryFilter ? liveEvery.filter((p: any) => inFollowed(p.companies?.industries, industryFilter)) : liveEvery;
+  const rejected = shown.length - liveEvery.length;
 
   // Verified candidates by trade, for "Ready to attach". One query, not one per row.
   const { data: readyRows } = hiring
@@ -153,7 +170,7 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   for (const c of options.countries) rightToWork[c] = checkRightToWork(c, {} as any).rule;
 
   const openCompany = searchParams.company
-    ? groupsAll.find((g) => g.companyId === searchParams.company) ?? null
+    ? (groupsAll.find((g) => g.companyId === searchParams.company) ?? groupByCompany(((showAgencies ? liveEvery : liveEvery.filter((p: any) => !isAgency(p))) as any)).find((g) => g.companyId === searchParams.company)) ?? null
     : null;
 
   const hiringProps = {
@@ -170,15 +187,23 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   };
 
   const selected = leads?.find((l) => l.id === searchParams.lead) ?? null;
+  const hiringCompaniesEvery = hiring && industryFilter ? new Set((showAgencies ? liveEvery : liveEvery.filter((p: any) => !isAgency(p))).map((p: any) => p.company_id)).size : null;
+  const shownWon = (newsCount.count ?? 0) + (tenderCount.count ?? 0);
+  const followBanner = (showAll && followed !== 'all' && industriesOn)
+    ? <div data-industry-view="all" className="text-[13px] mb-3">Showing all industries · <a className="text-accent font-semibold" href={`?tab=${hiring ? 'hiring' : 'won'}`}>back to yours ({followedNames.join(', ')})</a></div>
+    : industryFilter
+      ? <div data-industry-view="followed" className="text-[13px] mb-3">Showing {hiring ? `${groupsAll.length} of ${hiringCompaniesEvery ?? groupsAll.length} companies` : `${shownWon} of ${everyIndustry ?? shownWon} open leads`} in your industries ({followedNames.join(', ')}) · <a data-show-all-industries className="text-accent font-semibold" href={`?tab=${hiring ? 'hiring' : 'won'}&industries=all`}>show all industries</a> · <a className="text-ink3" href="/app/preferences">change</a></div>
+      : null;
   return (<>
     <div className="flex items-baseline justify-between flex-wrap gap-x-3 gap-y-1 mb-3"><h1 className="font-display text-[26px] font-bold tracking-[-.4px]">Leads{hiring ? <HiringHelp /> : <Help title="What Radar is" intro="Reads your sources every morning and tells you which companies will need people, and who to talk to." rows={[['Won work', 'Company won a contract; the person quoted by name; when the work starts.'], ['News / Tender award', 'News is a story Radar read. Tender award is a contract award notice from TED: the buyer, the winner, the value — and no quoted person. The same contract from both is one row, the second source linked.'], ['Hiring now', 'Open trade postings, certs asked for, who to contact — from the posting, company site or attendee list.'], ['Verified', 'Source re-fetched each morning; Confirm records that you checked it. Outreach needs both.'], ['Age', 'A news lead is ageing at 45 days and a stale signal at 90, from the article\'s date; an award at 180 and 365, from the award date. Older leads sink and dim — never hidden, never re-statused. No date says "age unknown".'], ['Never', 'Invents a name, an email, a phone or a job opening.']]} />}</h1><span className="text-ink3">{last?.last_crawled_at ? `Last read ${new Date(last.last_crawled_at).toLocaleString()}` : 'Not read yet'}{tab === 'job_post' ? ` · careers pages ${lastJobs?.last_jobs_crawl_at ? new Date(lastJobs.last_jobs_crawl_at).toLocaleDateString() : 'not crawled yet'}` : ''}</span></div>
     {/* v4 segmented control: the tab you are on is the navy one, not an underline. */}
     <div className="flex gap-1 bg-panel border border-line rounded-[12px] p-1 w-max mb-3.5">{[['won', 'Won work'], ['hiring', 'Hiring now']].map(([t, l]) => <a key={t} href={`?tab=${t}`} className={`px-3.5 py-2 rounded-[9px] font-medium ${(t === 'hiring') === (tab === 'job_post') ? 'bg-rail text-white' : 'text-ink2 hover:bg-line2'}`}>{l}</a>)}</div>
+    {followBanner}
     {hiring ? <HiringNow {...hiringProps} /> : (
     <>
     <div className="flex items-center gap-1.5 flex-wrap mb-3" data-source-filter>{([[null, "All", (newsCount.count ?? 0) + (tenderCount.count ?? 0)], ["news", "News", newsCount.count ?? 0], ["tender", "Tender awards", tenderCount.count ?? 0]] as const).map(([k, label, n]) => <a key={label} href={k ? `?tab=won&source=${k}${sortQs}${countryQs}` : `?tab=won${sortQs}${countryQs}`} className={`chip ${source === k ? "!bg-rail !text-white !border-rail" : ""}`}>{label} <span className={source === k ? "text-white/70" : "text-ink3"}>{n}</span></a>)}</div>
     <div data-sort-control className="flex items-center gap-1.5 flex-wrap mb-3 text-[13px]"><span className="text-ink3">Sort</span>{([[false, 'Fit'], [true, 'Latest activity']] as const).map(([isLatest, label]) => <a key={label} data-sort={isLatest ? 'latest' : 'fit'} href={`?tab=won${source ? `&source=${source}` : ''}${isLatest ? '&sort=latest' : ''}${countryQs}`} className={`chip ${latest === isLatest ? '!bg-rail !text-white !border-rail' : ''}`}>{label}</a>)}{latest && <span className="text-ink3 text-[12px]">Fresh, then ageing, then stale, then age unknown — newest first within each · all {leads.length} open leads{source ? '' : ', news and awards together'}</span>}</div>
-    {leadCountries.length >= 2 && <div data-country-filter className="flex items-center gap-1.5 flex-wrap mb-3 text-[13px]"><span className="text-ink3">Country</span>{leadCountries.map((c) => <a key={c} data-country={c} href={`?tab=won${source ? `&source=${source}` : ''}${sortQs}${country === c ? '' : `&country=${c}`}`} className={`chip ${country === c ? '!bg-rail !text-white !border-rail' : ''}`}>{c}</a>)}{country && <span className="text-ink3 text-[12px]">Showing leads in {country} only · <a className="text-accent" href={`?tab=won${source ? `&source=${source}` : ''}${sortQs}`}>all countries</a></span>}</div>}
+    {leadCountries.length >= 2 && <div data-country-filter className="flex items-center gap-1.5 flex-wrap mb-3 text-[13px]"><span className="text-ink3">Country</span>{leadCountries.map((c) => <a key={c} data-country={c} href={`?tab=won${source ? `&source=${source}` : ''}${sortQs}${country === c ? '' : `&country=${c}`}${viewQs}`} className={`chip ${country === c ? '!bg-rail !text-white !border-rail' : ''}`}>{c}</a>)}{country && <span className="text-ink3 text-[12px]">Showing leads in {country} only · <a className="text-accent" href={`?tab=won${source ? `&source=${source}` : ''}${sortQs}${viewQs}`}>all countries</a></span>}</div>}
     {countriesError && <div className="mb-3 text-bad text-[13px]">The countries on these leads could not be read: {countriesError.message}. The country filter is missing, not empty.</div>}
     <div data-drawer-help className="text-[13px] mb-2"><span className="text-ink3">Click or tap a lead to open its drawer</span><Help title="What opens when you click a lead" intro="The lead's drawer: its source and whether you have confirmed it, what the company is, and the decision-maker with their quote and where any email or phone came from. Below that, the four tools (job description, score the pool, LinkedIn search, screening questions), a drafted email that needs the source confirmed first, and Mark pursued or Not for us." /></div>
     {leadsError && <div className="mb-3 text-bad text-[13px]">Leads could not be read: {leadsError.message}. The table below is incomplete, not empty.</div>}
@@ -196,7 +221,9 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
           <td><span className="inline-flex items-center gap-2 font-semibold"><i className="inline-block w-[56px] h-[6px] rounded-full bg-line overflow-hidden"><i className="block h-full rounded-full bg-tool-leads" style={{ width: `${l.fit_score}%` }} /></i>{l.fit_score}</span></td>
           <td className="whitespace-nowrap"><span className={`badge ${l.source_fetch_status === 'live' ? (l.confirmed_at ? 'badge-ok' : 'badge-info') : 'badge-bad'}`}>{l.confirmed_at ? '✓ ' : ''}{l.source_fetch_status}{l.confirmed_at ? ' · confirmed' : ' · not confirmed'}</span><div className="text-[12px] mt-1"><a href={l.source_url} target="_blank" rel="noopener" className="text-accent font-medium">Open source</a></div>{l.source_flag && l.source_flag !== 'ok' && <div data-source-flag={l.source_flag} title={l.source_flag_why ?? ''} className="text-[12px] mt-1 text-warn">{SOURCE_FLAG_LABEL[l.source_flag] ?? l.source_flag}</div>}</td>
         </OpenRow>); })}
-      {(leads ?? []).length === 0 && <tr><td colSpan={7} className="text-ink3 p-6">{country ? `No open leads in ${country}${source ? ` from ${source === 'news' ? 'news' : 'tender awards'}` : ''}.` : 'No leads yet. Radar reads your sources and the TED award notices every morning at 06:00.'}</td></tr>}
+      {(leads ?? []).length === 0 && <tr><td colSpan={7} className="text-ink3 p-6">{industryFilter && (everyIndustry ?? 0) > 0
+        ? <span data-no-followed-leads>No open leads in your industries ({followedNames.join(', ')}){country ? ` in ${country}` : ''} yet. <a className="text-accent font-semibold" href={`?tab=won${source ? `&source=${source}` : ''}${sortQs}${country ? `&country=${country}` : ''}&industries=all`}>Show all {everyIndustry} open leads</a></span>
+        : country ? `No open leads in ${country}${source ? ` from ${source === 'news' ? 'news' : 'tender awards'}` : ''}.` : 'No leads yet. Radar reads your sources and the TED award notices every morning at 06:00.'}</td></tr>}
       </tbody></table></div></>)}
     {selected && <LeadDrawer lead={selected} />}
     {openCompany && (

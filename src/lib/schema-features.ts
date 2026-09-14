@@ -84,3 +84,6 @@ export const hasHealthChecks = (sb: SupabaseClient) => hasTable(sb, 'health_chec
 
 /** Item 18 part 2 arrives with 0031: industries and their evidence on leads and companies (src/lib/industry.ts). */
 export const hasIndustries = (sb: SupabaseClient) => hasColumn(sb, 'leads', 'industries');
+
+/** Item 18 part 3 arrives with 0032: what each person follows, and their entitlement (src/lib/industry-follow.ts). */
+export const hasIndustryFollow = (sb: SupabaseClient) => hasColumn(sb, 'users', 'industry_follow');

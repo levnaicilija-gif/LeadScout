@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { followedIndustries } from '@/lib/industry-follow';
 import { supabaseServer, currentUser } from '@/lib/supabase/server';
 import { Help } from '@/components/Help';
 import { todayItems, whenLabel } from '@/lib/today';
@@ -10,7 +11,7 @@ export default async function Today() {
   const d = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
   // The list itself is shared with Home, so the two can never disagree about what the day holds.
   const [items, weekOk, weekBad, weekLeads, weekSends] = await Promise.all([
-    todayItems(sb),
+    todayItems(sb, followedIndustries((me as any)?.industry_follow)),
     sb.from('verifications').select('id', { count: 'exact', head: true }).eq('result', 'valid').gte('checked_at', d(-7)),
     sb.from('verifications').select('id', { count: 'exact', head: true }).in('result', ['invalid', 'not_found']).gte('checked_at', d(-7)),
     sb.from('contacts').select('lead_id', { count: 'exact', head: true }).gte('found_at', d(-7)),

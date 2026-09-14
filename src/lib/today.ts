@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { IndustryId } from '@/lib/industry';
+import { hasIndustries } from '@/lib/schema-features';
 import { hasPostingContact, hasHiringState, hasAwardDate } from './schema-features';
 import { newsLeadAge, tenderLeadAge, postingAge, reAdverts, roleKey, ageSink, REPOST_WINDOW_DAYS } from './lead-age';
 import { leadSource, primaryArticle } from './lead-source';
@@ -23,16 +25,19 @@ export type TodayItem = {
 
 const day = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
 
-export async function todayItems(sb: SupabaseClient): Promise<TodayItem[]> {
+export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'all' = 'all'): Promise<TodayItem[]> {
+  // Item 18: what the reader follows comes first — a lead or company in those industries, then the rest. Nothing is dropped.
+  const industriesOn = await hasIndustries(sb);
+  const followedFirst = (industries: string[] | null | undefined) => (followed !== 'all' && (industries ?? []).some((i) => (followed as string[]).includes(i)) ? 0 : 1);
   // 0024 gives an award notice its own award date; before it, an award lead ages from the notice's publication.
   const awardCols = (await hasAwardDate(sb)) ? ', award_date, award_date_basis' : '';
   const [pending, noReply, newLeads, expiring, missingDocs, hiring] = await Promise.all([
     sb.from('verifications').select('id, issuer_email_sent_at, documents(candidate_id, extracted, candidates!candidate_id(reference_code))').eq('result', 'pending'),
     sb.from('outreach').select('id, sent_at, leads(project_name, companies(name))').eq('status', 'sent').is('reply_at', null).lte('sent_at', day(-3)),
-    sb.from('leads').select(`id, kind, project_name, fit_score, trades_inferred, source_url, companies(name)`).eq('status', 'new').gte('created_at', day(-7)).order('fit_score', { ascending: false }).limit(20),
+    sb.from('leads').select(`id, kind, project_name, fit_score, trades_inferred, source_url, companies(name)${industriesOn ? ', industries' : ''}`).eq('status', 'new').gte('created_at', day(-7)).order('fit_score', { ascending: false }).limit(20),
     sb.from('verifications').select('id, valid_until, documents(cert_body, candidates!candidate_id(reference_code))').eq('result', 'valid').lte('valid_until', day(60).slice(0, 10)),
     campaignsMissingDocs(sb),
-    hiringWorthCalling(sb),
+    hiringWorthCalling(sb, industriesOn, followedFirst),
   ]);
 
   const items: TodayItem[] = [];
@@ -54,7 +59,7 @@ export async function todayItems(sb: SupabaseClient): Promise<TodayItem[]> {
       ? tenderLeadAge({ awardDate: a?.award_date, awardBasis: a?.award_date_basis, publishedAt: a?.published_at, awardDateRead: !!awardCols })
       : newsLeadAge({ publishedAt: a?.published_at });
     return { l, age };
-  }).sort((x, y) => (ageSink(x.age.state) - ageSink(y.age.state)) || ((y.l.fit_score ?? 0) - (x.l.fit_score ?? 0))).slice(0, 6);
+  }).sort((x, y) => (followedFirst(x.l.industries) - followedFirst(y.l.industries)) || (ageSink(x.age.state) - ageSink(y.age.state)) || ((y.l.fit_score ?? 0) - (x.l.fit_score ?? 0))).slice(0, 6);
   const leadNames = aged
     .map(({ l, age }) => l.companies?.name && `${l.companies.name}${age.state === 'stale' ? ' (stale signal)' : age.state === 'flagged' ? ' (ageing)' : ''}`)
     .filter(Boolean) as string[];
@@ -213,10 +218,10 @@ export const whenLabel = (item: TodayItem, index: number) => item.at ?? (index =
  * Guarded: the contact column and the row state both arrive with 0020, and naming a column that
  * does not exist fails the whole query rather than omitting a field.
  */
-async function hiringWorthCalling(sb: SupabaseClient): Promise<{ id: string; name: string; why: string; ageing: boolean }[]> {
+async function hiringWorthCalling(sb: SupabaseClient, industriesOn = false, followedFirst: (i: string[] | null | undefined) => number = () => 1): Promise<{ id: string; name: string; why: string; ageing: boolean }[]> {
   const contacts = await hasPostingContact(sb);
   const state = await hasHiringState(sb);
-  const cols = `company_id, role, title, headcount, posted_at, first_seen_at${contacts ? ', contact_name' : ''}, companies!inner(name${state ? ', hiring_status' : ''})`;
+  const cols = `company_id, role, title, headcount, posted_at, first_seen_at${contacts ? ', contact_name' : ''}, companies!inner(name${state ? ', hiring_status' : ''}${industriesOn ? ', industries' : ''})`;
   const { data, error } = await sb.from('job_posts').select(cols as '*')
     .eq('status', 'open').not('company_id', 'is', null).limit(400) as { data: any[] | null; error: any };
   if (error || !data) return [];
@@ -228,7 +233,7 @@ async function hiringWorthCalling(sb: SupabaseClient): Promise<{ id: string; nam
     (byCompany.get(k) ?? byCompany.set(k, []).get(k)!).push(p);
   }
 
-  const out: { id: string; name: string; why: string; ageing: boolean; sink: number }[] = [];
+  const out: { id: string; name: string; why: string; ageing: boolean; sink: number; first: number }[] = [];
   for (const [id, ps] of byCompany) {
     const openings = ps.reduce((n, p) => n + (p.headcount && p.headcount > 0 ? p.headcount : 1), 0);
     const newest = ps.map((p) => p.posted_at ?? p.first_seen_at).filter(Boolean).sort().pop();
@@ -248,7 +253,8 @@ async function hiringWorthCalling(sb: SupabaseClient): Promise<{ id: string; nam
         : high ? `${openings} openings, newest within a month` : `${named.contact_name} is named on the advert`,
       ageing: !raised && age.state === 'flagged',
       sink: ageSink(age.state, !!raised),
+      first: followedFirst(ps[0].companies?.industries),
     });
   }
-  return out.sort((a, b) => a.sink - b.sink).slice(0, 5);
+  return out.sort((a, b) => (a.first - b.first) || (a.sink - b.sink)).slice(0, 5);
 }

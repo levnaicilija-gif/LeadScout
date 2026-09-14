@@ -11,7 +11,7 @@ import fs from 'fs';
 import { execSync } from 'node:child_process';
 import { createClient } from '@supabase/supabase-js';
 import { chromium, type Page } from 'playwright';
-import { markWorkspaceTest, markTest, removeProbe } from '../src/lib/test-data';
+import { markWorkspaceTest, markTest, removeProbe, followAllForProbe } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'https://leadscout-rfbt.vercel.app';
 const EMAIL = `smoke+${Date.now()}@rfbt-recruitment.com`;
@@ -38,6 +38,9 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
   // Mark everything this run creates before creating it, so a cleanup can never reach a real
   // record even if the scoping below is wrong.
   await markWorkspaceTest(admin, workspace);
+  // From 0032 a new account chooses industries before any screen; this probe checks other screens, so it follows all.
+  const followProblem = await followAllForProbe(admin, uid);
+  if (followProblem) throw new Error(followProblem);
 
   const { data: co } = await admin.from('companies').insert({ workspace_id: workspace, name: 'Smoke Offshore AS', employer_type: 'end_client', country: 'NO' }).select().single();
   await markTest(admin, 'companies', [co!.id]);

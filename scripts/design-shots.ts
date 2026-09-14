@@ -10,7 +10,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
-import { markWorkspaceTest, deleteTestWorkspace } from '../src/lib/test-data';
+import { markWorkspaceTest, deleteTestWorkspace, followAllForProbe } from '../src/lib/test-data';
 import fs from 'node:fs';
 
 const BASE = process.env.SCREEN_BASE ?? 'https://leadscout-rfbt.vercel.app';
@@ -40,6 +40,9 @@ const SIGNED_IN = [
   const { data: own } = await admin.from('users').select('workspace_id').eq('id', uid).maybeSingle();
   const throwaway = own?.workspace_id as string;
   await markWorkspaceTest(admin, throwaway);
+  // From 0032 a new account chooses industries before any screen; this probe checks other screens, so it follows all.
+  const followProblem = await followAllForProbe(admin, uid);
+  if (followProblem) throw new Error(followProblem);
   await admin.from('users').update({ workspace_id: ws.id, role: 'senior', onboarding_day: 30 }).eq('id', uid);
 
   const browser = await chromium.launch();

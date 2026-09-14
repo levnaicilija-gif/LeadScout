@@ -22,7 +22,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
-import { markWorkspaceTest, removeProbe } from '../src/lib/test-data';
+import { markWorkspaceTest, removeProbe, followAllForProbe } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'http://localhost:3000';
 const EMAIL = `verify-e2e+${Date.now()}@rfbt-recruitment.com`;
@@ -48,6 +48,9 @@ type Answer = { status: number; body: any };
   const workspace = me?.workspace_id as string;
   // Marked before anything is created, so the cleanup's is_test filter can only reach this probe's rows.
   await markWorkspaceTest(admin, workspace);
+  // From 0032 a new account chooses industries before any screen; this probe checks other screens, so it follows all.
+  const followProblem = await followAllForProbe(admin, uid);
+  if (followProblem) throw new Error(followProblem);
   console.log(`probe user ${EMAIL}\nworkspace ${workspace}\n`);
 
   // What the app answered, kept for the checks — not only printed.

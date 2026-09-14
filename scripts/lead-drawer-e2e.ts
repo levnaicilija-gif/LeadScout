@@ -10,7 +10,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
-import { markWorkspaceTest, removeProbe } from '../src/lib/test-data';
+import { markWorkspaceTest, removeProbe, followAllForProbe } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'http://localhost:3000';
 const EMAIL = `drawer-e2e+${Date.now()}@rfbt-recruitment.com`;
@@ -47,6 +47,9 @@ const check = (ok: boolean, what: string, detail = '') => {
   const { data: me } = await admin.from('users').select('workspace_id').eq('id', uid).maybeSingle();
   const workspace = me!.workspace_id as string;
   await markWorkspaceTest(admin, workspace);
+  // From 0032 a new account chooses industries before any screen; this probe checks other screens, so it follows all.
+  const followProblem = await followAllForProbe(admin, uid);
+  if (followProblem) throw new Error(followProblem);
 
   // A lead of its own, shaped like a real one: a company, a quoted person, an article.
   const { data: co } = await admin.from('companies').insert({ workspace_id: workspace, name: 'Probe Offshore AS', employer_type: 'end_client', country: 'NO' }).select().single();

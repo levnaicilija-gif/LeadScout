@@ -1,5 +1,7 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { supabaseServer, currentUser } from '@/lib/supabase/server';
+import { followedIndustries, mustChooseIndustries } from '@/lib/industry-follow';
 import { SignOut } from '@/components/SignOut';
 import { todayItems, whenLabel, HOW_THIS_LIST_IS_MADE } from '@/lib/today';
 import { HomeCards } from '@/components/HomeCards';
@@ -17,6 +19,8 @@ export const dynamic = 'force-dynamic';
  */
 export default async function Home() {
   const me = await currentUser();
+  // Item 18: a new account chooses its industries before any other screen.
+  if (mustChooseIndustries(me)) redirect('/app/onboarding');
   const sb = supabaseServer();
   const iso = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
   const date = (n: number) => iso(n).slice(0, 10);
@@ -28,7 +32,7 @@ export default async function Home() {
     items, wonWork, hiringNow, weekOk, weekBad, pool, expiring,
     availableNow, freeSoon, prioritySources, spend, radar, lastSweep,
   ] = await Promise.all([
-    todayItems(sb),
+    todayItems(sb, followedIndustries((me as any)?.industry_follow)),
     sb.from('leads').select('id', { count: 'exact', head: true }).eq('kind', 'won_work').eq('status', 'new'),
     sb.from('job_posts').select('id', { count: 'exact', head: true }).eq('status', 'open'),
     sb.from('verifications').select('id', { count: 'exact', head: true }).eq('result', 'valid').gte('checked_at', iso(-7)),

@@ -5,6 +5,7 @@ import { SignOut } from '@/components/SignOut';
 import { Logo } from '@/components/Logo';
 import { DOT } from '@/lib/tool-colour';
 import { canSee, planFor, opensOn, type Screen } from '@/lib/onboarding';
+import { mustChooseIndustries } from '@/lib/industry-follow';
 
 /**
  * The working chrome — design/leadscout-design-v4.html, kept as a rail.
@@ -17,6 +18,8 @@ import { canSee, planFor, opensOn, type Screen } from '@/lib/onboarding';
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const me = await currentUser(); if (!me) redirect('/login');
+  // Item 18: a new account chooses its industries before any rail screen (/app/onboarding sits outside the rail).
+  if (mustChooseIndustries(me)) redirect('/app/onboarding');
   const sb = supabaseServer();
   const [{ count: leads }, { count: cands }, { count: camps }] = await Promise.all([sb.from('leads').select('id', { count: 'exact', head: true }).eq('status', 'new'), sb.from('candidates').select('id', { count: 'exact', head: true }), sb.from('campaigns').select('id', { count: 'exact', head: true }).eq('status', 'active')]);
   const plan = planFor(me.onboarding_day);
@@ -38,7 +41,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <Item href="/app/today" label="Today" screen="today" tool="today" /><Item href="/app/radar" label="Leads" count={leads ?? 0} screen="radar" tool="leads" /><Item href="/app/verify" label="Verify" count="drop" screen="verify" tool="verify" /><Item href="/app/pitch" label="Pitch" count="reverse" screen="pitch" tool="pitch" /><Item href="/app/candidates" label="Candidates" count={cands ?? 0} screen="candidates" tool="cand" /><Item href="/app/campaigns" label="Campaigns" count={camps ?? 0} screen="campaigns" tool="cand" />
       <div className="hidden lg:block flex-1" />
       {me.role === 'senior' && <Item href="/app/settings" label="Settings · Sources" count="senior" tool="set" />}
-      <div className="text-[12px] text-raildim px-2.5 shrink-0 whitespace-nowrap lg:pt-3 lg:border-t lg:border-white/10"><b className="block text-railink font-medium">{me.name ?? me.email}</b>Day {me.onboarding_day} · {me.role}{me.role !== 'senior' && (me.onboarding_day ?? 99) <= 10 && <span className="hidden lg:block mt-1 text-railink">{plan.goal}</span>}<div className="mt-1.5 -mx-2.5"><SignOut /></div></div>
+      <div className="text-[12px] text-raildim px-2.5 shrink-0 whitespace-nowrap lg:pt-3 lg:border-t lg:border-white/10"><b className="block text-railink font-medium">{me.name ?? me.email}</b>Day {me.onboarding_day} · {me.role}{me.role !== 'senior' && (me.onboarding_day ?? 99) <= 10 && <span className="hidden lg:block mt-1 text-railink">{plan.goal}</span>}<div className="mt-1.5 -mx-2.5 flex items-center"><Link href="/app/preferences" data-preferences-link className="px-2.5 py-1 rounded text-railink hover:bg-white/[.07] text-[12px]">Preferences</Link><SignOut /></div></div>
     </nav>
     <main className="p-4 sm:p-6 sm:px-8 pb-20 min-w-0">{children}</main>
   </div>);
