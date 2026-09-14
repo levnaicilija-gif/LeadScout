@@ -12,6 +12,9 @@ import * as cheerio from 'cheerio';
  */
 const BUTTON = /^(bekijk( deze)?( vacature| vacatures)?|lees meer|meer( info(rmatie)?)?|solliciteer( direct| nu)?|read more|more( info| details)?|view( job| vacancy| details)?|see( job| more| details)?|apply( now| here)?|details|se stilling(en)?|les mer|søk( på stillingen)?| ?ansøg( nu)?|læs mere|mer info|ansök|hae|lisätiedot|weiterlesen|mehr erfahren|jetzt bewerben|postuler|en savoir plus|vacature|vacatures|vacancy|vacancies|job|jobs|stilling|stillinger|trade role|open position|position)$/i;
 
+/** A reference, not a role: a few letters and a number — "REQ-20931", "JR 104522", "ID1924855". */
+const REFERENCE = /^[A-Za-z]{1,5}[\s#:._-]*\d{3,}$/;
+
 /** Boilerplate a site puts in front of every title. */
 const PREFIX = /^(vacature|vacancy|job|stilling|stelle|offre d'emploi|oferta)\s*[-–—:|]\s*/i;
 
@@ -26,6 +29,9 @@ export function cleanTitle(raw?: string | null): string | null {
   if (!stripped || BUTTON.test(stripped)) return null;
   // A title has to say something. One long word is fine — "Serviceelektriker" is a real title.
   if (stripped.length < 4) return null;
+  // A number is a reference, not a role: DOF's advert was stored as "1924855", the job id at the end of its address.
+  // A requisition code ("REQ-20931", "JR 104522") is the same thing with a prefix.
+  if (!/\p{L}{3,}/u.test(stripped) || REFERENCE.test(stripped)) return null;
   return stripped.slice(0, 160);
 }
 
@@ -67,6 +73,7 @@ export function stripFurniture(raw: string, companyName?: string | null): string
 export function needsPageTitle(raw: string, companyName?: string | null): boolean {
   const t = (raw ?? '').trim();
   if (!t) return true;
+  if (!/\p{L}{3,}/u.test(t) || REFERENCE.test(t)) return true;       // a job id or requisition code: ask the page
   if (/\.\.\.|…/.test(t)) return true;                               // the site truncated it
   if (TRAILING_NOISE.test(t)) return true;                           // a separator-joined tail
   if (companyName && new RegExp(companyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(t)) return true;

@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
+import { steadyUser } from './steady-user';
 
 export function supabaseServer() {
   const store = cookies();
@@ -31,7 +32,8 @@ export function supabaseAdmin() {
  */
 export async function currentUser() {
   const sb = supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
+  // A failed auth check is not "not signed in" either: it is asked again first.
+  const { user } = await steadyUser(sb);
   if (!user) return null;
   const { data, error } = await sb.from('users').select('*').eq('id', user.id).maybeSingle();
   if (error) throw new Error(`Signed in as ${user.email} but the users row could not be read: ${error.code} ${error.message}`);

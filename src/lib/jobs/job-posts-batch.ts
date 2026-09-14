@@ -4,7 +4,7 @@ import * as cheerio from 'cheerio';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { httpGet, httpPost } from '@/lib/http';
 import { fetchPage } from '@/lib/fetch-page';
-import { atsListUrl, parseAtsJobs, fetchWorkday, type AtsJob, type AtsType } from '@/lib/ats';
+import { atsListUrl, parseAtsJobs, fetchWorkday, detectAts, type AtsJob, type AtsType } from '@/lib/ats';
 import { claude, MODEL_CLASSIFY, MODEL_EXTRACT } from '@/lib/ai/claude';
 import { logModelCall, Budget, DAILY_BUDGET_EUR } from '@/lib/cost';
 import { inferTrades } from '@/lib/trades';
@@ -130,10 +130,12 @@ function jobLinksFrom(html: string, base: string): AtsJob[] {
   $('a[href]').each((_, el) => {
     const raw = $(el).attr('href') ?? '';
     const title = $(el).text().replace(/\s+/g, ' ').trim();
-    if (title.length < 4 || title.length > 140) return;
+    // A bare job id is kept as a link — the posting page is asked for its title (needsPageTitle) — but never stored as one.
+    const idOnly = /^[\d\s._-]{4,}$/.test(title);
+    if (!idOnly && (title.length < 4 || title.length > 140)) return;
     // Navigation, not a posting.
     // Button text, not a title. cleanTitle knows the phrases in every language we crawl.
-    if (!cleanTitle(title)) return;
+    if (!idOnly && !cleanTitle(title)) return;
     let u: URL;
     try { u = new URL(raw, base); } catch { return; }
     if (!/^https?:$/.test(u.protocol)) return;
@@ -156,7 +158,7 @@ function jobLinksFrom(html: string, base: string): AtsJob[] {
   return out.slice(0, 60);
 }
 
-async function boardFor(c: any): Promise<{ jobs: AtsJob[]; via: string; raw: string } | null> {
+async function boardFor(c: any): Promise<{ jobs: AtsJob[]; via: string; raw: string; found?: { type: AtsType; slug: string } } | null> {
   if (c.ats_type === 'workday' && c.ats_slug) {
     const jobs = await fetchWorkday(c.ats_slug, async (u, body) => {
       const r = await httpPost(u, body, { 'content-type': 'application/json', accept: 'application/json' }, 20000);
@@ -184,6 +186,15 @@ async function boardFor(c: any): Promise<{ jobs: AtsJob[]; via: string; raw: str
   // this is where most Nordic careers pages actually keep their vacancies.
   const rendered = await fetchPage(c.careers_url, { force: 'browser' });
   if (rendered.status !== 'live') return null;
+  // A board the rendered page links to is read as the vendor publishes it, with its real titles and places — not
+  // as bare links whose last path segment would stand in for a title (DOF: dof.workable.com/jobs/1924855).
+  const linked = detectAts(rendered.links.join('\n'));
+  const linkedList = linked ? atsListUrl(linked.type, linked.slug) : null;
+  if (linked && linkedList) {
+    const r = await httpGet(linkedList, { headers: { accept: 'application/json,application/xml,text/xml' } }, 20000);
+    const jobs = r.ok ? parseAtsJobs(linked.type, linked.slug, r.body) : [];
+    if (jobs.length) return { jobs, via: 'ats', raw: r.body, found: linked };
+  }
   const asHtml = rendered.links
     .map((l) => `<a href="${l}">${decodeURIComponent(l.split('/').filter(Boolean).pop() ?? '').replace(/[-_]+/g, ' ')}</a>`)
     .join('');
@@ -229,6 +240,11 @@ export async function runJobPostsBatch(req: Request) {
     stats.companies++;
     try {
       const board = await boardFor(c);
+      // A vendor board found on the rendered page is kept, so the next crawl reads its list directly.
+      if (board?.found && !c.ats_type) {
+        const { error: atsErr } = await db.from('companies').update({ ats_type: board.found.type, ats_slug: board.found.slug }).eq('id', c.id);
+        if (atsErr) writeErrors.push(`${c.name}: the ${board.found.type} board could not be recorded: ${atsErr.message}`.slice(0, 200));
+      }
       if (!board) {
         stats.noBoard++;
         await db.from('companies').update({ last_jobs_crawl_at: new Date().toISOString(), jobs_crawl_status: 'no board' }).eq('id', c.id);

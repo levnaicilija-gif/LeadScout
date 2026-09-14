@@ -422,9 +422,19 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       JSON.stringify({ status: sweepRes.status, tables: sweepRes.body?.tables, cleanupError: sweepRes.body?.cleanupError ?? null, summary: sweepRes.body?.summary ?? sweepRes.body?.error }));
 
     // Item 17: each advert in the Hiring now drawer says how old it is and from which date.
-    await page.goto(`${BASE}/app/radar?tab=hiring&company=${agedCo!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    const agedNav = await page.goto(`${BASE}/app/radar?tab=hiring&company=${agedCo!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+      .then(async (r) => {
+        // On 2026-09-14 this landed on /login mid-session. Say which hop sent it there and why the middleware did.
+        const hops: string[] = [];
+        for (let q = r?.request().redirectedFrom(); q; q = q.redirectedFrom()) {
+          const h = await q.response().then((x) => x && `${x.status()} ${x.headers()['x-signin-reason'] ?? 'no reason header (the page, not the middleware)'}`).catch(() => null);
+          if (h) hops.push(h);
+        }
+        return `HTTP ${r?.status() ?? '—'}${hops.length ? ` after redirect ${hops.join(' ← ')}` : ''}`;
+      }, (e) => `navigation failed: ${String(e?.message ?? e).split('\n')[0].slice(0, 120)}`);
     // Wait for the drawer to finish reading, as 4d does, then look. This check failed intermittently on
-    // 2026-09-14 with only "no age line" to show for it; the drawer's own text now comes back with a failure.
+    // 2026-09-14, first with only "no age line" and then "no drawer on the page"; a failure now also says where the
+    // page actually was and what it said, so a redirect, a slow render and a missing company read differently.
     await page.waitForFunction(
       () => { const a = document.querySelector('aside'); return !!a && !a.innerText.includes('Reading what we hold'); },
       undefined, { timeout: 60000 },
@@ -432,7 +442,12 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     await page.waitForSelector('aside [data-age]', { timeout: 30000 }).catch(() => {});
     const advertAge = await page.locator('aside [data-age]').first().innerText().catch(() => '');
     const agedDrawer = advertAge ? '' : await page.locator('aside').first().innerText().catch(() => 'no drawer on the page');
-    check(/ageing · 70 days · posted \d{4}-\d{2}-\d{2}/.test(advertAge), 'the Hiring now drawer dates each advert and marks an ageing one', advertAge || `no age line; the drawer read: ${agedDrawer.replace(/\s+/g, ' ').slice(0, 300)}`);
+    const agedWhere = advertAge ? '' : await page.evaluate(() => ({
+      url: location.pathname + location.search,
+      heading: (document.querySelector('h1') as HTMLElement | null)?.innerText ?? '',
+      text: (document.querySelector('main') ?? document.body)?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 200) ?? '',
+    })).then((w) => ` · ${agedNav} · at ${w.url} · heading "${w.heading}" · page: ${w.text}`, () => ` · ${agedNav} · the page could not be read`);
+    check(/ageing · 70 days · posted \d{4}-\d{2}-\d{2}/.test(advertAge), 'the Hiring now drawer dates each advert and marks an ageing one', advertAge || `no age line; the drawer read: ${agedDrawer.replace(/\s+/g, ' ').slice(0, 300)}${agedWhere}`);
 
     // 5 — lead drawer: one tool, end to end
     await page.goto(`${BASE}/app/radar?lead=${lead!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });

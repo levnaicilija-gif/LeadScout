@@ -81,6 +81,9 @@ export async function findOrCreateCompany(db: SupabaseClient, input: CompanyInpu
     country: input.country ?? null,
     sector: input.sector ?? null,
     employer_type: det.employerType,
+    // Said to be a guess from the name, so it can never pass for a careers-page reading. Unlabelled, a name guess
+    // that survived a failed classification looked exactly like one that succeeded.
+    ...(det.employerType !== 'unknown' ? { employer_type_source: 'name', employer_type_reason: det.reason } : {}),
     source: input.source ?? null,
     source_url: input.sourceUrl ?? null,
   }).select('id, name').single();

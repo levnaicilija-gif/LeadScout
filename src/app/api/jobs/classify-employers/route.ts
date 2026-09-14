@@ -33,7 +33,10 @@ export const POST = (req: Request) => run(req);
 
 const Verdict = z.object({
   employer_type: z.enum(['end_client', 'epc_contractor', 'staffing_agency', 'unknown']),
-  evidence: z.string().max(300),
+  // Trimmed, not refused. A reply whose sentence ran past 300 characters was a sound classification thrown away
+  // whole: 57 companies stored "could not be read: too_big" as their evidence, 51 stayed unknown, and 6 kept a guess
+  // from their name (EnBW Offshore Wind Norway, a wind-farm owner, as an EPC contractor).
+  evidence: z.string().transform((s) => (s.length > 300 ? `${s.slice(0, 297).trimEnd()}…` : s)),
 });
 
 const SYSTEM = `You are reading a company's own careers page for RFBT, a staffing company that supplies skilled trades.
@@ -98,7 +101,7 @@ async function run(req: Request) {
   if (budget.exhausted) return NextResponse.json({ ok: true, stopped: 'daily budget already spent', spentToday: Number(budget.totalToday.toFixed(4)) });
 
   // Companies with a board that no person has ruled on and this job has not yet read.
-  let q = db.from('companies').select('id, name, domain, careers_url, employer_type, employer_type_override')
+  let q = db.from('companies').select('id, name, domain, careers_url, employer_type, employer_type_override, employer_type_source')
     .eq('careers_status', 'found').is('employer_type_override', null).is('employer_type_checked_at', null)
     .order('id').limit(batch);
   if (only) q = q.ilike('name', `%${only}%`);
@@ -156,7 +159,14 @@ async function run(req: Request) {
       }
     } catch (e: any) {
       unreadable++;
-      await db.from('companies').update({ employer_type_checked_at: new Date().toISOString(), employer_type_evidence: `could not be read: ${String(e?.message ?? e).slice(0, 120)}` }).eq('id', c.id);
+      // The type is left as it was, and says what it is: a company whose page could not be classified keeps a
+      // guess from its name, and that guess must never read as a careers-page answer.
+      const nameGuess = c.employer_type && c.employer_type !== 'unknown';
+      await db.from('companies').update({
+        employer_type_checked_at: new Date().toISOString(),
+        employer_type_evidence: `could not be read: ${String(e?.message ?? e).slice(0, 120)}`,
+        ...(nameGuess && !c.employer_type_source ? { employer_type_source: 'name', employer_type_reason: 'careers page could not be classified; the type shown is a guess from the name' } : {}),
+      }).eq('id', c.id);
     }
   });
 

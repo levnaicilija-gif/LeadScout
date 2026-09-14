@@ -24,6 +24,9 @@ const DETECTORS: Detector[] = [
   { type: 'lever', re: /jobs\.lever\.co\/([a-z0-9_-]+)/i, slug: (m) => m[1] },
   { type: 'ashby', re: /jobs\.ashbyhq\.com\/([a-z0-9_-]+)/i, slug: (m) => m[1] },
   { type: 'workable', re: /apply\.workable\.com\/([a-z0-9_-]+)/i, slug: (m) => m[1] },
+  // A company's own Workable host — dof.workable.com/jobs/1924855 — is the same board. Missing it left DOF's list to
+  // be read as bare page links, and a job id became the stored title.
+  { type: 'workable', re: /(?:https?:)?\/\/(?!apply\.|www\.)([a-z0-9-]+)\.workable\.com/i, slug: (m) => m[1] },
   { type: 'recruitee', re: /([a-z0-9-]+)\.recruitee\.com/i, slug: (m) => m[1] },
   { type: 'teamtailor', re: /([a-z0-9-]+)\.teamtailor\.com/i, slug: (m) => m[1] },
   { type: 'personio', re: /([a-z0-9-]+)\.jobs\.personio\.(?:de|com)/i, slug: (m) => m[1] },

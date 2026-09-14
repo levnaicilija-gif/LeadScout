@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { steadyUser } from '@/lib/supabase/steady-user';
 
 export async function middleware(req: NextRequest) {
   let res = NextResponse.next({ request: { headers: req.headers } });
@@ -21,9 +22,12 @@ export async function middleware(req: NextRequest) {
     },
   });
 
-  const { data: { user } } = await sb.auth.getUser();
+  // A failed auth check is asked again before it counts as signed out; see steadyUser.
+  const { user, reason } = await steadyUser(sb);
   if (req.nextUrl.pathname.startsWith('/app') && !user) {
     const to = NextResponse.redirect(new URL('/login', req.url));
+    // Why this request was sent to sign in, so a bounce mid-session can be told from an expired one.
+    to.headers.set('x-signin-reason', `middleware: ${reason}`);
     // Carry any cookie Supabase just refreshed onto the redirect, or it is lost.
     for (const c of res.cookies.getAll()) to.cookies.set(c);
     return to;
