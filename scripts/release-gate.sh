@@ -32,6 +32,10 @@ step build npx next build
 # Straight after the build and before anything reads as a user. A table a signed-in user cannot read
 # fails the gate here, whatever caused it: code, a migration, or a toggle in the Supabase dashboard.
 RLS_SWEEP_SOURCE=gate step rls-sweep npx tsx --env-file=.env.local scripts/rls-sweep.ts
+# Who may write users. A policy can exist and still be wrong: 0001's let any account change its own role,
+# move itself into any workspace, and change or delete a teammate's row. 0028 closed it on 2026-09-14;
+# this tries those writes with throwaway accounts and fails the gate if a migration or the dashboard reopens it.
+step users-policy npx tsx --env-file=.env.local scripts/users-policy-probe.ts
 
 if [[ " ${FAILED[*]-} " == *" build "* ]]; then
   echo "=== the build failed, so nothing was served or tested against it" | tee -a "$LOG"
