@@ -85,7 +85,7 @@ export async function POST(req: Request) {
   const startedAt = Date.now();
   const companies: any[] = [];
   const workspaceId = pending[0].workspace_id as string;
-  const budget = await Budget.open(db, workspaceId);
+  const budget = await Budget.open(db);
   const report: any[] = [];
 
   for (const co of pending) {

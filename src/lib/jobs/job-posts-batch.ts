@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import * as cheerio from 'cheerio';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { crawlWorkspace } from '@/lib/crawl-workspace';
 import { httpGet, httpPost } from '@/lib/http';
 import { fetchPage } from '@/lib/fetch-page';
 import { atsListUrl, parseAtsJobs, fetchWorkday, detectAts, type AtsJob, type AtsType } from '@/lib/ats';
@@ -210,9 +211,10 @@ export async function runJobPostsBatch(req: Request) {
   const cap = Number(p.get('cap') ?? DAILY_BUDGET_EUR);
   const only = p.get('only');
 
-  const { data: ws } = await db.from('workspaces').select('id').limit(1).maybeSingle();
-  if (!ws) return NextResponse.json({ error: 'no workspace' }, { status: 400 });
-  const budget = await Budget.open(db, ws.id, cap);
+  // Named, never "the first workspace": with two workspaces an unordered limit(1) could file this job's work under either.
+  const ws = await crawlWorkspace(db).then((id) => ({ id, error: '' }), (e: Error) => ({ id: '', error: e.message }));
+  if (!ws.id) return NextResponse.json({ error: ws.error }, { status: 500 });
+  const budget = await Budget.open(db, cap);
   if (budget.exhausted) {
     return NextResponse.json({ ok: true, stopped: 'daily budget already spent', spentToday: budget.totalToday.toFixed(2), cap });
   }

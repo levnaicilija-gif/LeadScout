@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { crawlWorkspace } from '@/lib/crawl-workspace';
 import { fetchPage, articleLinks } from '@/lib/fetch-page';
 import { ruleFor } from '@/lib/source-rules';
 import { claude, MODEL_CLASSIFY, MODEL_EXTRACT, appearsIn } from '@/lib/ai/claude';
@@ -85,9 +86,10 @@ async function run(req: Request) {
     return NextResponse.json({ ok: true, skipped: 'migration 0014 has not been applied yet' });
   }
 
-  const { data: ws } = await db.from('workspaces').select('id').limit(1).maybeSingle();
-  if (!ws) return NextResponse.json({ error: 'no workspace' }, { status: 400 });
-  const budget = await Budget.open(db, ws.id, cap);
+  // Named, never "the first workspace": with two workspaces an unordered limit(1) could file this job's work under either.
+  const ws = await crawlWorkspace(db).then((id) => ({ id, error: '' }), (e: Error) => ({ id: '', error: e.message }));
+  if (!ws.id) return NextResponse.json({ error: ws.error }, { status: 500 });
+  const budget = await Budget.open(db, cap);
   if (budget.exhausted) return NextResponse.json({ ok: true, stopped: 'daily budget already spent', spentToday: Number(budget.totalToday.toFixed(4)) });
 
   // Only boards worth the money: the tier Haiku scored, least recently crawled first.

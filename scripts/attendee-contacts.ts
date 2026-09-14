@@ -52,7 +52,7 @@ type Target = { id: string; name: string; domain: string | null; set: string };
   for (const p of posts ?? []) targets.set((p as any).company_id, asTarget((p as any).companies, 'Hiring now'));
   for (const l of leads ?? []) if (!targets.has((l as any).company_id)) targets.set((l as any).company_id, asTarget((l as any).companies, 'won work'));
 
-  const budget = await Budget.open(db, W);
+  const budget = await Budget.open(db);
   console.log(`spend today before this run €${budget.totalToday.toFixed(3)} of €${budget.capEur} · ${search ? 'web search allowed within the cap' : 'free discovery only (add --search)'} · ${write ? 'writing contacts' : 'dry run'}`);
   const tally = { people: 0, noSite: 0, freeFound: 0, searchFound: 0, notFound: 0, skippedCap: 0, stored: 0, updated: 0 };
   const lines: string[] = [];

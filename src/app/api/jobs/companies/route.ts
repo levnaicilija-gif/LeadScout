@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { crawlWorkspace } from '@/lib/crawl-workspace';
 import { detectEmployerType } from '@/lib/agency-detector';
 import { sectorFor } from '@/lib/sector';
 import { tierFor, regionFor, countryFromText } from '@/lib/geo';
@@ -35,8 +36,9 @@ async function run(req: Request) {
   const params = new URL(req.url).searchParams;
   const mode = params.get('mode') ?? 'universe';
 
-  const { data: ws } = await db.from('workspaces').select('id').limit(1).maybeSingle();
-  if (!ws) return NextResponse.json({ error: 'no workspace' }, { status: 400 });
+  // Named, never "the first workspace": with two workspaces an unordered limit(1) could file this job's work under either.
+  const ws = await crawlWorkspace(db).then((id) => ({ id, error: '' }), (e: Error) => ({ id: '', error: e.message }));
+  if (!ws.id) return NextResponse.json({ error: ws.error }, { status: 500 });
   const workspace = ws.id as string;
 
   const { data: agencies } = await db.from('companies').select('name').eq('employer_type', 'staffing_agency');

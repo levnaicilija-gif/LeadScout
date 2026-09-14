@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { crawlWorkspace } from '@/lib/crawl-workspace';
 import { httpGet } from '@/lib/http';
 import { claude, MODEL_CLASSIFY } from '@/lib/ai/claude';
 import { logModelCall } from '@/lib/cost';
@@ -106,8 +107,9 @@ async function run(req: Request) {
   const chain = p.get('chain') !== '0';
   const batchesLeft = Number(p.get('batchesLeft') ?? 25);
 
-  const { data: ws } = await db.from('workspaces').select('id').limit(1).maybeSingle();
-  if (!ws) return NextResponse.json({ error: 'no workspace' }, { status: 400 });
+  // Named, never "the first workspace": with two workspaces an unordered limit(1) could file this job's work under either.
+  const ws = await crawlWorkspace(db).then((id) => ({ id, error: '' }), (e: Error) => ({ id: '', error: e.message }));
+  if (!ws.id) return NextResponse.json({ error: ws.error }, { status: 500 });
 
   // The cursor is "not yet classified" rather than an offset, so a batch that fails is simply
   // picked up again by the next run instead of being skipped over.

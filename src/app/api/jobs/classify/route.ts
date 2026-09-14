@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { crawlWorkspace } from '@/lib/crawl-workspace';
 import { claude, MODEL_CLASSIFY } from '@/lib/ai/claude';
 import { logModelCall, Budget } from '@/lib/cost';
 export const maxDuration = 300;
@@ -54,11 +55,12 @@ async function run(req: Request) {
   const limit = Number(p.get('limit') ?? 1500);
   const size = Number(p.get('batch') ?? 30);
 
-  const { data: ws } = await db.from('workspaces').select('id').limit(1).maybeSingle();
-  if (!ws) return NextResponse.json({ error: 'no workspace' }, { status: 400 });
+  // Named, never "the first workspace": with two workspaces an unordered limit(1) could file this job's work under either.
+  const ws = await crawlWorkspace(db).then((id) => ({ id, error: '' }), (e: Error) => ({ id: '', error: e.message }));
+  if (!ws.id) return NextResponse.json({ error: ws.error }, { status: 500 });
   const workspace = ws.id as string;
 
-  const budget = await Budget.open(db, workspace, Number(p.get('cap') ?? 5));
+  const budget = await Budget.open(db, Number(p.get('cap') ?? 5));
   if (budget.exhausted) return NextResponse.json({ ok: false, reason: 'daily budget already spent', spentToday: budget.totalToday });
 
   // Only the ones the keyword pass could not place, and only inside the gate.

@@ -41,19 +41,40 @@ export async function logModelCall(db: SupabaseClient, workspaceId: string, mode
   return eur;
 }
 
-/** Spend so far today, in EUR. */
-export async function spentTodayEur(db: SupabaseClient, workspaceId: string): Promise<number> {
-  const day = new Date().toISOString().slice(0, 10);
-  const { data } = await db.from('cost_log').select('eur').eq('workspace_id', workspaceId).eq('day', day);
-  return (data ?? []).reduce((a, r: any) => a + Number(r.eur ?? 0), 0);
+/**
+ * Spend recorded in cost_log, in EUR, across every workspace — the crawl is shared infrastructure, so its cap is one
+ * system-wide figure. Read with the service role: a signed-in client sees only its own workspace's rows.
+ *
+ * This was per workspace. On 2026-09-14 a second workspace was created by a sign-up, and a job that picked it would have
+ * seen €0 spent and been given another €2.00 for the day. It also read one unpaged query, which stops at 1,000 rows;
+ * 10 September logged 944. Every row is now paged in, so the sum cannot quietly fall short.
+ */
+export async function spentEur(db: SupabaseClient, filter: { day?: string; kind?: string } = {}): Promise<number> {
+  let total = 0;
+  for (let from = 0; ; from += 1000) {
+    let q = db.from('cost_log').select('eur').order('id').range(from, from + 999);
+    if (filter.day) q = q.eq('day', filter.day);
+    if (filter.kind) q = q.eq('kind', filter.kind);
+    const { data, error } = await q;
+    // A cap that cannot read what was spent must not report €0 and let a run through.
+    if (error) throw new Error(`spend could not be read: ${error.message}`);
+    total += (data ?? []).reduce((a, r: any) => a + Number(r.eur ?? 0), 0);
+    if (!data || data.length < 1000) return total;
+  }
 }
 
-/** A run-scoped budget: knows what was already spent today and refuses to go past the cap. */
+/** Spend so far today (UTC), in EUR, across every workspace. */
+export async function spentTodayEur(db: SupabaseClient): Promise<number> {
+  return spentEur(db, { day: new Date().toISOString().slice(0, 10) });
+}
+
+/** A run-scoped budget: knows what was already spent today, system-wide, and refuses to go past the cap. */
 export class Budget {
   private spent = 0;
   constructor(private readonly already: number, readonly capEur: number) {}
-  static async open(db: SupabaseClient, workspaceId: string, capEur = DAILY_BUDGET_EUR) {
-    return new Budget(await spentTodayEur(db, workspaceId), capEur);
+  static async open(db: SupabaseClient, capEur = DAILY_BUDGET_EUR) {
+    // Never above the daily budget, whatever a caller passes.
+    return new Budget(await spentTodayEur(db), Math.min(Number(capEur) || 0, DAILY_BUDGET_EUR));
   }
   get totalToday() { return this.already + this.spent; }
   get remaining() { return Math.max(0, this.capEur - this.totalToday); }

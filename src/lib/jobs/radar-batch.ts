@@ -23,6 +23,7 @@ import { attendeesAt } from '@/lib/attendee-match';
 import { classifyAndStoreLead, refreshCompanyIndustries } from '@/lib/industry-store';
 import { datelineFromText } from '@/lib/page-dates';
 import { Budget, logModelCall, DAILY_BUDGET_EUR } from '@/lib/cost';
+import { crawlWorkspace } from '@/lib/crawl-workspace';
 import type { UsageMeter } from '@/lib/ai/claude';
 
 /**
@@ -82,9 +83,10 @@ export async function runRadarBatch(req: Request) {
   // spent about €2.50 more, and the cap never saw a cent of it. ?cap= overrides it for one run.
   //
   // A spent cap hard-stops: no further page is fetched and stored, and the tick starts no further batch.
-  const workspaceId = (sources ?? [])[0]?.workspace_id ?? (await db.from('workspaces').select('id').limit(1).maybeSingle()).data?.id ?? null;
+  // The batch's own sources name the workspace; with none, the crawl's named workspace — never "the first workspace".
+  const workspaceId = (sources ?? [])[0]?.workspace_id ?? (await crawlWorkspace(db).catch(() => null));
   const cap = Number(params.get('cap') ?? DAILY_BUDGET_EUR);
-  const budget = await Budget.open(db, workspaceId ?? '', cap);
+  const budget = await Budget.open(db, cap);
 
   const more = (sources ?? []).length === take && take > 0;
 

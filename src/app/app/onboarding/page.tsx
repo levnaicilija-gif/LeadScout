@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { currentUser, supabaseAdmin, supabaseServer } from '@/lib/supabase/server';
+import { requireUser, supabaseAdmin, supabaseServer } from '@/lib/supabase/server';
 import { canFollowAll } from '@/lib/industry-follow';
 import { hasIndustryFollow } from '@/lib/schema-features';
 import { followOptionCounts } from '@/lib/industry-counts';
@@ -16,8 +16,7 @@ export const dynamic = 'force-dynamic';
  * when the account's entitlement has no cap.
  */
 export default async function Onboarding() {
-  const me = await currentUser();
-  if (!me) redirect('/login');
+  const me = await requireUser();
   const admin = supabaseAdmin();
   if (!(await hasIndustryFollow(admin))) redirect('/app');
   const { data: row } = await admin.from('users').select('industry_follow, industry_limit').eq('id', me.id).single();

@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
+import { redirect } from 'next/navigation';
 import { steadyUser } from './steady-user';
 
 export function supabaseServer() {
@@ -31,12 +32,30 @@ export function supabaseAdmin() {
  * my_workspace() hid itself (migration 0003).
  */
 export async function currentUser() {
+  return (await userOrWhy()).me;
+}
+
+/**
+ * The signed-in user for a screen, or a redirect to /login that says why.
+ *
+ * The middleware labels its own redirects (`x-signin-reason`), but a screen's redirect said nothing. On 2026-09-14/15
+ * smoke was sent to /login by the screen itself — the middleware had let the request through — several minutes into a
+ * run, straight after the RLS sweep, and the next load was signed in again. The session lives 3,600 s
+ * (`scripts/session-length-probe.ts`), so it was not expiry. `?why=` names the auth answer the screen got.
+ */
+export async function requireUser() {
+  const { me, why } = await userOrWhy();
+  if (!me) redirect(`/login?why=${encodeURIComponent(`page: ${why}`)}`);
+  return me;
+}
+
+async function userOrWhy() {
   const sb = supabaseServer();
   // A failed auth check is not "not signed in" either: it is asked again first.
-  const { user } = await steadyUser(sb);
-  if (!user) return null;
+  const { user, reason } = await steadyUser(sb);
+  if (!user) return { me: null, why: reason };
   const { data, error } = await sb.from('users').select('*').eq('id', user.id).maybeSingle();
   if (error) throw new Error(`Signed in as ${user.email} but the users row could not be read: ${error.code} ${error.message}`);
   if (!data) throw new Error(`Signed in as ${user.email} but no users row exists — the sign-up trigger did not run.`);
-  return { ...data, email: user.email };
+  return { me: { ...data, email: user.email }, why: '' };
 }

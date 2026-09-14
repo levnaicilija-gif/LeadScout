@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { crawlWorkspace } from '@/lib/crawl-workspace';
 import { httpGet } from '@/lib/http';
 import { fetchPage } from '@/lib/fetch-page';
 import { claude, MODEL_CLASSIFY } from '@/lib/ai/claude';
@@ -99,9 +100,10 @@ async function run(req: Request) {
     return NextResponse.json({ ok: true, skipped: 'migration 0017 has not been applied yet' });
   }
 
-  const { data: ws } = await db.from('workspaces').select('id').limit(1).maybeSingle();
-  if (!ws) return NextResponse.json({ error: 'no workspace' }, { status: 400 });
-  const budget = await Budget.open(db, ws.id, cap);
+  // Named, never "the first workspace": with two workspaces an unordered limit(1) could file this job's work under either.
+  const ws = await crawlWorkspace(db).then((id) => ({ id, error: '' }), (e: Error) => ({ id: '', error: e.message }));
+  if (!ws.id) return NextResponse.json({ error: ws.error }, { status: 500 });
+  const budget = await Budget.open(db, cap);
   if (budget.exhausted) return NextResponse.json({ ok: true, stopped: 'daily budget already spent', spentToday: Number(budget.totalToday.toFixed(4)) });
 
   // Companies with a board that no person has ruled on and this job has not yet read.

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { crawlWorkspace } from '@/lib/crawl-workspace';
 import { httpGet } from '@/lib/http';
 export const maxDuration = 300;
 
@@ -92,8 +93,9 @@ async function run(req: Request) {
   const country = registry === 'brreg' ? 'NO' : 'GB';
   const lookup = registry === 'brreg' ? brreg : companiesHouse;
 
-  const { data: ws } = await db.from('workspaces').select('id').limit(1).maybeSingle();
-  if (!ws) return NextResponse.json({ error: 'no workspace' }, { status: 400 });
+  // Named, never "the first workspace": with two workspaces an unordered limit(1) could file this job's work under either.
+  const ws = await crawlWorkspace(db).then((id) => ({ id, error: '' }), (e: Error) => ({ id: '', error: e.message }));
+  if (!ws.id) return NextResponse.json({ error: ws.error }, { status: 500 });
 
   const { data: todo } = await db.from('companies')
     .select('id, name, domain, employees')

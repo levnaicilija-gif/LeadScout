@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { crawlWorkspace } from '@/lib/crawl-workspace';
 import { fetchPage } from '@/lib/fetch-page';
 import { httpGet } from '@/lib/http';
 import { DIRECTORIES, NOT_A_MEMBER, type Directory } from '@/lib/directories';
@@ -65,8 +66,9 @@ async function run(req: Request) {
   const wanted: Directory[] = key ? DIRECTORIES.filter((d) => d.key === key) : DIRECTORIES.filter((d) => d.status === (p.get('status') ?? 'ok'));
   if (wanted.length === 0) return NextResponse.json({ error: 'no directory matched', known: DIRECTORIES.map((d) => `${d.key}:${d.status}`) }, { status: 400 });
 
-  const { data: ws } = await db.from('workspaces').select('id').limit(1).maybeSingle();
-  if (!ws) return NextResponse.json({ error: 'no workspace' }, { status: 400 });
+  // Named, never "the first workspace": with two workspaces an unordered limit(1) could file this job's work under either.
+  const ws = await crawlWorkspace(db).then((id) => ({ id, error: '' }), (e: Error) => ({ id: '', error: e.message }));
+  if (!ws.id) return NextResponse.json({ error: ws.error }, { status: 500 });
   const workspace = ws.id as string;
 
   // The universe, keyed for matching: by canonical name and by its first significant word.

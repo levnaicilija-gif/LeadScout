@@ -1,5 +1,4 @@
-import { currentUser } from '@/lib/supabase/server';
-import { redirect } from 'next/navigation';
+import { requireUser } from '@/lib/supabase/server';
 import { HydratedMark } from '@/components/HydratedMark';
 
 /**
@@ -8,7 +7,6 @@ import { HydratedMark } from '@/components/HydratedMark';
  * neither can inherit the other's. HydratedMark tells scripts when a screen can be tapped.
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const me = await currentUser();
-  if (!me) redirect('/login');
+  const me = await requireUser();
   return <>{children}<HydratedMark /></>;
 }

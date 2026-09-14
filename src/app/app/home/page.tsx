@@ -1,12 +1,12 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { supabaseServer, currentUser } from '@/lib/supabase/server';
+import { supabaseServer, supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { followedIndustries, mustChooseIndustries } from '@/lib/industry-follow';
 import { SignOut } from '@/components/SignOut';
 import { todayItems, whenLabel, HOW_THIS_LIST_IS_MADE } from '@/lib/today';
 import { HomeCards } from '@/components/HomeCards';
 import { Logo } from '@/components/Logo';
-import { DAILY_BUDGET_EUR } from '@/lib/cost';
+import { DAILY_BUDGET_EUR, spentTodayEur } from '@/lib/cost';
 import { hasHealthChecks } from '@/lib/schema-features';
 export const dynamic = 'force-dynamic';
 
@@ -42,14 +42,15 @@ export default async function Home() {
     sb.from('candidates').select('id', { count: 'exact', head: true }).or(`availability_from.is.null,availability_from.lte.${today}`),
     sb.from('candidates').select('id', { count: 'exact', head: true }).gt('availability_from', today).lte('availability_from', date(30)),
     sb.from('sources').select('id', { count: 'exact', head: true }).eq('tier', 'priority').eq('enabled', true),
-    sb.from('cost_log').select('eur').eq('day', today),
+    // The cap is system-wide, so the figure beside it is too; the signed-in client sees only its own workspace's rows.
+    spentTodayEur(supabaseAdmin()).catch(() => 0),
     sb.from('articles').select('fetched_at').gte('fetched_at', `${today}T00:00:00Z`).order('fetched_at', { ascending: true }),
     healthOn
       ? sb.from('health_checks').select('ok, source, ran_at, detail').eq('kind', 'rls_sweep').order('ran_at', { ascending: false }).limit(1).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
   ]);
 
-  const spentToday = (spend.data ?? []).reduce((a: number, r: any) => a + Number(r.eur ?? 0), 0);
+  const spentToday = spend;
   // The cap hard-stops automated crawls, so a spent cap shows up as a morning that read nothing —
   // which looks exactly like a quiet news day. Say it instead: amber from 80% of the cap, red at it.
   const capShare = DAILY_BUDGET_EUR > 0 ? spentToday / DAILY_BUDGET_EUR : 0;

@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { crawlWorkspace } from '@/lib/crawl-workspace';
 import { claude, MODEL_CLASSIFY } from '@/lib/ai/claude';
-import { logCost, logModelCall, modelCostEur } from '@/lib/cost';
+import { logCost, logModelCall, modelCostEur, spentEur } from '@/lib/cost';
 export const maxDuration = 300;
 
 /**
@@ -60,13 +61,15 @@ async function run(req: Request) {
   const limit = Number(p.get('limit') ?? 40);
   const capEur = Number(p.get('cap') ?? 100);
 
-  const { data: ws } = await db.from('workspaces').select('id').limit(1).maybeSingle();
-  if (!ws) return NextResponse.json({ error: 'no workspace' }, { status: 400 });
+  // Named, never "the first workspace": with two workspaces an unordered limit(1) could file this job's work under either.
+  const ws = await crawlWorkspace(db).then((id) => ({ id, error: '' }), (e: Error) => ({ id: '', error: e.message }));
+  if (!ws.id) return NextResponse.json({ error: ws.error }, { status: 500 });
   const workspace = ws.id as string;
 
   // Spend already committed to this step, so the cap holds across invocations.
-  const { data: prior } = await db.from('cost_log').select('eur').eq('workspace_id', workspace).eq('kind', 'search');
-  let spent = (prior ?? []).reduce((a, r: any) => a + Number(r.eur ?? 0), 0);
+  // System-wide and paged: search is the shared crawl's spend, and an unpaged read stops at 1,000 rows.
+  const prior = await spentEur(db, { kind: 'search' });
+  let spent = prior;
   if (spent >= capEur) return NextResponse.json({ ok: false, reason: 'search cap already reached', spentEur: Number(spent.toFixed(2)), capEur });
 
   // Companies where somebody who hires trades actually works.

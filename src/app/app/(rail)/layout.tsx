@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { currentUser, supabaseServer } from '@/lib/supabase/server';
+import { requireUser, supabaseServer } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { SignOut } from '@/components/SignOut';
 import { Logo } from '@/components/Logo';
@@ -17,7 +17,7 @@ import { mustChooseIndustries } from '@/lib/industry-follow';
  * the tile on Home and the stripe on the card are recognisably the same tool.
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const me = await currentUser(); if (!me) redirect('/login');
+  const me = await requireUser();
   // Item 18: a new account chooses its industries before any rail screen (/app/onboarding sits outside the rail).
   if (mustChooseIndustries(me)) redirect('/app/onboarding');
   const sb = supabaseServer();
