@@ -168,9 +168,11 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
 
     // 2 — Home
     await page.goto(`${BASE}/app/home`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(1500);
+    // Wait for Home's own pill, not a fixed 1.5 s: on 2026-09-14 production answered slowly (the login page
+    // took 11 s) and this check failed with nothing to show for it while Home was fine on the next run.
+    await page.waitForSelector('[data-pulse="rls"]', { timeout: 60000 }).catch(() => {});
     const home = await bodyOf(page);
-    check(/Today, in order/.test(home) && /How this list is made/.test(home), 'Home renders');
+    check(/Today, in order/.test(home) && /How this list is made/.test(home), 'Home renders', home.replace(/\s+/g, ' ').slice(0, 200) || 'the page was empty');
     check((await page.locator('input[type=search], input[placeholder*="Search" i]').count()) === 0, 'Home has no search bar');
     // The data access check is on Home for everyone. Never red here: the gate's own sweep has just
     // passed. Amber only while no result is kept (before 0026) or no run has reported in 36 hours.
@@ -193,9 +195,11 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
 
     // 4 — Leads
     await page.goto(`${BASE}/app/radar`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(1200);
+    // Wait for a lead row, not a fixed 1.2 s. On 2026-09-14 production rendered Leads in 1.0–1.6 s and eleven
+    // checks failed from this one early read while the screen was fine (checked as a signed-in user straight after).
+    await page.waitForSelector('tr[data-lead-source]', { timeout: 60000 }).catch(() => {});
     const leads = await bodyOf(page);
-    check(/Smoke Offshore AS/.test(leads), 'Leads lists the seeded lead');
+    check(/Smoke Offshore AS/.test(leads), 'Leads lists the seeded lead', /Smoke Offshore AS/.test(leads) ? '' : leads.replace(/\s+/g, ' ').slice(0, 200));
     // Each row carries its source as an attribute and a visible word. Read both off the row that
     // names the company, so the check cannot pass on a tag belonging to some other lead.
     const tags = await page.evaluate(() => Array.from(document.querySelectorAll('tr[data-lead-source]')).map((tr) => ({
@@ -298,7 +302,8 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     // 4b — Hiring now must show the company-anchored posting. This is the check that was
     // missing when Hiring now sat empty over forty real rows.
     await page.goto(`${BASE}/app/radar?tab=hiring`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(1500);
+    // A company row, not a fixed 1.5 s — the same early read that failed Home and Leads on 2026-09-14.
+    await page.waitForSelector('tr[data-row-href]', { timeout: 60000 }).catch(() => {});
     const hiring = await bodyOf(page);
     check(/Smoke Welder/.test(hiring), 'Hiring now lists a company-anchored posting');
     // Any empty state at all is a failure here: one posting was seeded for this workspace, so

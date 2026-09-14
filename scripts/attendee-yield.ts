@@ -67,14 +67,17 @@ const relink = process.argv.includes('--relink');
   console.log(`\nRadar's attendee links on real leads: ${real.length}, of which another company's people: ${wrongLinks.length}`);
   if (!relink) return;
 
+  // Keeps every link that still matches, removes only another company's people, and tops a lead up to ten.
+  // The first version rebuilt each lead's ten from scratch: on 2026-09-14 it removed 70 links, 30 of them wrong and
+  // 40 to the right company's people who were swapped for others at the same company.
   const { data: allLeads } = await db.from('leads').select('id, companies(name)').eq('workspace_id', W).eq('is_test', false);
-  let removed = 0, added = 0;
+  let removed = 0, added = 0, kept = 0;
   for (const l of allLeads ?? []) {
-    const name = (l as any).companies?.name;
-    const want = name ? matchNew(name).slice(0, 10).map((p) => p.id) : [];
-    const have = real.filter((x: any) => x.lead_id === l.id).map((x: any) => x.person_id);
-    const drop = have.filter((id: string) => !want.includes(id));
-    const add = want.filter((id) => !have.includes(id));
+    const name = (l as any).companies?.name ?? '';
+    const mine = real.filter((x: any) => x.lead_id === l.id);
+    const drop = mine.filter((x: any) => !attendeeMatch(name, x.people?.company_name ?? '')).map((x: any) => x.person_id);
+    const keep = mine.filter((x: any) => !drop.includes(x.person_id)).map((x: any) => x.person_id);
+    const add = name ? matchNew(name).map((p) => p.id).filter((id) => !keep.includes(id)).slice(0, Math.max(0, 10 - keep.length)) : [];
     if (drop.length) {
       const { error } = await db.from('lead_people').delete().eq('lead_id', l.id).in('person_id', drop);
       if (error) throw new Error(`could not remove links on ${name}: ${error.message}`);
@@ -85,7 +88,8 @@ const relink = process.argv.includes('--relink');
       if (error) throw new Error(`could not add links on ${name}: ${error.message}`);
       added += add.length;
     }
+    kept += keep.length;
   }
   const { count } = await db.from('lead_people').select('lead_id', { count: 'exact', head: true });
-  console.log(`relinked: ${removed} links to another company's people removed, ${added} added · lead_people now ${count}`);
+  console.log(`relinked: ${removed} links to another company's people removed, ${kept} kept, ${added} added · lead_people now ${count}`);
 })().catch((e) => { console.error(e.message ?? e); process.exit(1); });

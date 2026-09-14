@@ -3,7 +3,10 @@ import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { fetchPage } from '@/lib/fetch-page';
 import { askJson, MODEL_CLASSIFY } from '@/lib/ai/claude';
-import { emailsOn, phoneOn, contactFromPosting, organisationLinks, contactsFromOrgPage } from '@/lib/hiring-contacts';
+import { emailsOn, phoneOn, contactFromPosting, organisationLinks, contactsFromOrgPage, fromAttendeeList } from '@/lib/hiring-contacts';
+import { attendeesAt } from '@/lib/attendee-match';
+import { findPeopleOnSites, type PersonOnPage } from '@/lib/person-on-site';
+import { recordPersonContact } from '@/lib/person-contact';
 import { hasPostingContact } from '@/lib/schema-features';
 import { Budget, logCost } from '@/lib/cost';
 export const maxDuration = 300;
@@ -164,6 +167,34 @@ export async function POST(req: Request) {
         out.orgError = String(e?.message ?? e).slice(0, 120);
       }
       out.orgContacts = orgFound;
+
+      // ---- 1c. attendee-list people at this company, looked for by name on its own sites (src/lib/person-on-site.ts)
+      //
+      // The organisation pass skips news and events, and an "our team at WindEurope" page is where NorSea printed
+      // Klaus Iversen Grau's direct line and address. Free pages only here (sitemap, home-page links); the metered
+      // web search runs from scripts/attendee-contacts.ts, under the daily cap.
+      try {
+        if (Date.now() - startedAt < DEADLINE_MS - 60_000) {
+          const { people, error: peopleError } = await attendeesAt(db, co.workspace_id, co.name, 100);
+          if (peopleError) throw new Error(`attendee list: ${peopleError}`);
+          const offered = fromAttendeeList(people, co.name).map((o) => o.name).filter((n): n is string => !!n);
+          if (offered.length) {
+            // An attendee listed at "NorSea Denmark" is looked for on that company's site too, when it is on file.
+            const theirs = [...new Set(people.filter((p) => offered.includes(p.name)).map((p) => p.company_name))];
+            const { data: rows } = await db.from('companies').select('domain').eq('workspace_id', co.workspace_id).in('name', theirs).not('domain', 'is', null);
+            const hosts = [co.domain, ...(rows ?? []).map((r: any) => r.domain)].filter((h): h is string => !!h);
+            const { found } = hosts.length ? await findPeopleOnSites(offered, hosts, { maxPagesPerSite: 15 }) : { found: new Map<string, PersonOnPage>() };
+            let kept = 0;
+            for (const hit of found.values()) {
+              const listTitle = people.find((p) => p.name === hit.name)?.title ?? null;
+              if ((await recordPersonContact(db, co.id, co.name, hit, listTitle)) !== 'unchanged') kept++;
+            }
+            out.attendeesOnSite = { offered: offered.length, sites: hosts, found: found.size, kept };
+          }
+        }
+      } catch (e: any) {
+        out.attendeeSiteError = String(e?.message ?? e).slice(0, 120);
+      }
 
       await db.from('companies').update(patch).eq('id', co.id);
 
