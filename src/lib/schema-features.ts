@@ -81,3 +81,6 @@ export const hasAwardDate = (sb: SupabaseClient) => hasColumn(sb, 'articles', 'a
 
 /** 0026 keeps the RLS sweep's results (src/lib/rls-sweep.ts) where Home can show them. */
 export const hasHealthChecks = (sb: SupabaseClient) => hasTable(sb, 'health_checks');
+
+/** Item 18 part 2 arrives with 0031: industries and their evidence on leads and companies (src/lib/industry.ts). */
+export const hasIndustries = (sb: SupabaseClient) => hasColumn(sb, 'leads', 'industries');

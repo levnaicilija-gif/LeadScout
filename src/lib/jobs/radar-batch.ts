@@ -20,6 +20,7 @@ import { evaluateNews, RULES_VERSION } from '@/lib/radar-filter';
 import { quotedInText } from '@/lib/quoted-contacts';
 import { canonCompany } from '@/lib/company-identity';
 import { attendeesAt } from '@/lib/attendee-match';
+import { classifyAndStoreLead, refreshCompanyIndustries } from '@/lib/industry-store';
 import { datelineFromText } from '@/lib/page-dates';
 import { Budget, logModelCall, DAILY_BUDGET_EUR } from '@/lib/cost';
 import type { UsageMeter } from '@/lib/ai/claude';
@@ -331,6 +332,8 @@ async function upsertWonLead(db: any, ws: string, x: any, articleId: string, url
     await attachPeople(db, leadId, ws, x.company);
   }
   await db.from('lead_articles').upsert({ lead_id: leadId, article_id: articleId });
+  // Item 18: industries from the story (src/lib/industry-store.ts). Logged, never fatal: the lead is already saved.
+  for (const problem of [await classifyAndStoreLead(db, leadId), await refreshCompanyIndustries(db, co.id)]) if (problem) console.error(`[radar] ${problem}`);
   for (const p of x.people) {
     // A lead without its quoted decision-maker is not a lead. Never let this fail quietly.
     const { error } = await db.from('contacts').upsert(

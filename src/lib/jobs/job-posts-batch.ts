@@ -33,6 +33,7 @@ const authorised = (req: Request) => {
 };
 
 import { postedFields } from '@/lib/posting-date';
+import { refreshCompanyIndustries } from '@/lib/industry-store';
 
 const fingerprint = (s: string) => crypto.createHash('sha1').update(s).digest('hex');
 
@@ -336,6 +337,9 @@ export async function runJobPostsBatch(req: Request) {
         careers_fingerprint: fp, last_jobs_crawl_at: new Date().toISOString(),
         jobs_crawl_status: `${keep.length} of ${board.jobs.length} kept`,
       }).eq('id', c.id);
+      // Item 18: the company's industries follow its open adverts. Reported with the batch, never fatal.
+      const industryProblem = await refreshCompanyIndustries(db, c.id);
+      if (industryProblem) writeErrors.push(industryProblem.slice(0, 200));
     } catch (e: any) {
       await db.from('companies').update({ last_jobs_crawl_at: new Date().toISOString(), jobs_crawl_status: `error: ${String(e?.message ?? e).slice(0, 80)}` }).eq('id', c.id);
     }

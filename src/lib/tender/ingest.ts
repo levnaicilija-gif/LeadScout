@@ -17,6 +17,7 @@
  * picks up: a notice already stored is skipped rather than read twice.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { classifyAndStoreLead, refreshCompanyIndustries } from '@/lib/industry-store';
 import { searchTed, tedStats, AWARD_FIELDS, type TedRecord } from './ted';
 import { AWARD_NOTICE_TYPES, TRADE_CPV, tradeCpvFor } from './cpv';
 import { normalizeAward, awardText, formatValue } from './award';
@@ -259,6 +260,8 @@ export async function ingestTedAwards(db: SupabaseClient, opts: IngestOptions) {
       report.leadsCreated++;
       const { error: linkError } = await db.from('lead_articles').upsert({ lead_id: lead.id, article_id: articleId });
       if (linkError) throw new Error(`could not link the notice to the lead for "${name}": ${linkError.code} ${linkError.message}`);
+      // Item 18: industries from the notice's CPV codes. A failure is reported with the run, and the lead stands.
+      for (const problem of [await classifyAndStoreLead(db, lead.id), await refreshCompanyIndustries(db, hit.id)]) if (problem) reject(`"${name}": ${problem}`);
     }
   }
 

@@ -41,7 +41,7 @@ export function sentences(text: string): string[] {
  * company and says nothing; the first version of this filter read those as the story and let a
  * letter of intent and a consultancy framework through. Prose has ordinary lower-case words.
  */
-const isProse = (s: string) => (s.match(/\b[a-z]{2,}\b/g) ?? []).length >= 6;
+export const isProse = (s: string) => (s.match(/\b[a-z]{2,}\b/g) ?? []).length >= 6;
 
 /** The title and the opening prose that names the company — where a story says what happened. */
 export function lede(title: string, text: string, aliases: string[]): string {
