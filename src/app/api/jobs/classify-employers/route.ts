@@ -5,7 +5,8 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 import { httpGet } from '@/lib/http';
 import { fetchPage } from '@/lib/fetch-page';
 import { claude, MODEL_CLASSIFY } from '@/lib/ai/claude';
-import { logModelCall, Budget } from '@/lib/cost';
+import { logModelCall, Budget, DAILY_BUDGET_EUR } from '@/lib/cost';
+import { verdictPatch } from '@/lib/employer-verdict';
 import { hasEmployerEvidence } from '@/lib/schema-features';
 export const maxDuration = 300;
 
@@ -86,7 +87,10 @@ async function run(req: Request) {
   const db = supabaseAdmin();
   const p = new URL(req.url).searchParams;
   const batch = Math.max(1, Number(p.get('batch') ?? 25));
-  const cap = Number(p.get('cap') ?? 1);
+  // A caller may spend less than the daily budget, never more.
+  const cap = Math.min(Number(p.get('cap') ?? 1) || 0, DAILY_BUDGET_EUR);
+  // A named set (comma-separated ids), read before anything else in the queue: the 57 too_big failures on 2026-09-15.
+  const ids = (p.get('ids') ?? '').split(',').map((s) => s.trim()).filter((s) => /^[0-9a-f-]{36}$/i.test(s));
   const chain = p.get('chain') !== '0';
   const batchesLeft = Number(p.get('batchesLeft') ?? 20);
   const only = p.get('only');
@@ -105,6 +109,7 @@ async function run(req: Request) {
     .eq('careers_status', 'found').is('employer_type_override', null).is('employer_type_checked_at', null)
     .order('id').limit(batch);
   if (only) q = q.ilike('name', `%${only}%`);
+  if (ids.length) q = q.in('id', ids);
   const { data: companies, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -143,20 +148,10 @@ async function run(req: Request) {
       const v = Verdict.parse(JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? '{}'));
       counts[v.employer_type] = (counts[v.employer_type] ?? 0) + 1;
 
-      // Never trade a specific answer for "unknown": the page failing to say so is not evidence
-      // that the earlier answer was wrong.
-      const keepExisting = v.employer_type === 'unknown' && c.employer_type && c.employer_type !== 'unknown';
-      const patch: any = {
-        employer_type_source: 'careers_page',
-        employer_type_evidence: v.evidence,
-        employer_type_checked_at: new Date().toISOString(),
-      };
-      if (!keepExisting) patch.employer_type = v.employer_type;
-
+      // A specific answer is never traded for "unknown", and a kept answer keeps its origin (see verdictPatch).
+      const { patch, changedTo } = verdictPatch(c, v);
       await db.from('companies').update(patch).eq('id', c.id);
-      if (!keepExisting && v.employer_type !== c.employer_type) {
-        changed.push({ company: c.name, from: c.employer_type ?? 'null', to: v.employer_type, evidence: v.evidence });
-      }
+      if (changedTo) changed.push({ company: c.name, from: c.employer_type ?? 'null', to: changedTo, evidence: v.evidence });
     } catch (e: any) {
       unreadable++;
       // The type is left as it was, and says what it is: a company whose page could not be classified keeps a
