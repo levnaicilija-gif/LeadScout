@@ -372,3 +372,49 @@ groupings, the server-side entitlement check demonstrated explicitly (not just
 claimed), watchlist candidates and their cost, thin-category flags, and a
 walk-through of the first-time-user experience confirming no empty/broken state
 is possible.
+
+-------------------------------------------------------------------------------
+19. COMPOUND SIGNAL SCORING
+-------------------------------------------------------------------------------
+A company hit by multiple independent signals in a short window (a tender
+award, a news mention, a Hiring now posting, a repost) is a stronger hiring-wave
+indicator than any single signal alone. Right now each lead is scored
+independently with no awareness of a company's other concurrent signals.
+
+Definition of "independent signal" for a company, within a rolling 60-day
+window:
+1. A tender-award lead (from TED)
+2. A news-sourced won-work lead
+3. An open Hiring now posting
+4. A posting re-advertised (already tracked by item 17's priority-raise logic)
+
+Scoring change:
+- When a company has 2+ of these signal types active within the window, boost
+  the fit/pressure score of ALL of that company's leads/postings — don't just
+  boost one and leave the others unchanged.
+- The boost amount and its reasoning must be visible and explained on the lead/
+  posting itself (e.g. "boosted: also has an active Hiring now posting" or
+  "boosted: tender award + news mention, 12 days apart") — same transparency
+  standard as "why this score" elsewhere. Never a silent number change.
+- This does NOT invent a new score from nothing — it's a multiplier/boost on
+  top of the existing fit/pressure calculation, using only signals already
+  captured in the database. No model call needed — pure logic over data
+  already stored.
+- A company with only one signal type is entirely unaffected — no penalty for
+  having just one signal, only a boost for having more than one.
+
+Report: how many current companies have 2+ concurrent signal types, and what
+their boosted vs. unboosted scores look like — a real before/after sample, not
+just a count.
+
+Commit after each step, two lines per step. Full release gate before every
+commit, screen checks as a signed-in user, both widths. Report the sample
+before/after and confirm the boost reasoning is visible on screen, not hidden
+in the calculation.
+
+Decision on item 19 (owner, 2026-09-15): signal types 3 and 4 are ONE type. A
+re-advertised posting is a stronger version of "has an open posting", not
+independent corroboration from a separate source. A company reaches the 2+
+threshold only by combining a posting with something genuinely separate — a
+tender award or a news mention — never by reposting the same job. Three types
+in all: tender award, news mention, open posting (re-adverts included).

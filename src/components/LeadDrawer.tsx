@@ -64,6 +64,7 @@ export function LeadDrawer({ lead }: { lead: any }) {
     <div className="flex items-center gap-2 flex-wrap text-[13px] mb-4"><span data-source={src} className={LEAD_SOURCE_BADGE[src]}>{LEAD_SOURCE_LABEL[src]}</span><span className={`st ${lead.source_fetch_status === 'live' ? 'st-ok' : 'st-bad'}`}>{lead.source_fetch_status}</span><a className="text-accent" href={lead.source_url} target="_blank" rel="noopener">Open source</a>{lead.confirmed_at ? <span className="text-ok">✓ confirmed</span> : <button className="btn" onClick={async () => { await call('confirm'); r.refresh(); }}>Confirm I checked it</button>}</div>
     {lead.source_flag && lead.source_flag !== 'ok' && <div data-source-flag={lead.source_flag} className="-mt-2 mb-4 text-[13px] text-warn">{SOURCE_FLAG_LABEL[lead.source_flag] ?? lead.source_flag}{lead.source_flag_why ? ` — ${lead.source_flag_why}` : ''}</div>}
     {lead.age && <div data-age={lead.age.state} className={`-mt-2 mb-4 text-[13px] ${AGE_TEXT[lead.age.state as AgeState]}`}>{lead.age.state === 'unknown' ? '' : `${lead.age.label} — `}{lead.age.why}</div>}
+    {lead.fit_boost && <div data-compound-why className="-mt-2 mb-4 text-[13px] text-accent">{lead.fit_boost.note}</div>}
     {others.length > 0 && <div className="-mt-2 mb-4 text-[13px]" data-corroboration>
       <div className="text-[12px] text-ink3 mb-1">Also reported — the same contract, linked here instead of a second lead</div>
       <ul className="grid gap-1.5">{others.map((a: any) => { const k = leadSource(a.url); return (

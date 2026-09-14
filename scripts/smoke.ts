@@ -62,6 +62,22 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
   }).select().single();
   await markTest(admin, 'leads', [lead!.id, tenderLead!.id]);
 
+  // Item 19: a company with two independent signal types today — a tender award whose notice states no date (so it is
+  // dated by our first reading) and an open posting — so its lead's fit 60 is boosted ×1.1 to 66, reason on screen.
+  const { data: compoundCo } = await admin.from('companies').insert({ workspace_id: workspace, name: 'Smoke Compound AS', employer_type: 'end_client', country: 'NO' }).select().single();
+  await markTest(admin, 'companies', [compoundCo!.id]);
+  const { data: compoundLead } = await admin.from('leads').insert({
+    workspace_id: workspace, company_id: compoundCo!.id, kind: 'won_work', project_name: 'Smoke compound award',
+    project_location: 'Bergen', country: 'NO', trades_inferred: ['welder'], fit_score: 60, status: 'new', is_test: true,
+    source_url: `https://ted.europa.eu/en/notice/-/detail/smoke-compound-${Date.now()}`, source_fetched_at: new Date().toISOString(),
+  }).select().single();
+  const { error: compoundJobErr } = await admin.from('job_posts').insert({
+    company_id: compoundCo!.id, source_url: `https://example.invalid/smoke-compound-job-${Date.now()}`, title: 'Smoke Compound Welder', role: 'Smoke Compound Welder',
+    trades: ['welder'], location: 'Bergen, NO', country: 'NO', status: 'open', via: 'http', is_trade: true, posted_at: new Date().toISOString().slice(0, 10),
+    first_seen_at: new Date().toISOString(), last_seen_at: new Date().toISOString(), is_test: true,
+  });
+  if (compoundJobErr) console.log(`  ...  could not seed the compound-signal posting: ${compoundJobErr.message}`);
+
   // Item 17: the news lead's article is 100 days old — a stale signal. articles has no is_test
   // column, so this row is marked by its example.invalid URL and deleted by id under that URL only.
   const agedOn = new Date(Date.now() - 100 * 86_400_000).toISOString().slice(0, 10);
@@ -234,6 +250,46 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     check(unknownAt >= 0 && ageRows[unknownAt].age === 'unknown' && ageRows[unknownAt].label === 'age unknown' && ageRows[unknownAt].opacity === '1',
       'an undated lead says "age unknown" and is not dimmed', JSON.stringify(ageRows[unknownAt] ?? 'row not found'));
     check(unknownAt >= 0 && staleAt > unknownAt, 'the stale lead sorts below the undated one despite a higher fit', `undated at ${unknownAt}, stale at ${staleAt}`);
+
+    // Item 19 on Leads: Smoke Compound AS has a tender award and an open posting today, so its lead reads 66, not 60, and
+    // the row names both signals without hover. Smoke Offshore AS (a 100-day story and a posting: one type inside 60
+    // days) and Smoke Tender Winner AS (an award only) carry no boost.
+    const boostRows = await page.evaluate(() => Array.from(document.querySelectorAll('tr[data-lead-source]')).map((tr) => ({
+      name: (tr as HTMLElement).innerText.split('\n')[0],
+      boost: (tr.querySelector('[data-compound]') as HTMLElement | null)?.innerText ?? '',
+      from: (tr.querySelector('[data-fit-from]') as HTMLElement | null)?.innerText ?? '',
+      text: (tr as HTMLElement).innerText.replace(/\s+/g, ' '),
+    })));
+    const compoundRow = boostRows.find((r) => r.name.includes('Smoke Compound AS'));
+    check(!!compoundRow && /boosted ×1\.1: tender award \+ open Hiring now posting/.test(compoundRow.boost) && /boosted, was 60/.test(compoundRow.from) && /\b66\b/.test(compoundRow.text),
+      'item 19: a company with a tender award and an open posting shows its lead boosted 60 → 66, the signals named on the row', JSON.stringify(compoundRow ?? 'row not found'));
+    const singles = boostRows.filter((r) => /Smoke Offshore AS|Smoke Tender Winner AS/.test(r.name));
+    check(singles.length === 2 && singles.every((r) => !r.boost && !r.from), 'item 19: a company with one signal type inside 60 days carries no boost', JSON.stringify(singles));
+    await page.goto(`${BASE}/app/radar?lead=${compoundLead!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('aside [data-compound-why]', { timeout: 30000 }).catch(() => {});
+    const compoundWhy = await page.locator('aside [data-compound-why]').first().innerText().catch(() => '');
+    check(/^Boosted ×1\.1 — 2 independent signals inside 60 days, on the same day: tender award \d{4}-\d{2}-\d{2} \(first read by Radar/.test(compoundWhy)
+      && /open Hiring now posting \d{4}-\d{2}-\d{2} \(advert posted\)/.test(compoundWhy) && /Fit 60 → 66\./.test(compoundWhy),
+      'item 19: the lead drawer says why the fit was boosted, each signal with its date and what the date is', compoundWhy || 'no reason in the drawer');
+    const boostPhone = await browser.newContext({ storageState: await page.context().storageState(), viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    try {
+      const m = await boostPhone.newPage();
+      await m.goto(`${BASE}/app/radar`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await m.waitForSelector('tr[data-lead-source]', { timeout: 60000 }).catch(() => {});
+      const onPhone = await m.evaluate(() => {
+        const tr = Array.from(document.querySelectorAll('tr[data-lead-source]')).find((t) => (t as HTMLElement).innerText.includes('Smoke Compound AS'));
+        const el = tr?.querySelector('[data-compound]') as HTMLElement | null;
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { text: el.innerText, left: Math.round(r.left), right: Math.round(r.right), shown: r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden' };
+      });
+      check(!!onPhone && onPhone.shown && onPhone.left >= 0 && onPhone.right <= 390 && /boosted ×1\.1: tender award \+ open Hiring now posting/.test(onPhone.text),
+        'item 19 at 390px, touch: the boost and its signals are on screen without hover', JSON.stringify(onPhone ?? 'no boost on the row'));
+    } finally {
+      await boostPhone.close();
+    }
+    await page.goto(`${BASE}/app/radar`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('tr[data-lead-source]', { timeout: 60000 }).catch(() => {});
 
     // "Latest activity" (?sort=latest): Fresh, Ageing, Stale, then Age unknown, newest first within each.
     // The seeded 100-day story is stale and the award has no date, so here the story comes first — the
@@ -578,6 +634,13 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     }
     await admin.from('companies').delete().eq('id', co!.id);
     if (tenderCo) await admin.from('companies').delete().eq('id', tenderCo.id).eq('is_test', true);
+    // Item 19's company: its lead, then its posting, then the company. Left out on 2026-09-15, the company held the
+    // workspace and the gate failed on cleanup with every item 19 check passing.
+    if (compoundLead) await admin.from('leads').delete().eq('id', compoundLead.id).eq('is_test', true);
+    if (compoundCo) {
+      await admin.from('job_posts').delete().eq('company_id', compoundCo.id).eq('is_test', true);
+      await admin.from('companies').delete().eq('id', compoundCo.id).eq('is_test', true);
+    }
     // Both deletes are read. An ignored delete is how an empty test workspace sat in the real database
     // with nothing said (design-shots, 2026-09-13); a leftover now fails this run.
     const leftBehind = await removeProbe(admin, uid, workspace, null, { clearContent: true });
