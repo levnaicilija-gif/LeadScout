@@ -298,6 +298,17 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     await page.waitForSelector('tr[data-lead-source]', { timeout: 60000 }).catch(() => {});
     const onlyTender = await page.evaluate(() => Array.from(document.querySelectorAll('tr[data-lead-source]')).map((tr) => ({ source: tr.getAttribute('data-lead-source'), text: (tr as HTMLElement).innerText })));
     check(onlyTender.some((r) => r.text.includes('Smoke Tender Winner AS')) && onlyTender.every((r) => r.source === 'tender'), '?source=tender shows only award-notice leads', `${onlyTender.length} rows, kinds: ${[...new Set(onlyTender.map((r) => r.source))].join(',')}`);
+    // Item 18 part 1: Won work's country chips come from the leads' own countries (the news lead is NO, the award
+    // lead DK), and ?country= narrows the table to one while the other stays offered.
+    await page.goto(`${BASE}/app/radar?tab=won&country=DK`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('tr[data-lead-source]', { timeout: 60000 }).catch(() => {});
+    const countryChips = await page.$$eval('[data-country-filter] [data-country]', (els) => els.map((e) => ({ c: e.getAttribute('data-country'), on: e.className.includes('!bg-rail') })));
+    const dkRows = await page.$$eval('tr[data-lead-source]', (trs) => trs.map((t) => (t as HTMLElement).innerText.split('\n')[0]));
+    const rowLinksKeepCountry = await page.$$eval('tr[data-row-href]', (trs) => trs.every((t) => /[?&]country=DK/.test(t.getAttribute('data-row-href') ?? '')));
+    check(countryChips.some((x) => x.c === 'DK' && x.on) && countryChips.some((x) => x.c === 'NO' && !x.on)
+      && dkRows.some((r) => r.includes('Smoke Tender Winner AS')) && !dkRows.some((r) => r.includes('Smoke Offshore AS')) && rowLinksKeepCountry,
+      '?country=DK shows only the Danish lead, DK is selected, NO is still offered, and opening a row keeps the filter',
+      JSON.stringify({ chips: countryChips, rows: dkRows, rowLinksKeepCountry }));
 
     // 4b — Hiring now must show the company-anchored posting. This is the check that was
     // missing when Hiring now sat empty over forty real rows.
