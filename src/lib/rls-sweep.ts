@@ -133,7 +133,18 @@ export async function runRlsSweep(opts: { workspaceName?: string } = {}): Promis
     const { data: links } = await admin.from('lead_articles').select('article_id, leads!inner(workspace_id)').eq('leads.workspace_id', workspaceId);
     const linkedArticles = new Set((links ?? []).map((r: any) => r.article_id)).size;
 
+    // Tables no signed-in user should read at all, by design and by migration. Judged by the user reading
+    // none of them, rows or not; the catalogue check above still requires each to have its policy.
+    const SERVICE_ONLY: Record<string, string> = { jobs: '0027, the worker queue', job_ticks: '0029, the crawl schedule log' };
     for (const t of tables) {
+      if (SERVICE_ONLY[t]) {
+        const seen = await count(user, t);
+        const leak = typeof seen === 'number' && seen > 0;
+        if (leak) result.suspects.push(t);
+        const verdict = leak ? `SUSPECT — the user reads ${seen} rows of a service-role-only table` : `ok — service role only (${SERVICE_ONLY[t]})`;
+        result.rows.push({ table: t, service: await count(admin, t), expected: 0, user: seen, verdict });
+        continue;
+      }
       const scoped = t === 'workspaces' || columns(t).includes('workspace_id');
       const all = await count(admin, t);
       const expected = t === 'workspaces' ? await count(admin, t, { column: 'id', value: workspaceId! })
