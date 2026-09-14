@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { hasTable } from '@/lib/schema-features';
+import { watchedBoards } from '@/lib/watchlist';
 import { runRadarBatch } from './radar-batch';
 import { runJobPostsBatch } from './job-posts-batch';
 import { runCareersDiscoveryBatch } from './careers-discovery-batch';
@@ -76,7 +77,13 @@ async function jobPostsDue(db: SupabaseClient, now: Date, force: boolean): Promi
     .eq('careers_status', 'found').neq('employer_type', 'staffing_agency')
     .or(`last_jobs_crawl_at.is.null,last_jobs_crawl_at.lt."${day(now)}T00:00:00Z"`);
   if (error) throw new Error(`companies could not be counted: ${error.message}`);
-  return count ? due(`${count} boards not crawled today`) : 'every board has been crawled today';
+  if (count) return due(`${count} boards not crawled today`);
+  // Item 18 part 4: once every board has had today's read, a watched board is read again when it is 12 hours old.
+  const watched = await watchedBoards(db, now);
+  if (watched?.dueIds.length) {
+    return { unit: 'job-posts', path: `/api/jobs/job-posts?batch=${BATCH['job-posts']}&watch=1`, why: `${watched.dueIds.length} watched boards due their second read` };
+  }
+  return `every board has been crawled today${watched ? ` (${watched.ids.length} watched, none due again)` : ''}`;
 }
 
 /** One batch, called in this process — no HTTP, so nothing for Vercel's recursion guard to count. */

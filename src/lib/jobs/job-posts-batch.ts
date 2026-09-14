@@ -34,6 +34,7 @@ const authorised = (req: Request) => {
 
 import { postedFields } from '@/lib/posting-date';
 import { refreshCompanyIndustries } from '@/lib/industry-store';
+import { watchedBoards } from '@/lib/watchlist';
 
 const fingerprint = (s: string) => crypto.createHash('sha1').update(s).digest('hex');
 
@@ -211,6 +212,11 @@ export async function runJobPostsBatch(req: Request) {
     .eq('careers_status', 'found').neq('employer_type', 'staffing_agency')
     .order('last_jobs_crawl_at', { ascending: true, nullsFirst: true }).limit(batch);
   if (only) q = q.ilike('name', `%${only}%`);
+  // Item 18 part 4: ?watch=1 reads only watched boards (a followed industry) that are due their second read today.
+  if (p.get('watch') === '1') {
+    const watched = await watchedBoards(db);
+    q = q.in('id', watched?.dueIds.length ? watched.dueIds : ['00000000-0000-0000-0000-000000000000']);
+  }
   const { data: companies, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

@@ -61,6 +61,16 @@ const showEvidence = process.argv.includes('--evidence');
     const all = rows.filter((r) => r.c.industries.includes(i.id)).length;
     console.log(`${String(i.n).padStart(2)} ${i.label.padEnd(66)} ${pct(n('news'), total.news).padStart(10)} ${pct(n('tender'), total.tender).padStart(10)} ${pct(n('hiring'), total.hiring).padStart(10)} ${pct(all, rows.length).padStart(10)}`);
   }
+  // Part 5 — which categories look thin. A flag for a future, deliberately scoped source-addition item, never a
+  // prompt to loosen the words: a category with two or fewer items, or under a quarter of the median of the other
+  // classified categories, is thin. Other / Uncategorized is not a category to fill.
+  const combined = INDUSTRIES.filter((i) => i.id !== 'other').map((i) => ({ i, n: rows.filter((r) => r.c.industries.includes(i.id)).length }));
+  const sorted = combined.map((c) => c.n).sort((a, b) => a - b);
+  const median = sorted.length % 2 ? sorted[(sorted.length - 1) / 2] : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+  const thin = combined.filter((c) => c.n <= 2 || c.n < median / 4);
+  console.log(`\ncoverage (part 5): median of the 16 classified categories ${median} · thin (≤2, or under a quarter of the median): ${thin.length}`);
+  for (const c of combined) console.log(`  ${String(c.i.n).padStart(2)} ${c.i.label.padEnd(66)} ${String(c.n).padStart(3)}${thin.includes(c) ? '  THIN — candidate for a scoped source-addition item' : ''}`);
+
   const multi = rows.filter((r) => r.c.industries.length > 1).length;
   console.log(`\nwith more than one industry: ${multi} of ${rows.length}`);
   const moved = rows.filter((r) => r.kind === 'tender' && r.c.industries[0] === 'other' && r.wordsWouldGive && r.wordsWouldGive[0] !== 'other');
