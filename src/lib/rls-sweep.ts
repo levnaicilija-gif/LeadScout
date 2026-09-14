@@ -115,9 +115,22 @@ export async function runRlsSweep(opts: { workspaceName?: string } = {}): Promis
 
     const email = `rls-sweep+${Date.now()}@rfbt-recruitment.com`;
     const password = `${globalThis.crypto.randomUUID()}-Aa1`;
-    const { data: created, error: createErr } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name: 'RLS Sweep', agency: 'RLS Sweep' } });
-    if (createErr || !created.user) throw new Error(`could not create the sweep user: ${createErr?.message}`);
-    uid = created.user.id;
+    // Retried with the same address: on 2026-09-14 one "Gateway Timeout" here turned Home's check red for
+    // everyone and failed the gate. A create that timed out may still have happened, so an "already
+    // registered" answer is looked up and used — a second address would leave the first account behind.
+    let createProblem = '';
+    for (let attempt = 1; attempt <= 3 && !uid; attempt++) {
+      const { data: created, error: createErr } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name: 'RLS Sweep', agency: 'RLS Sweep' } });
+      if (created?.user) { uid = created.user.id; break; }
+      createProblem = createErr?.message ?? 'no user returned';
+      if (/already|registered|exists/i.test(createProblem)) {
+        const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
+        const found = list?.users.find((u) => u.email === email);
+        if (found) { uid = found.id; await admin.auth.admin.updateUserById(found.id, { password }); break; }
+      }
+      if (attempt < 3) await new Promise((res) => setTimeout(res, attempt * 5000));
+    }
+    if (!uid) throw new Error(`could not create the sweep user after 3 attempts: ${createProblem}`);
     const { data: own } = await admin.from('users').select('workspace_id').eq('id', uid).maybeSingle();
     throwaway = (own?.workspace_id as string) ?? null;
     if (throwaway) await markWorkspaceTest(admin, throwaway);

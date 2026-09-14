@@ -111,7 +111,9 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     company_id: co!.id, source_url: `https://example.invalid/smoke-job-${Date.now()}`,
     title: 'Smoke Welder', role: 'Smoke Welder', trades: ['welder'],
     location: 'Esbjerg, DK', country: 'DK', status: 'open', via: 'http',
-    is_trade: true, first_seen_at: new Date().toISOString(), last_seen_at: new Date().toISOString(),
+    // Marked like every other seeded row: until 2026-09-14 this one alone was is_test false, so a count of
+    // real postings taken while smoke ran included it.
+    is_trade: true, first_seen_at: new Date().toISOString(), last_seen_at: new Date().toISOString(), is_test: true,
   });
   if (jpErr) console.log(`  ...  could not seed a job posting: ${jpErr.message}`);
 
@@ -255,7 +257,11 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     // A row must say it opens something: a chevron drawn on the row (not only on hover), a hover
     // tint, and a click on a plain cell — not the company link — opens the drawer. The Trades cell
     // (the fourth) holds no link on either table.
+    // A row or "?" is server-rendered before its handler exists, and a tap in that gap does nothing: Leads
+    // at 390px failed on production twice that way on 2026-09-14. Wait for the page to be interactive.
+    const hydrated = (p: typeof page) => p.waitForSelector('html[data-hydrated="true"]', { state: 'attached', timeout: 60000 }).catch(() => {});
     const rowOpens = async (rowText: string, param: RegExp, what: string) => {
+      await hydrated(page);
       const row = page.locator('tr[data-row-href]', { hasText: rowText }).first();
       const cell = row.locator('td').nth(3);
       const chevron = await row.locator('[data-row-open]').isVisible().catch(() => false);
@@ -274,6 +280,7 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     const drawerHelp = async (p: typeof page, title: string, what: string, width?: number) => {
       const btn = p.locator('[data-drawer-help] button').first();
       await btn.waitFor({ timeout: 30000 }).catch(() => {});
+      await hydrated(p);
       const box = await btn.boundingBox().catch(() => null);
       const onScreen = !!box && box.width > 0 && (!width || (box.x >= 0 && box.x + box.width <= width));
       if (width) await btn.tap().catch(() => {}); else await btn.click().catch(() => {});
@@ -397,9 +404,16 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
 
     // Item 17: each advert in the Hiring now drawer says how old it is and from which date.
     await page.goto(`${BASE}/app/radar?tab=hiring&company=${agedCo!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForSelector('aside [data-age]', { timeout: 60000 }).catch(() => {});
+    // Wait for the drawer to finish reading, as 4d does, then look. This check failed intermittently on
+    // 2026-09-14 with only "no age line" to show for it; the drawer's own text now comes back with a failure.
+    await page.waitForFunction(
+      () => { const a = document.querySelector('aside'); return !!a && !a.innerText.includes('Reading what we hold'); },
+      undefined, { timeout: 60000 },
+    ).catch(() => {});
+    await page.waitForSelector('aside [data-age]', { timeout: 30000 }).catch(() => {});
     const advertAge = await page.locator('aside [data-age]').first().innerText().catch(() => '');
-    check(/ageing · 70 days · posted \d{4}-\d{2}-\d{2}/.test(advertAge), 'the Hiring now drawer dates each advert and marks an ageing one', advertAge || 'no age line');
+    const agedDrawer = advertAge ? '' : await page.locator('aside').first().innerText().catch(() => 'no drawer on the page');
+    check(/ageing · 70 days · posted \d{4}-\d{2}-\d{2}/.test(advertAge), 'the Hiring now drawer dates each advert and marks an ageing one', advertAge || `no age line; the drawer read: ${agedDrawer.replace(/\s+/g, ' ').slice(0, 300)}`);
 
     // 5 — lead drawer: one tool, end to end
     await page.goto(`${BASE}/app/radar?lead=${lead!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
