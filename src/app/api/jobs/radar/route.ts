@@ -15,6 +15,7 @@ import { findSameContract, mergeSameContract } from '@/lib/same-contract';
 import { hasPublishedAtSource, hasRadarVerdicts, hasEmailPatterns } from '@/lib/schema-features';
 import { observePatterns, recordEmailPatterns } from '@/lib/email-pattern';
 import { sourceFlag } from '@/lib/source-quality';
+import { runInBackground, handOff } from '@/lib/chain';
 import { hasSourceFlag } from '@/lib/schema-features';
 import { evaluateNews, RULES_VERSION } from '@/lib/radar-filter';
 import { quotedInText } from '@/lib/quoted-contacts';
@@ -37,8 +38,10 @@ const authorised = (req: Request) => {
   return req.headers.get('x-cron-secret') === secret || req.headers.get('authorization') === `Bearer ${secret}`;
 };
 
-export const GET = (req: Request) => run(req);
-export const POST = (req: Request) => run(req);
+// A batch answers at once and works inside waitUntil (src/lib/chain.ts). The old hand-off gave up after
+// 1.5 s and on Vercel the next batch never ran: Radar read 5 of 52 priority sources every morning.
+export const GET = (req: Request) => (authorised(req) ? runInBackground(req, () => run(req)) : run(req));
+export const POST = GET;
 
 async function run(req: Request) {
   if (!authorised(req)) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
@@ -95,15 +98,15 @@ async function run(req: Request) {
 
   const more = (sources ?? []).length === take && take > 0;
   let next: string | null = null;
+  let handOffError: string | null = null;
   if (more && chain && batchesLeft > 1 && !budget.exhausted) {
     const u = new URL(req.url);
     u.searchParams.set('cursor', String(cursor + take));
     u.searchParams.set('batch', String(batch));
     u.searchParams.set('batchesLeft', String(batchesLeft - 1));
     next = u.toString();
-    const ac = new AbortController();
-    setTimeout(() => ac.abort(), 1500);
-    await fetch(next, { method: 'POST', headers: { 'x-cron-secret': process.env.CRON_SECRET! }, signal: ac.signal }).catch(() => {});
+    // The next batch answers 202 at once, so this waits seconds, not for its work.
+    handOffError = await handOff(next);
   }
 
   // Contract awards ride the morning cron: the first invocation reads TED before its own sources.
@@ -299,14 +302,15 @@ async function run(req: Request) {
   }
   if (runRow) {
     await db.from('radar_runs').update({
-      finished_at: new Date().toISOString(), tally, rejected, sources_seen: audit,
+      // handOff on the run record: whether the next batch was accepted, so a broken chain shows in radar_runs.
+      finished_at: new Date().toISOString(), tally: { ...tally, handOff: handOffError ?? (next ? 'accepted' : 'last batch') }, rejected, sources_seen: audit,
     }).eq('id', runRow.id);
   }
 
   // One line per batch, so the daily run is readable in the Vercel logs.
   console.log(`[radar] cursor=${cursor} batch=${take} sources=${tally.sources} articles=${tally.articlesRead} leads=${tally.leads} rejected=${tally.rejected} filtered=${tally.filtered} lowConfidence=${tally.lowConfidence} model=€${tally.modelEur}${tally.budgetStopped ? ` STOPPED at the €${cap} cap (${tally.linksNotRead} links not read)` : ''} next=${next ? cursor + take : 'done'}${tenders ? ` tenders=${tenders.error ? `error: ${tenders.error}` : `${tenders.leadsCreated} leads from ${tenders.noticesChecked} notices`}` : ''}`);
 
-  return NextResponse.json({ ok: true, browser: browserProvider(), cursor, batch: take, nextCursor: more ? cursor + take : null, chained: !!next, tally, tenders, audit, rejected, report });
+  return NextResponse.json({ ok: true, browser: browserProvider(), cursor, batch: take, nextCursor: more ? cursor + take : null, chained: !!next && !handOffError, handOff: handOffError, tally, tenders, audit, rejected, report });
 }
 
 async function company(db: any, ws: string, name: string, agencyNames: string[]) {

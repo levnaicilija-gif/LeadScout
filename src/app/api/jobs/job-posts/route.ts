@@ -34,9 +34,12 @@ const authorised = (req: Request) => {
 };
 
 import { postedFields } from '@/lib/posting-date';
+import { runInBackground, handOff } from '@/lib/chain';
 
-export const GET = (req: Request) => run(req);
-export const POST = (req: Request) => run(req);
+// A batch answers at once and works inside waitUntil (src/lib/chain.ts): the old 1.5 s hand-off never
+// survived on Vercel, and the job crawl did not run on its own after 10 September 2026.
+export const GET = (req: Request) => (authorised(req) ? runInBackground(req, () => run(req)) : run(req));
+export const POST = GET;
 
 const fingerprint = (s: string) => crypto.createHash('sha1').update(s).digest('hex');
 
@@ -222,13 +225,12 @@ async function run(req: Request) {
   // Dispatched before the work: a batch that hits the 300 s wall must not take the rest of the
   // night's crawl with it.
   let chained = false;
+  let handOffError: string | null = null;
   if (chain && !only && (companies ?? []).length === batch && batchesLeft > 1) {
     const u = new URL(req.url);
     u.searchParams.set('batchesLeft', String(batchesLeft - 1));
-    const ac = new AbortController();
-    setTimeout(() => ac.abort(), 1500);
-    await fetch(u.toString(), { method: 'POST', headers: { 'x-cron-secret': process.env.CRON_SECRET! }, signal: ac.signal }).catch(() => {});
-    chained = true;
+    handOffError = await handOff(u.toString());
+    chained = !handOffError;
   }
 
   const stats = { companies: 0, unchanged: 0, noBoard: 0, titlesSeen: 0, tradeTitles: 0, postsWritten: 0, detailed: 0, outsideEurope: 0, noTitle: 0 };
@@ -361,7 +363,7 @@ async function run(req: Request) {
 
   console.log(`[job-posts] companies=${stats.companies} titles=${stats.titlesSeen} trade=${stats.tradeTitles} written=${stats.postsWritten} spent=EUR${budget.totalToday.toFixed(2)}`);
   return NextResponse.json({
-    ok: true, stats, chained,
+    ok: true, stats, chained, handOff: handOffError,
     spentToday: Number(budget.totalToday.toFixed(4)), cap, budgetLeft: Number(budget.remaining.toFixed(4)),
     found: found.slice(0, 40),
     writeErrors: writeErrors.slice(0, 10),

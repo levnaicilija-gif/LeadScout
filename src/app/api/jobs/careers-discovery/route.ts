@@ -18,13 +18,17 @@ export const maxDuration = 300;
  *
  * Staffing agencies are skipped: their vacancies are their business, not a signal about ours.
  */
+import { runInBackground, handOff } from '@/lib/chain';
+
 const authorised = (req: Request) => {
   const s = process.env.CRON_SECRET;
   return !!s && (req.headers.get('x-cron-secret') === s || req.headers.get('authorization') === `Bearer ${s}`);
 };
 
-export const GET = (req: Request) => run(req);
-export const POST = (req: Request) => run(req);
+// A batch answers at once and works inside waitUntil (src/lib/chain.ts): the old 1.5 s hand-off never
+// survived on Vercel, and discovery did not run on its own after 10 September 2026.
+export const GET = (req: Request) => (authorised(req) ? runInBackground(req, () => run(req)) : run(req));
+export const POST = GET;
 
 /** Careers links on a page, best candidate first. */
 function careersLinks($: cheerio.CheerioAPI, base: string): string[] {
@@ -145,13 +149,12 @@ async function run(req: Request) {
   // Dispatched before the work, so a batch killed by the 300 s wall cannot take the rest of
   // the run with it — the same fault that stopped Radar after two sources.
   let chained = false;
+  let handOffError: string | null = null;
   if (chain && !only && !recheck && (companies ?? []).length === batch && batchesLeft > 1) {
     const u = new URL(req.url);
     u.searchParams.set('batchesLeft', String(batchesLeft - 1));
-    const ac = new AbortController();
-    setTimeout(() => ac.abort(), 1500);
-    await fetch(u.toString(), { method: 'POST', headers: { 'x-cron-secret': process.env.CRON_SECRET! }, signal: ac.signal }).catch(() => {});
-    chained = true;
+    handOffError = await handOff(u.toString());
+    chained = !handOffError;
   }
 
   const stats = { looked: 0, found: 0, ats: 0, noneFound: 0, unreachable: 0 };
@@ -182,5 +185,6 @@ async function run(req: Request) {
     .not('domain', 'is', null).neq('employer_type', 'staffing_agency').is('careers_checked_at', null);
 
   console.log(`[careers-discovery] looked=${stats.looked} found=${stats.found} ats=${stats.ats} none=${stats.noneFound} unreachable=${stats.unreachable} remaining=${remaining}`);
-  return NextResponse.json({ ok: true, stats, byAts, remaining, chained, examples: examples.slice(0, 20) });
+  if (handOffError) console.error(`[careers-discovery] next batch not handed on: ${handOffError}`);
+  return NextResponse.json({ ok: true, stats, byAts, remaining, chained, handOff: handOffError, examples: examples.slice(0, 20) });
 }

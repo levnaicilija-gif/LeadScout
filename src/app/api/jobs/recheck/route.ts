@@ -6,6 +6,7 @@ import { leadSource } from '@/lib/lead-source';
 import { sourceFlag } from '@/lib/source-quality';
 import { hasSourceFlag } from '@/lib/schema-features';
 import { runRlsSweep, recordRlsSweep, sweepSummary } from '@/lib/rls-sweep';
+import { handOff } from '@/lib/chain';
 export const maxDuration = 300;
 /**
  * Nightly: (0) the RLS sweep, recorded for Home (src/lib/rls-sweep.ts);
@@ -25,18 +26,19 @@ export async function POST(req: Request) {
   const db = supabaseAdmin();
 
   const origin = new URL(req.url).origin;
-  const kick = async (path: string) => {
-    const ac = new AbortController();
-    setTimeout(() => ac.abort(), 1500);
-    await fetch(`${origin}${path}`, { method: 'POST', headers: { 'x-cron-secret': secret! }, signal: ac.signal }).catch(() => {});
-  };
-  await kick('/api/jobs/careers-discovery?batch=25&batchesLeft=30');
-  await kick('/api/jobs/job-posts?batch=10&batchesLeft=30');
-  // The RLS sweep next: seconds, and no page fetches. The release gate catches a table that a code
-  // change or a migration leaves unreadable; only a scheduled run catches one switched on in the
-  // Supabase dashboard between commits — which is how articles, lead_articles and lead_people went dark.
+  // The RLS sweep first, before this job starts two crawls against the same database. On 2026-09-14 a manual
+  // run found why no nightly result was ever kept: the sweep's first request got an HTML gateway page instead
+  // of JSON, and storing that failure got "Gateway Timeout". Both now retry (src/lib/rls-sweep.ts). The release
+  // gate catches a table a code change or a migration leaves unreadable; only a scheduled run catches one
+  // switched on in the Supabase dashboard between commits.
   const sweep = await runRlsSweep();
   const sweepNotKept = await recordRlsSweep(db, sweep, 'cron');
+  // Both jobs answer 202 at once and run their own chains (src/lib/chain.ts). The old kick abandoned its
+  // request after 1.5 s, and neither job ran on its own after 10 September 2026. What happened is returned.
+  const kicked = {
+    careersDiscovery: (await handOff(`${origin}/api/jobs/careers-discovery?batch=25&batchesLeft=30`)) ?? 'accepted',
+    jobPosts: (await handOff(`${origin}/api/jobs/job-posts?batch=10&batchesLeft=30`)) ?? 'accepted',
+  };
   const { data: leads } = await db.from('leads').select('id, source_url, kind, created_at').not('status', 'in', '("stale","not_for_us")').limit(200);
   const flagOn = await hasSourceFlag(db);
   for (const l of leads ?? []) {
@@ -61,7 +63,7 @@ export async function POST(req: Request) {
     if (r.result !== 'not_supported') await db.from('verifications').insert({ document_id: v.document_id, method: 'browser_lookup', checked_where: r.checkedWhere, checked_at: r.checkedAt, result: r.result, valid_until: r.validUntil ?? v.valid_until, notes: 'nightly re-check' });
   }
   return NextResponse.json({
-    ok: true, leads: leads?.length ?? 0, certs: vs?.length ?? 0,
+    ok: true, leads: leads?.length ?? 0, certs: vs?.length ?? 0, kicked,
     rls: { ok: sweep.ok, summary: sweepSummary(sweep), recorded: sweepNotKept === null, notRecorded: sweepNotKept },
   });
 }

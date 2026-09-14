@@ -83,8 +83,24 @@ export async function runRlsSweep(opts: { workspaceName?: string } = {}): Promis
   let throwaway: string | null = null;
   let workspaceId: string | null = null;
   try {
-    const specRes = await fetch(`${url}/rest/v1/`, { headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}` }, cache: 'no-store' });
-    const spec: any = await specRes.json();
+    // The table list, retried. On 2026-09-14 a manual run of the nightly job got an HTML gateway page
+    // here instead of JSON ("Unexpected token '<'") and the sweep reported that it could not run.
+    let spec: any = null;
+    let specProblem = '';
+    for (let attempt = 1; attempt <= 3 && !spec; attempt++) {
+      try {
+        const specRes = await fetch(`${url}/rest/v1/`, { headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}` }, cache: 'no-store' });
+        const body = await specRes.text();
+        if (!specRes.ok) specProblem = `HTTP ${specRes.status}`;
+        else {
+          try { spec = JSON.parse(body); } catch { specProblem = `HTTP ${specRes.status} but not JSON (it began: ${body.trim().slice(0, 40)})`; }
+        }
+      } catch (e: any) {
+        specProblem = String(e?.message ?? e).slice(0, 100);
+      }
+      if (!spec && attempt < 3) await new Promise((res) => setTimeout(res, attempt * 5000));
+    }
+    if (!spec) throw new Error(`the API did not list its tables after 3 attempts: ${specProblem}`);
     const tables = Object.keys(spec?.definitions ?? {}).sort();
     if (!tables.length) throw new Error('the API listed no tables');
     const columns = (t: string) => Object.keys(spec.definitions[t]?.properties ?? {});
@@ -159,11 +175,21 @@ export async function runRlsSweep(opts: { workspaceName?: string } = {}): Promis
  */
 export async function recordRlsSweep(admin: SupabaseClient, r: SweepResult, source: 'gate' | 'cron' | 'manual'): Promise<string | null> {
   if (!(await hasTable(admin, 'health_checks'))) return 'health_checks does not exist yet (migration 0026)';
-  const { error } = await admin.from('health_checks').insert({
+  const row = {
     kind: 'rls_sweep', ok: r.ok, source, ran_at: r.ranAt,
     detail: { suspects: r.suspects, unjudged: r.unjudged, catalog: r.catalog, error: r.error, cleanupError: r.cleanupError, tables: r.rows.length },
-  });
-  return error ? error.message : null;
+  };
+  // Retried: the nightly job's record failed with "Gateway Timeout" on 2026-09-14, so not even the failure
+  // was kept — and a result nobody keeps is a check nobody sees. A retry after a timed-out success can
+  // store the row twice; Home reads only the newest, so that costs nothing.
+  let last = '';
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const { error } = await admin.from('health_checks').insert(row);
+    if (!error) return null;
+    last = error.message;
+    if (attempt < 3) await new Promise((res) => setTimeout(res, attempt * 5000));
+  }
+  return `${last} (after 3 attempts)`;
 }
 
 /** One line a person can act on. */
