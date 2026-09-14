@@ -439,13 +439,29 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       // reload distinguishes that from the page genuinely being broken.
       const fileInput = page.locator('input[type=file]').first();
       if (!(await fileInput.count())) { await page.reload({ waitUntil: 'domcontentloaded' }); await page.waitForTimeout(3000); }
+      // Keep intake's own answer. On 2026-09-14 production never showed "recognised and handled" and this
+      // check printed nothing at all — no status, no error text — so a failed intake and a hung one looked alike.
+      let intakeAnswer = 'no response from /api/verify/intake';
+      const onIntake = async (r: any) => {
+        if (!/\/api\/verify\/intake/.test(r.url())) return;
+        const body = await r.text().catch(() => '(unreadable)');
+        intakeAnswer = `HTTP ${r.status()} · ${body.replace(/\s+/g, ' ').slice(0, 200)}`;
+      };
+      page.on('response', onIntake);
       await page.locator('input[type=file]').first().setInputFiles([CV]).catch(async (e) => { check(false, 'Verify drop zone present', String(e?.message ?? e).slice(0, 80)); throw e; });
       await page.waitForFunction(
         () => /recognised and handled/.test(document.body.innerText) && !!document.querySelector('[data-verify-busy="false"]'),
         undefined, { timeout: 280000 },
       ).catch(() => {});
+      page.off('response', onIntake);
       const verify = await bodyOf(page);
-      check(/recognised and handled/.test(verify), 'Verify accepts and handles an upload');
+      const verifyState = await page.evaluate(() => ({
+        busy: document.querySelector('[data-verify-busy]')?.textContent ?? '',
+        // b.text-bad is the page's error line; plain .text-bad also matched the "Internal PDF" button.
+        error: Array.from(document.querySelectorAll('main b.text-bad, main details pre')).map((e) => e.textContent ?? '').join(' | '),
+      })).catch(() => ({ busy: '', error: '' }));
+      check(/recognised and handled/.test(verify), 'Verify accepts and handles an upload',
+        /recognised and handled/.test(verify) ? '' : `intake: ${intakeAnswer} · progress line: "${verifyState.busy}"${verifyState.error ? ` · on screen: ${verifyState.error.replace(/\s+/g, ' ').slice(0, 200)}` : ''}`);
       check(!/could not be prepared/.test(verify), 'Verify prepared the client version');
     }
 
