@@ -389,8 +389,11 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     const sweepRes = await fetch(`${BASE}/api/jobs/rls-sweep?record=0`, { method: 'POST', headers: { 'x-cron-secret': process.env.CRON_SECRET ?? '' } })
       .then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) as any }))
       .catch((e) => ({ status: 0, body: { error: String(e) } as any }));
-    check(sweepRes.status === 200 && sweepRes.body?.ok === true && (sweepRes.body?.tables ?? 0) > 20,
-      'the nightly RLS sweep runs behind the cron secret and finds no hidden table', JSON.stringify({ status: sweepRes.status, tables: sweepRes.body?.tables, summary: sweepRes.body?.summary ?? sweepRes.body?.error }));
+    // cleanupError must be empty too. On 2026-09-14 this check passed while the sweep's own delete had failed,
+    // leaving its throwaway account inside the real workspace as a senior until it was removed by hand.
+    check(sweepRes.status === 200 && sweepRes.body?.ok === true && (sweepRes.body?.tables ?? 0) > 20 && sweepRes.body?.cleanupError == null,
+      'the nightly RLS sweep runs behind the cron secret, finds no hidden table and removes its own account',
+      JSON.stringify({ status: sweepRes.status, tables: sweepRes.body?.tables, cleanupError: sweepRes.body?.cleanupError ?? null, summary: sweepRes.body?.summary ?? sweepRes.body?.error }));
 
     // Item 17: each advert in the Hiring now drawer says how old it is and from which date.
     await page.goto(`${BASE}/app/radar?tab=hiring&company=${agedCo!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -476,10 +479,16 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
         pool = await bodyOf(page);
         if (listed.test(pool) || /could not be read/.test(pool)) break;
       }
+      // The page puts the database's own error in a collapsed "Technical detail". Print it on a failure:
+      // on 2026-09-14 production reported a query fault here, and the line cut off before it, so nobody
+      // could tell a passing Supabase outage from a broken query.
+      // textContent, not innerText: the detail sits inside a closed <details>, and innerText of hidden text is empty.
+      const faultDetail = await page.evaluate(() => document.querySelector('main details pre')?.textContent ?? '').catch(() => '');
+      const faultSuffix = faultDetail ? ` · technical detail: ${faultDetail.replace(/\s+/g, ' ').slice(0, 300)}` : '';
       check(listed.test(pool), 'Candidates lists the candidate the upload created',
-        listed.test(pool) ? '' : pool.replace(/\s+/g, ' ').slice(0, 300));
+        listed.test(pool) ? '' : `${pool.replace(/\s+/g, ' ').slice(0, 300)}${faultSuffix}`);
       check(!/No candidates yet/.test(pool), `Candidates shows the pool rather than an empty state (${expected} in the database)`);
-      check(!/could not be read|could not read the pool/.test(pool), 'Candidates read the pool without a query fault');
+      check(!/could not be read|could not read the pool/.test(pool), 'Candidates read the pool without a query fault', faultSuffix.replace(/^ · /, ''));
     }
 
     check(pageErrors.length === 0, 'no uncaught client errors', pageErrors.slice(0, 2).join(' | '));

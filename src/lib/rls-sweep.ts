@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { markWorkspaceTest, deleteTestWorkspace } from '@/lib/test-data';
+import { markWorkspaceTest, removeProbe } from '@/lib/test-data';
 import { hasTable } from '@/lib/schema-features';
 
 /**
@@ -105,7 +105,10 @@ export async function runRlsSweep(opts: { workspaceName?: string } = {}): Promis
     const { data: own } = await admin.from('users').select('workspace_id').eq('id', uid).maybeSingle();
     throwaway = (own?.workspace_id as string) ?? null;
     if (throwaway) await markWorkspaceTest(admin, throwaway);
-    await admin.from('users').update({ workspace_id: workspaceId }).eq('id', uid);
+    // A recruiter, never the senior every new account starts as. What a user can read is decided by
+    // workspace, not role, so the counts are the same — but on 2026-09-14 a failed delete left this
+    // account behind inside the real workspace as a senior, until it was found and removed by hand.
+    await admin.from('users').update({ workspace_id: workspaceId, role: 'recruiter' }).eq('id', uid);
 
     const user = createClient(url, anonKey, { auth: { persistSession: false } });
     const { error: signIn } = await user.auth.signInWithPassword({ email, password });
@@ -140,14 +143,9 @@ export async function runRlsSweep(opts: { workspaceName?: string } = {}): Promis
   } finally {
     // Kept on the result, not swallowed: this runs unattended every night, and an ignored delete would
     // leave one throwaway workspace behind per night with nothing to say so.
-    const leftovers: string[] = [];
-    if (uid) {
-      const { error: userError } = await admin.auth.admin.deleteUser(uid);
-      if (userError) leftovers.push(`the sweep user ${uid} was not deleted: ${userError.message}`);
-    }
-    const notDeleted = await deleteTestWorkspace(admin, throwaway, workspaceId);
-    if (notDeleted) leftovers.push(notDeleted);
-    result.cleanupError = leftovers.length ? leftovers.join('; ') : null;
+    // removeProbe retries once, five seconds on, and treats "already gone" as done: a single delete
+    // failed with "fetch failed" during a transient Supabase outage on 2026-09-14.
+    result.cleanupError = await removeProbe(admin, uid, throwaway, workspaceId);
   }
   return result;
 }

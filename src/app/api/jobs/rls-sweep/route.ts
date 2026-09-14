@@ -24,6 +24,8 @@ export async function POST(req: Request) {
   const notKept = record ? await recordRlsSweep(supabaseAdmin(), r, 'manual') : 'not asked to record (?record=0)';
   return NextResponse.json({
     ok: r.ok, summary: sweepSummary(r), suspects: r.suspects, unjudged: r.unjudged, catalog: r.catalog, error: r.error,
+    // Separate from ok: a leftover account is not an RLS failure, but a caller must be able to fail on it.
+    cleanupError: r.cleanupError,
     tables: r.rows.length, ranAt: r.ranAt, recorded: notKept === null, notRecorded: notKept,
   });
 }
