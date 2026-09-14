@@ -19,6 +19,7 @@ import { hasSourceFlag } from '@/lib/schema-features';
 import { evaluateNews, RULES_VERSION } from '@/lib/radar-filter';
 import { quotedInText } from '@/lib/quoted-contacts';
 import { canonCompany } from '@/lib/company-identity';
+import { attendeesAt } from '@/lib/attendee-match';
 import { datelineFromText } from '@/lib/page-dates';
 import { Budget, logModelCall, DAILY_BUDGET_EUR } from '@/lib/cost';
 import type { UsageMeter } from '@/lib/ai/claude';
@@ -299,8 +300,10 @@ async function company(db: any, ws: string, name: string, agencyNames: string[])
   return data;
 }
 async function attachPeople(db: any, leadId: string, ws: string, companyName: string) {
-  const { data: ppl } = await db.from('people').select('id').eq('workspace_id', ws).ilike('company_name', `%${companyName.split(' ')[0]}%`).limit(10);
-  for (const p of ppl ?? []) await db.from('lead_people').upsert({ lead_id: leadId, person_id: p.id });
+  // By company name, not its first word (src/lib/attendee-match.ts): on 2026-09-14, 30 of the 166 links made the
+  // old way were another company's people — all ten on Northern Endurance Partnership among them.
+  const { people } = await attendeesAt(db, ws, companyName, 10);
+  for (const p of people) await db.from('lead_people').upsert({ lead_id: leadId, person_id: p.id });
 }
 async function upsertWonLead(db: any, ws: string, x: any, articleId: string, url: string, fetchedAt: string, agencyNames: string[], pageText: string) {
   const co = await company(db, ws, x.company, agencyNames);

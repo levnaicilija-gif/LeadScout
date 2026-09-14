@@ -5,6 +5,7 @@ import { searchCountriesFor, checkRightToWork } from '@/lib/right-to-work';
 import { xrayCandidatesUrl, xrayLocalVariantUrl, linkedinSearchUrl, googleSearchUrl } from '@/lib/search-urls';
 import { hasRightToWork, hasCandidateCountries, hasHiringState, hasCompanyOutreach, hasPostingContact } from '@/lib/schema-features';
 import { buildSheet, fromAttendeeList, type FoundContact } from '@/lib/hiring-contacts';
+import { attendeesAt } from '@/lib/attendee-match';
 import { sendCapability } from '@/lib/send-capability';
 export const maxDuration = 120;
 
@@ -98,17 +99,15 @@ export async function POST(req: Request) {
           googleSearchUrl: c.google_search_url ?? undefined,
         }));
 
-      const { data: people } = await sb.from('people')
-        .select('name, title, source, company_name')
-        .eq('workspace_id', me.workspace_id)
-        .ilike('company_name', `%${co.name.split(' ')[0]}%`)
-        .limit(25);
+      // Attendee-list people at this company by name, not by the first word of it (src/lib/attendee-match.ts).
+      const { people, error: peopleError } = await attendeesAt(sb, me.workspace_id, co.name, 100);
+      if (peopleError) return NextResponse.json({ error: `The attendee list for ${co.name} could not be read: ${peopleError}` }, { status: 500 });
 
       const sheet = buildSheet({
         companyName: co.name,
         postingContacts,
         orgContacts,
-        attendees: fromAttendeeList(people ?? [], co.name),
+        attendees: fromAttendeeList(people, co.name),
         switchboard: co.switchboard, switchboardSource: co.switchboard_source_url,
         generalEmail: co.general_email, generalEmailSource: co.general_email_source_url,
       });

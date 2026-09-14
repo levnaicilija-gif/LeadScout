@@ -128,7 +128,7 @@ export function patternEmail(pattern: string | null | undefined, name: string): 
 
 /** People already on file at this company whose title means they decide who turns up. */
 export function fromAttendeeList(
-  people: { name: string; title?: string | null; source: string; company_name: string }[],
+  people: { name: string; title?: string | null; source: string; company_name: string; match?: 'name' | 'group' }[],
   companyName: string,
 ): FoundContact[] {
   return people
@@ -136,7 +136,8 @@ export function fromAttendeeList(
     .slice(0, 6)
     .map((p) => ({
       name: p.name,
-      title: p.title ?? null,
+      // A person matched through the group (src/lib/attendee-match.ts) says which part of it the list put them at.
+      title: p.match === 'group' ? `${p.title} · ${p.company_name}` : p.title ?? null,
       email: null,
       phone: null,
       emailStatus: 'unknown' as const,

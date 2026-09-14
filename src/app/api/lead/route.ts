@@ -3,6 +3,7 @@ import { supabaseServer, currentUser } from '@/lib/supabase/server';
 import { jdFromLead, screeningQuestions, draftOutreachChecked, scoreWithRightToWork, anonymize } from '@/lib/ai/documents';
 import { checkRightToWork, searchCountriesFor } from '@/lib/right-to-work';
 import { chooseRecipient } from '@/lib/contact-choice';
+import { attendeesAt } from '@/lib/attendee-match';
 import { xrayCandidatesUrl, xrayLocalVariantUrl } from '@/lib/search-urls';
 import { hasRightToWork, hasCandidateCountries } from '@/lib/schema-features';
 export const maxDuration = 120;
@@ -66,10 +67,10 @@ export async function POST(req: Request) {
       // Who to write to. The quoted person is usually the CEO, and a CEO does not book welders.
       const contacts = (lead.contacts ?? []) as any[];
       const quoted = contacts.find((c) => c.quote) ?? contacts[0] ?? null;
-      const { data: attendees } = await sb.from('people')
-        .select('id, name, title, source').eq('workspace_id', me.workspace_id)
-        .ilike('company_name', `%${(lead.companies?.name ?? '').split(' ')[0]}%`).limit(20);
-      const pick = chooseRecipient(quoted, contacts.filter((c) => c !== quoted), attendees ?? []);
+      // By company name, not its first word: "%AF%" offered people from other organisations (src/lib/attendee-match.ts).
+      const { people: attendees, error: attendeesError } = await attendeesAt(sb, me.workspace_id, lead.companies?.name ?? '', 50);
+      if (attendeesError) return NextResponse.json({ error: `The attendee list could not be read: ${attendeesError}` }, { status: 500 });
+      const pick = chooseRecipient(quoted, contacts.filter((c) => c !== quoted), attendees);
 
       const d = await draftOutreachChecked({
         company: lead.companies?.name, project: lead.project_name, phase: lead.phase,
