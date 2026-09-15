@@ -87,10 +87,17 @@ export function LeadDrawer({ lead }: { lead: any }) {
       const co = lead.companies ?? {};
       const people: any[] = lead.company_people ?? [];
       const any = people.length > 0 || !!co.switchboard || !!co.general_email;
+      // Whether that site is confirmed against the award notice, and whether it is the group's — said before the contacts,
+      // and on a warning border when the contacts may belong to the wrong company or the wrong part of it.
+      const trust = lead.site_trust as { confirmed: boolean; check: string | null; scope: string; lines: { tone: string; kind: string; text: string }[] } | null;
+      const doubtful = !!trust && (trust.scope === 'group' || (trust.check !== null && !trust.confirmed));
       if (any) return (
-        <div data-company-site className="mt-3">
-          <div className="text-[12px] text-ink3 mb-2">From the company's own site</div>
-          <div className="border border-line rounded text-[13px]">
+        <div data-company-site data-site-confirmed={trust ? String(trust.confirmed) : 'unknown'} data-site-scope={trust?.scope ?? 'unknown'} className="mt-3">
+          <div className="text-[12px] text-ink3 mb-2">From the company's own site{trust?.confirmed && trust.scope !== 'group' ? ' · confirmed' : doubtful ? ' · check before calling' : ''}</div>
+          {trust?.lines.map((l, i) => (
+            <div key={i} data-site-trust={l.kind === 'scope' ? 'group' : trust.check ?? ''} className={`mb-2 text-[13px] rounded px-2.5 py-1.5 ${l.tone === 'ok' ? 'bg-oksoft text-ok' : l.tone === 'warn' ? 'bg-warnsoft text-warn' : 'bg-line2 text-ink2'}`}>{l.text}</div>
+          ))}
+          <div className={`border rounded text-[13px] ${doubtful ? 'border-warn border-dashed' : 'border-line'}`}>
             {people.map((p, i) => (
               <div key={i} className="px-3 py-2 border-b border-line2 last:border-0">
                 <b className="font-medium">{p.name}</b><div className="text-ink2">{p.title}</div>

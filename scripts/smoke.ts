@@ -64,6 +64,9 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     workspace_id: workspace, name: 'Smoke Tender Winner AS', employer_type: 'unknown', country: 'DK', domain: 'example.invalid',
     switchboard: '+45 70 00 00 00', switchboard_source_url: 'https://example.invalid/smoke-contact',
     general_email: 'post@example.invalid', general_email_source_url: 'https://example.invalid/smoke-contact', contacts_checked_at: new Date().toISOString(),
+    // Found by search and confirmed: the site prints the notice's address. Written as batch 1 wrote it, so it reads the
+    // same before and after 0033 (the drawer prefers 0033's columns when they are filled and falls back to this).
+    source: 'web search · address printed on the site',
   }).select().single();
   await markTest(admin, 'companies', [tenderCo!.id]);
   const { error: siteContactErr } = await admin.from('contacts').insert({
@@ -72,6 +75,18 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     source_url: 'https://example.invalid/smoke-organisation', is_test: true,
   });
   if (siteContactErr) console.log(`  ...  could not seed the company-site contact: ${siteContactErr.message}`);
+  // A French entity matched to the brand's .com, whose site does not print the notice's address: unconfirmed and the group's.
+  const { data: groupCo } = await admin.from('companies').insert({
+    workspace_id: workspace, name: 'Smoke Groupe France SAS', employer_type: 'unknown', country: 'FR', domain: 'smoke-groupe.com',
+    switchboard: '+33 1 00 00 00 00', switchboard_source_url: 'https://example.invalid/smoke-groupe-contact', contacts_checked_at: new Date().toISOString(),
+    source: 'web search · address not printed on the site',
+  }).select().single();
+  await markTest(admin, 'companies', [groupCo!.id]);
+  const { data: groupLead } = await admin.from('leads').insert({
+    workspace_id: workspace, company_id: groupCo!.id, kind: 'won_work', project_name: 'Smoke groupe award',
+    project_location: 'FRA', country: 'FR', trades_inferred: ['scaffolder'], fit_score: 50, status: 'new', is_test: true,
+    source_url: `https://ted.europa.eu/en/notice/-/detail/smoke-groupe-${Date.now()}`, source_fetched_at: new Date().toISOString(),
+  }).select().single();
   const { data: tenderLead } = await admin.from('leads').insert({
     workspace_id: workspace, company_id: tenderCo!.id, kind: 'won_work', project_name: 'Smoke quay award',
     project_location: 'DNK', country: 'DK', trades_inferred: ['welder'], fit_score: 70, status: 'new',
@@ -356,9 +371,54 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       });
       check(!!onPhone && onPhone.person && onPhone.left >= 0 && onPhone.right <= 390 && onPhone.wide <= 390,
         'item 21 at 390px, touch: the company-site block fits the drawer with no sideways scroll', JSON.stringify(onPhone ?? 'no company-site block'));
+      // The same phone window, not another one: every extra browser context is memory, and smoke's crashes on 2026-09-15
+      // came as it opened more of them. The unconfirmed group site's two warnings must be on screen at 390px too.
+      await m.goto(`${BASE}/app/radar?tab=won&lead=${groupLead!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await m.waitForSelector('aside [data-site-trust]', { timeout: 30000 }).catch(() => {});
+      const trustOnPhone = await m.evaluate(() => {
+        const lines = Array.from(document.querySelectorAll('aside [data-site-trust]')) as HTMLElement[];
+        return { count: lines.length, fits: lines.every((l) => { const r = l.getBoundingClientRect(); return r.left >= 0 && r.right <= 390 && r.height > 0; }), wide: document.documentElement.scrollWidth };
+      });
+      check(trustOnPhone.count === 2 && trustOnPhone.fits && trustOnPhone.wide <= 390, 'item 21 at 390px, touch: an unconfirmed group site\'s two warnings are on screen, no sideways scroll', JSON.stringify(trustOnPhone));
     } finally {
       await sitePhone.close();
     }
+
+    // Confirmed and unconfirmed are not the same on screen (owner, 2026-09-15). Smoke Tender Winner AS's site prints the
+    // notice's address: a confirmed line, a plain border. Smoke Groupe France SAS is on the brand's .com and its site does
+    // not print the address: the group warning first, then "Not confirmed", on a warning border, and the row says so.
+    const trustRow = await page.evaluate(() => {
+      const tr = Array.from(document.querySelectorAll('tr[data-lead-source]')).find((t) => (t as HTMLElement).innerText.includes('Smoke Groupe France SAS'));
+      return (tr?.querySelector('[data-site-note]') as HTMLElement | null)?.innerText ?? '';
+    });
+    await page.goto(`${BASE}/app/radar?tab=won`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('tr[data-lead-source]', { timeout: 60000 }).catch(() => {});
+    const trustRowNow = await page.evaluate(() => {
+      const tr = Array.from(document.querySelectorAll('tr[data-lead-source]')).find((t) => (t as HTMLElement).innerText.includes('Smoke Groupe France SAS'));
+      return (tr?.querySelector('[data-site-note]') as HTMLElement | null)?.innerText ?? '';
+    });
+    check(/unconfirmed · group site/.test(trustRowNow || trustRow), 'the row of a lead whose contacts came from an unconfirmed group site says "unconfirmed · group site"', trustRowNow || trustRow || 'no note on the row');
+    const readTrust = async (leadId: string) => {
+      await page.goto(`${BASE}/app/radar?tab=won&lead=${leadId}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await page.waitForSelector('aside [data-company-site]', { timeout: 30000 }).catch(() => {});
+      return page.evaluate(() => {
+        const el = document.querySelector('aside [data-company-site]') as HTMLElement | null;
+        if (!el) return null;
+        const box = el.querySelector('div.border') as HTMLElement | null;
+        return {
+          confirmed: el.getAttribute('data-site-confirmed'), scope: el.getAttribute('data-site-scope'),
+          lines: Array.from(el.querySelectorAll('[data-site-trust]')).map((x) => ({ kind: x.getAttribute('data-site-trust'), text: (x as HTMLElement).innerText })),
+          border: box ? getComputedStyle(box).borderStyle : '',
+        };
+      });
+    };
+    const confirmedSite = await readTrust(tenderLead!.id);
+    check(!!confirmedSite && confirmedSite.confirmed === 'true' && confirmedSite.scope === 'own' && confirmedSite.lines.length === 1 && confirmedSite.lines[0].kind === 'printed' && /^Confirmed: example\.invalid prints the award notice's address/.test(confirmedSite.lines[0].text) && confirmedSite.border === 'solid',
+      'a confirmed site reads "Confirmed" on a plain border', JSON.stringify(confirmedSite));
+    const doubtfulSite = await readTrust(groupLead!.id);
+    check(!!doubtfulSite && doubtfulSite.confirmed === 'false' && doubtfulSite.scope === 'group' && doubtfulSite.lines[0]?.kind === 'group' && /looks like the group's website, not Smoke Groupe France SAS's own/.test(doubtfulSite.lines[0].text)
+      && doubtfulSite.lines[1]?.kind === 'not_printed' && /^Not confirmed: smoke-groupe\.com does not print the award notice's address/.test(doubtfulSite.lines[1].text) && doubtfulSite.border === 'dashed',
+      'an unconfirmed group site reads the group warning, then "Not confirmed", on a dashed warning border', JSON.stringify(doubtfulSite));
     await page.goto(`${BASE}/app/radar`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForSelector('tr[data-lead-source]', { timeout: 60000 }).catch(() => {});
 
@@ -755,6 +815,8 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       await admin.from('contacts').delete().eq('company_id', tenderCo.id).eq('is_test', true);
       await admin.from('companies').delete().eq('id', tenderCo.id).eq('is_test', true);
     }
+    if (groupLead) await admin.from('leads').delete().eq('id', groupLead.id).eq('is_test', true);
+    if (groupCo) await admin.from('companies').delete().eq('id', groupCo.id).eq('is_test', true);
     // Item 19's company: its lead, then its posting, then the company. Left out on 2026-09-15, the company held the
     // workspace and the gate failed on cleanup with every item 19 check passing.
     if (compoundLead) await admin.from('leads').delete().eq('id', compoundLead.id).eq('is_test', true);

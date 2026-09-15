@@ -87,3 +87,6 @@ export const hasIndustries = (sb: SupabaseClient) => hasColumn(sb, 'leads', 'ind
 
 /** Item 18 part 3 arrives with 0032: what each person follows, and their entitlement (src/lib/industry-follow.ts). */
 export const hasIndustryFollow = (sb: SupabaseClient) => hasColumn(sb, 'users', 'industry_follow');
+
+/** 0033: where a company's website came from, its address check against the award notice, group or own site, lookups tried. */
+export const hasDomainProvenance = (sb: SupabaseClient) => hasColumn(sb, 'companies', 'domain_lookups');

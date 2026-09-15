@@ -4,7 +4,7 @@ import { FOLLOW_OPTIONS } from '@/lib/industry';
 import { Help } from '@/components/Help';
 import { LeadDrawer } from '@/components/LeadDrawer';
 import { HiringNow, HiringHelp } from '@/components/HiringNow';
-import { hasEmployerOverride, hasJobBoardFields, hasHiringState, hasPostingContact, hasAwardDate, hasIndustries } from '@/lib/schema-features';
+import { hasEmployerOverride, hasJobBoardFields, hasHiringState, hasPostingContact, hasAwardDate, hasIndustries, hasDomainProvenance } from '@/lib/schema-features';
 import { HiringDrawer } from '@/components/HiringDrawer';
 import { groupByCompany } from '@/components/HiringNow';
 import { checkRightToWork } from '@/lib/right-to-work';
@@ -16,6 +16,7 @@ import { rankQuoted } from '@/lib/quoted-contacts';
 import { OpenRow, OpenChevron } from '@/components/OpenRow';
 import { compoundByCompany } from '@/lib/compound-signals-load';
 import { preparedSearches } from '@/lib/hiring-contacts';
+import { siteTrust } from '@/lib/site-trust';
 import { boostedFit } from '@/lib/compound-signals';
 export const dynamic = 'force-dynamic';
 export default async function Radar({ searchParams }: { searchParams: { tab?: string; lead?: string; agencies?: string; company?: string; country?: string; trade?: string; employer?: string; pressure?: string; source?: string; sort?: string; industries?: string } }) {
@@ -74,7 +75,9 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const awardCols = (await hasAwardDate(sb)) ? ', award_date, award_date_basis' : '';
   // Item 21: the quoted contact's address and where it came from (the embed never loaded email or quote, so the drawer
   // could show neither), and what the company's own site gave — switchboard, general email, people — with sources.
-  const leadCols = `*, companies(name, domain, employer_type, size_band, switchboard, switchboard_source_url, general_email, general_email_source_url, contacts_checked_at${coOverride}, contacts(name, title, email, email_status, email_source_url, phone, phone_source_url, source_url, lead_id, linkedin_search_url, google_search_url)), contacts(name, title, quote, email, email_status, email_source_url, phone, phone_source_url, linkedin_search_url, google_search_url), job_posts(role, headcount, certs_required, hiring_pressure, posted_at)`;
+  // 0033: how the website was found and checked. Named only once it exists — a missing column fails the whole query.
+  const domainCols = (await hasDomainProvenance(sb)) ? ', domain_source, domain_address_check, domain_checked_address, domain_scope, domain_scope_reason' : '';
+  const leadCols = `*, companies(name, domain, country, source, employer_type, size_band, switchboard, switchboard_source_url, general_email, general_email_source_url, contacts_checked_at${coOverride}${domainCols}, contacts(name, title, email, email_status, email_source_url, phone, phone_source_url, source_url, lead_id, linkedin_search_url, google_search_url)), contacts(name, title, quote, email, email_status, email_source_url, phone, phone_source_url, linkedin_search_url, google_search_url), job_posts(role, headcount, certs_required, hiring_pressure, posted_at)`;
   const openLeads = (cols: string, head = false) => {
     const q = sb.from('leads').select(cols, head ? { count: 'exact', head: true } : undefined).eq('kind', tab).not('status', 'in', '("stale","not_for_us")');
     const inCountry = country ? q.eq('country', country) : q;
@@ -120,6 +123,8 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
     const quotedNames = new Set((l.contacts ?? []).map((c: any) => String(c.name).toLowerCase()));
     l.company_people = (l.companies?.contacts ?? []).filter((c: any) => !c.lead_id && c.source_url && !quotedNames.has(String(c.name).toLowerCase()));
     l.searches = preparedSearches(l.companies?.name ?? '');
+    // Whether the site those contacts came from is confirmed against the award notice, and whether it is the group's.
+    l.site_trust = siteTrust(l.companies);
   }
   // Item 19: a company with two or more independent signal types inside 60 days — tender award, news mention, open
   // posting, re-advertised role — raises the fit of every one of its leads. Computed here and never stored: the row
@@ -246,8 +251,8 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
         <OpenRow key={l.id} href={`/app/radar?tab=${searchParams.tab ?? 'won'}${source ? `&source=${source}` : ''}${sortQs}${countryQs}&lead=${l.id}`} selected={selected?.id === l.id} className={AGE_DIM[l.age.state as keyof typeof AGE_DIM]} attrs={{ 'data-lead-source': src, 'data-age': l.age.state, 'data-age-date': l.age.date ?? '' }}>
           <td><a href={`?tab=${searchParams.tab ?? 'won'}${source ? `&source=${source}` : ''}${sortQs}${countryQs}&lead=${l.id}`} className="block"><div className="font-medium whitespace-nowrap flex items-center gap-1.5">{l.companies?.name}<OpenChevron /></div><div className="text-ink3 text-[12px]">{l.project_location} · {l.companies?.employer_type?.replace('_', ' ')}{l.companies?.size_band ? ` · ${l.companies.size_band}` : ''}</div><div className="mt-1.5 flex items-center gap-1.5 flex-wrap"><span data-source={src} className={LEAD_SOURCE_BADGE[src]}>{LEAD_SOURCE_LABEL[src]}</span><span data-age-label title={l.age.why} className={`text-[12px] ${AGE_TEXT[l.age.state as keyof typeof AGE_TEXT]}`}>{l.age.label}</span>{also > 0 && <span className="text-ink3 text-[12px]" title="The same contract, reported by another source, linked to this lead">+{also} source{also === 1 ? '' : 's'}</span>}</div>{l.fit_boost && <div data-compound title={l.fit_boost.note} className="mt-1 text-[12px] text-accent font-medium whitespace-normal">{l.fit_boost.label}</div>}</a></td>
           <td>{tab === 'won_work' ? l.project_name : jp?.role}<div className="text-ink3 text-[12px]">{tab === 'won_work' ? [l.phase, l.project_value].filter(Boolean).join(' · ') : `${jp?.headcount ? `×${jp.headcount} · ` : ''}posted ${jp?.posted_at ?? '—'}`}</div></td>
-          <td>{c ? <><div className="font-medium">{c.name} <a href={c.linkedin_search_url} target="_blank" rel="noopener" className="ml-1 inline-grid place-items-center w-5 h-5 border border-line rounded text-[10px] font-semibold text-ink2">in</a> <a href={c.google_search_url} target="_blank" rel="noopener" className="inline-grid place-items-center w-5 h-5 border border-line rounded text-[10px] font-semibold text-ink2">G</a></div><div className="text-ink3 text-[12px]">{c.title} · email {c.email_status}{c.phone ? ' · phone found' : ''}</div></> : l.company_people?.[0] ? <div data-company-contact><div className="font-medium">{l.company_people[0].name}</div><div className="text-ink3 text-[12px]">{l.company_people[0].title} · from their site{l.company_people[0].email ? ' · email found' : ''}{l.company_people[0].phone ? ' · phone found' : ''}</div></div>
-            : (l.companies?.switchboard || l.companies?.general_email) ? <div data-company-contact><div className="font-medium">{l.companies.switchboard ? 'Switchboard' : 'General email'}</div><div className="text-ink3 text-[12px]">{l.companies.switchboard ?? l.companies.general_email} · from their site</div></div>
+          <td>{c ? <><div className="font-medium">{c.name} <a href={c.linkedin_search_url} target="_blank" rel="noopener" className="ml-1 inline-grid place-items-center w-5 h-5 border border-line rounded text-[10px] font-semibold text-ink2">in</a> <a href={c.google_search_url} target="_blank" rel="noopener" className="inline-grid place-items-center w-5 h-5 border border-line rounded text-[10px] font-semibold text-ink2">G</a></div><div className="text-ink3 text-[12px]">{c.title} · email {c.email_status}{c.phone ? ' · phone found' : ''}</div></> : l.company_people?.[0] ? <div data-company-contact><div className="font-medium">{l.company_people[0].name}</div><div className="text-ink3 text-[12px]">{l.company_people[0].title} · from their site{l.company_people[0].email ? ' · email found' : ''}{l.company_people[0].phone ? ' · phone found' : ''}{l.site_trust?.rowNote && <span data-site-note className="text-warn font-medium"> · {l.site_trust.rowNote}</span>}</div></div>
+            : (l.companies?.switchboard || l.companies?.general_email) ? <div data-company-contact><div className="font-medium">{l.companies.switchboard ? 'Switchboard' : 'General email'}</div><div className="text-ink3 text-[12px]">{l.companies.switchboard ?? l.companies.general_email} · from their site{l.site_trust?.rowNote && <span data-site-note className="text-warn font-medium"> · {l.site_trust.rowNote}</span>}</div></div>
             : <span className="text-ink3">— {l.lead_people?.length ? `${l.lead_people.length} from attendee list` : src === 'tender' ? 'award notices name no person' : 'no named person'}</span>}</td>
           <td>{(l.trades_inferred ?? []).map((t: string) => <span key={t} className="inline-block text-[12px] px-2 py-0.5 rounded-md bg-line2 text-ink2 mr-1 mb-1">{t}</span>)}</td>
           <td>{tab === 'won_work' ? <span className="text-[13px]">{l.phase_start ?? l.phase ?? '—'}</span> : <span className={`st ${jp?.hiring_pressure === 'high' ? 'st-bad' : jp?.hiring_pressure === 'medium' ? 'st-warn' : ''}`}>{jp?.hiring_pressure ?? 'low'}</span>}</td>

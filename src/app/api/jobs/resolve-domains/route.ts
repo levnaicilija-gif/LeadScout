@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { crawlWorkspace } from '@/lib/crawl-workspace';
 import { lookupDomain } from '@/lib/domain-lookup';
+import { siteScope } from '@/lib/site-scope';
+import { hasDomainProvenance } from '@/lib/schema-features';
 import { Budget, spentEur } from '@/lib/cost';
 export const maxDuration = 300;
 
@@ -61,11 +63,17 @@ async function run(req: Request) {
     if (data.length < 1000) break;
   }
 
-  const { data: pool } = await db.from('companies')
-    .select('id, name, country, sector')
+  // 0033 counts lookups, and a miss is final only on the second (the lookup is not deterministic). Before 0033 the only
+  // mark of a miss is careers_status; this queue filtered on careers_checked_at alone, which a miss never set, so every
+  // run paid again for every company it had already missed.
+  const provenance = await hasDomainProvenance(db);
+  let poolQuery = db.from('companies')
+    .select(`id, name, country, sector${provenance ? ', domain_lookups' : ''}`)
     .eq('workspace_id', workspace).in('country', COUNTRIES).in('sector', RELEVANT)
     .is('domain', null).is('careers_checked_at', null)
-    .limit(1500);
+    .or('careers_status.is.null,careers_status.neq.no_domain_found');
+  if (provenance) poolQuery = poolQuery.lt('domain_lookups', 2);
+  const { data: pool } = await poolQuery.limit(1500) as { data: any[] | null };
 
   const todo = (pool ?? []).filter((c) => ops.has(c.name.trim().toLowerCase())).slice(0, limit);
   const stats = { looked: 0, resolved: 0, notFound: 0, errors: 0 };
@@ -81,16 +89,21 @@ async function run(req: Request) {
       const domain = r.domain;
       const ans = { confirmed_by: r.confirmedBy, source_url: r.sourceUrl };
 
+      const attempt = Number(c.domain_lookups ?? 0) + 1;
+      const stamp = provenance ? { domain_lookups: attempt, domain_looked_up_at: new Date().toISOString() } : {};
       if (domain && ans.confirmed_by) {
-        await db.from('companies').update({
-          domain, source: 'web search', source_url: ans.source_url ?? null,
-          rfbt_history: null,
-        }).eq('id', c.id);
+        // With 0033 the search's result has its own columns and companies.source keeps where the company came from.
+        const scope = siteScope({ companyName: c.name, domain, winnerCountry: c.country });
+        await db.from('companies').update(provenance
+          ? { domain, domain_source: 'web search', domain_source_url: ans.source_url ?? null, domain_address_check: 'no_address', domain_scope: scope.scope, domain_scope_reason: scope.reason, rfbt_history: null, ...stamp }
+          : { domain, source: 'web search', source_url: ans.source_url ?? null, rfbt_history: null },
+        ).eq('id', c.id);
         stats.resolved++;
-        found.push({ name: c.name, country: c.country, domain, confirmed_by: String(ans.confirmed_by).slice(0, 90) });
+        found.push({ name: c.name, country: c.country, domain, confirmed_by: String(ans.confirmed_by).slice(0, 90), scope: scope.scope });
       } else {
-        // Mark it looked-at so a later run does not pay for it again.
-        await db.from('companies').update({ careers_status: 'no_domain_found' }).eq('id', c.id);
+        // One miss is not final — the second is. Before 0033 there is no count, so the old mark stands.
+        const final = !provenance || attempt >= 2;
+        await db.from('companies').update({ ...stamp, ...(final ? { careers_status: 'no_domain_found' } : {}) }).eq('id', c.id);
         stats.notFound++;
       }
     } catch {
