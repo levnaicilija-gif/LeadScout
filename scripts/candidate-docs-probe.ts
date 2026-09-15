@@ -83,17 +83,21 @@ const docSettled = (p: Page) => p.waitForFunction(() => document.querySelector('
     if (STEPS.has('4')) {
       await dropOn(page, '[data-candidate-doc-drop]', CERT, 'application/pdf');
       check(await docSettled(page), 'at 1500px the certificate dropped on the page is read and checked with its issuer');
+      // The specimen names Dragan Veselinović, not this candidate: the page asks before anything is attached (holderFits).
+      const asked = (await page.locator('[data-mismatch-question]').first().innerText().catch(() => '')).replace(/\s+/g, ' ');
+      const { data: waiting } = await admin.from('documents').select('candidate_id').eq('workspace_id', workspace).eq('type', 'certificate');
+      check(/This certificate is for .+ — this candidate is /.test(asked) && (waiting ?? []).length === 1 && waiting![0].candidate_id === null, 'at 1500px the name on it is not theirs, so the page asks and attaches nothing yet', asked.slice(0, 160));
+      await page.locator('[data-mismatch-attach]').first().click();
+      await page.waitForSelector('[data-mismatch-done]', { timeout: 30000 }).catch(() => {});
       await page.waitForFunction(() => !/Reading the code…/i.test(document.body.innerText), undefined, { timeout: 30000 }).catch(() => {});
       const result = (await page.locator('[data-candidate-doc-result="certificate"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ');
       const { data: certs } = await admin.from('documents').select('id, candidate_id, extracted, verifications(id, state, valid_until)').eq('workspace_id', workspace).eq('type', 'certificate');
       const cert = certs?.[0];
-      check((certs ?? []).length === 1 && cert?.candidate_id === cand.id, 'it attached to this candidate, whatever name is printed on it', JSON.stringify(certs?.map((c: any) => c.candidate_id === cand.id)));
+      check((certs ?? []).length === 1 && cert?.candidate_id === cand.id, '"Attach anyway" attached it to this candidate', JSON.stringify(certs?.map((c: any) => c.candidate_id === cand.id)));
       check(/what the document says/i.test(result) && /what this certificate means|unrecognised/i.test(result) && /confirmation/i.test(result), 'the dropped certificate shows its layers', result.slice(0, 200));
       check((cert?.verifications ?? []).length === 1 && !!(cert!.verifications as any[])[0].state, 'a verification is stored — the row Today reads for expiry', JSON.stringify(cert?.verifications));
-      const holder = (cert?.extracted as any)?.holder;
-      const differs = holder && holder.toLowerCase().replace(/\W+/g, '') !== String(cand.full_name ?? '').toLowerCase().replace(/\W+/g, '');
-      const note = await page.locator('[data-holder-note]').count();
-      check(differs ? note >= 1 : note === 0, differs ? 'the holder name differs from the candidate\'s, and the page says so' : 'the holder name is the candidate\'s, and no warning is shown', `holder "${holder}" · candidate "${cand.full_name}"`);
+      const { data: trail } = await admin.from('documents').select('attach_reason').eq('id', cert?.id ?? '').maybeSingle();
+      check(/attached anyway/.test(String(trail?.attach_reason ?? '')), 'the attach trail records it was attached after being told the names differ', String(trail?.attach_reason ?? '').slice(0, 160));
       await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
       check((await page.locator('[data-candidate-certificate]').count()) === 1, 'after the refresh the certificate is on the candidate\'s page');
     }
@@ -181,8 +185,10 @@ const docSettled = (p: Page) => p.waitForFunction(() => document.querySelector('
     if (STEPS.has('4')) {
       await dropOn(m, '[data-candidate-doc-drop]', CERT, 'application/pdf');
       check(await docSettled(m), 'at 390px a certificate dropped on the page is read and checked');
+      await m.locator('[data-mismatch-attach]').first().tap().catch(() => {});
+      await m.waitForSelector('[data-mismatch-done]', { timeout: 30000 }).catch(() => {});
       const { data: again } = await admin.from('documents').select('candidate_id').eq('workspace_id', workspace).eq('type', 'certificate');
-      check((again ?? []).length === 2 && again!.every((d: any) => d.candidate_id === cand.id), 'at 390px it attached to this candidate too', `${(again ?? []).length} certificates`);
+      check((again ?? []).length === 2 && again!.every((d: any) => d.candidate_id === cand.id), 'at 390px it asks too, and "Attach anyway" attaches it', `${(again ?? []).length} certificates`);
       check(await sideways(m) <= 1, 'at 390px the drop result does not scroll the page sideways', `${await sideways(m)}px`);
     }
     if (STEPS.has('5')) {

@@ -168,11 +168,16 @@ async function desktop(browser: Browser, a: Account) {
   await page.dispatchEvent('[data-candidate-doc-drop]', 'dragover', { dataTransfer: certDrag });
   await page.dispatchEvent('[data-candidate-doc-drop]', 'drop', { dataTransfer: certDrag });
   const certDone = await docSettled(page);
+  // The specimen names Dragan Veselinović, not the sandblaster: their page asks, and the recruiter attaches it anyway.
+  const certAsked = flat(await page.locator('[data-mismatch-question]').first().innerText().catch(() => ''));
+  check(/This certificate is for .+ — this candidate is /.test(certAsked), '1500px: the certificate names someone else, so their page asks before attaching', certAsked.slice(0, 160));
+  await page.locator('[data-mismatch-attach]').first().click();
+  await page.waitForSelector('[data-mismatch-done]', { timeout: 30000 }).catch(() => {});
   await page.waitForFunction(() => !/Reading the code…/i.test(document.body.innerText), undefined, { timeout: 30000 }).catch(() => {});
   const certResult = flat(await page.locator('[data-candidate-doc-result="certificate"]').first().innerText().catch(() => ''));
   const { data: certs } = await admin.from('documents').select('id, candidate_id, verifications(state, valid_until)').eq('workspace_id', a.workspace).eq('type', 'certificate');
   check(certDone && (certs ?? []).length === 1 && certs![0].candidate_id === cand.id && (certs![0].verifications as any[]).length === 1,
-    '1500px: the certificate dragged onto their page attaches to them and is checked with its issuer', JSON.stringify(certs?.map((c: any) => ({ mine: c.candidate_id === cand.id, verifications: c.verifications }))));
+    '1500px: "Attach anyway" puts the certificate dragged onto their page on them, checked with its issuer', JSON.stringify(certs?.map((c: any) => ({ mine: c.candidate_id === cand.id, verifications: c.verifications }))));
   check(/what the document says/i.test(certResult) && /confirmation/i.test(certResult), '1500px: the result shows what the document says and the confirmation', certResult.slice(0, 160));
   await page.reload({ waitUntil: 'domcontentloaded' });
   await hydrated(page);
@@ -293,8 +298,10 @@ async function phone(browser: Browser, a: Account) {
     const [certChooser] = await Promise.all([m.waitForEvent('filechooser', { timeout: 30000 }), m.locator('[data-candidate-doc-drop]').tap()]);
     await certChooser.setFiles(CERT);
     const certDone = await docSettled(m);
+    await m.locator('[data-mismatch-attach]').first().tap().catch(() => {});
+    await m.waitForSelector('[data-mismatch-done]', { timeout: 30000 }).catch(() => {});
     const { data: certs } = await admin.from('documents').select('candidate_id, verifications(state)').eq('workspace_id', a.workspace).eq('type', 'certificate');
-    check(certDone && (certs ?? []).length === 1 && certs![0].candidate_id === cand.id && (certs![0].verifications as any[]).length === 1, '390px: tapping the certificate zone and choosing the file attaches it to them and checks it', JSON.stringify(certs));
+    check(certDone && (certs ?? []).length === 1 && certs![0].candidate_id === cand.id && (certs![0].verifications as any[]).length === 1, '390px: the certificate chosen through their zone asks, and "Attach anyway" puts it on them, checked', JSON.stringify(certs));
     check(await sideways(m) <= 1, '390px: the certificate result does not scroll the page sideways', `${await sideways(m)}px`);
 
     // CV sent

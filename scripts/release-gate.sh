@@ -47,6 +47,7 @@ step model-meter npx tsx scripts/model-meter-check.ts
 step verify-adapters npx tsx scripts/verify-adapters-check.ts
 step candidate-search npx tsx scripts/candidate-search-check.ts
 step cv-sent-entry npx tsx scripts/cv-sent-entry-check.ts
+step holder-fits npx tsx scripts/holder-fits-check.ts
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts
 step candidate-phone npx tsx scripts/candidate-phone-check.ts
 

@@ -10,7 +10,7 @@ import { isEea } from '@/lib/right-to-work';
 import { countriesFromText, norm } from '@/lib/geo';
 import { hasRightToWork, hasCandidateCrm } from '@/lib/schema-features';
 import { judgeDuplicate } from '@/lib/candidate-dedupe';
-import { matchName, autoMatch, normName } from '@/lib/name-match';
+import { matchName, autoMatch, normName, holderFits } from '@/lib/name-match';
 import { allRows } from '@/lib/all-rows';
 export const maxDuration = 300;
 
@@ -41,8 +41,10 @@ async function handle(req: Request, me: SignedIn) {
     const form = await req.formData();
     const files = form.getAll('files') as File[];
     if (!files.length) return NextResponse.json({ error: 'at least one file is required' }, { status: 400 });
-    // Item 24: files dropped on a candidate's own page belong to that candidate — a recruiter chose the person by opening
-    // their page, so no name matching decides it. Checked against the workspace before anything is stored.
+    // Item 24: files dropped on a candidate's own page are meant for that candidate. They attach only when the name on them
+    // fits the candidate's (holderFits); otherwise the file is stored unattached and the page asks — attach anyway, or open a
+    // record for the person named. Until 2026-09-15 nothing asked, and Paul Daniel Pascale's certificate went onto #9.
+    // Checked against the workspace before anything is stored.
     const targetId = String(form.get('candidate_id') ?? '').trim() || null;
 
     const db = supabaseAdmin();
@@ -90,9 +92,18 @@ async function handle(req: Request, me: SignedIn) {
           // Dropped on a candidate's page: it is their CV. It refreshes their reading, as attaching a CV does, and says so
           // when the name on it is not theirs.
           if (target) {
+            const fit = holderFits(profile.full_name, target.full_name);
+            if (!fit.fits) {
+              // Someone else's CV by the name on it: stored unattached, their profile untouched, and the page asks.
+              const doc = await store(db, me, bytes, f, 'cv', null, { text: cvText.slice(0, 5000), profile, holder: profile.full_name });
+              row.documentId = doc?.id ?? null;
+              row.mismatch = mismatchFor(target, profile.full_name, fit.why, 'cv');
+              row.profile = anonymize(profile); row.trade = profile.trade;
+              results.push(row);
+              continue;
+            }
             await db.from('candidates').update({ profile, ...(profile.trade ? { trade: profile.trade } : {}), ...(profile.languages ? { languages: profile.languages } : {}) }).eq('id', target.id);
             await store(db, me, bytes, f, 'cv', target.id, { text: cvText.slice(0, 5000), profile, holder: profile.full_name });
-            if (profile.full_name && normName(profile.full_name) !== normName(target.full_name)) row.holderNote = `The CV names ${profile.full_name}; it was added to ${target.reference_code} because it was dropped on their page.`;
             row.candidateId = target.id; row.reference = target.reference_code; row.profile = anonymize(profile); row.trade = profile.trade;
             touched.set(target.id, target);
             results.push(row);
@@ -158,13 +169,16 @@ async function handle(req: Request, me: SignedIn) {
         // person — and the card offers the near matches, or offers to open a record from it.
         // A certificate never opens one by itself: a ticket says what someone can do, not that
         // we have them. That is a recruiter's call, taken on the card.
-        const cand = target ?? autoMatch(known, ext.holder);
-        if (target && ext.holder && normName(ext.holder) !== normName(target.full_name)) row.holderNote = `The document names ${ext.holder}; it was attached to ${target.reference_code} because it was dropped on their page.`;
+        // Dropped on a candidate's page, it goes on them only when the name on it fits theirs; otherwise it is stored
+        // unattached and the page asks. Anywhere else, only an exact name match attaches by itself.
+        const fit = target ? holderFits(ext.holder, target.full_name) : null;
+        const cand = target ? (fit!.fits ? target : null) : autoMatch(known, ext.holder);
+        if (target && !fit!.fits) row.mismatch = mismatchFor(target, ext.holder, fit!.why, ext.doc_type);
         const doc = await store(db, me, bytes, f, ext.doc_type, cand?.id ?? null, ext);
         row.documentId = doc?.id ?? null;
         row.candidateId = cand?.id ?? null;
         row.reference = cand?.reference_code ?? null;
-        if (!cand) {
+        if (!cand && !row.mismatch) {
           row.suggest = matchName(known, ext.holder).slice(0, 4).map((m) => ({ candidateId: m.candidate.id, reference: m.candidate.reference_code, name: m.candidate.full_name, kind: m.kind, why: m.why }));
           row.needsDecision = ext.holder
             ? (row.suggest.length ? 'Nobody in the pool has exactly this name.' : `Nobody in the pool is called ${ext.holder}.`)
@@ -269,6 +283,11 @@ function parseDate(s?: string | null) {
   if (uk) return new Date(Date.UTC(+uk[3], +uk[2] - 1, +uk[1]));
   const t = Date.parse(s);
   return Number.isNaN(t) ? null : new Date(t);
+}
+
+/** What a candidate's page asks when a file dropped on it names someone else (MismatchQuestion). */
+function mismatchFor(target: any, holder: string | null | undefined, why: string, type: string) {
+  return { holder: holder ?? null, candidate: { id: target.id, reference: target.reference_code, name: target.full_name ?? null }, why, type };
 }
 
 async function store(db: any, me: any, bytes: Buffer, f: File, type: string, candidateId: string | null, extracted: any) {

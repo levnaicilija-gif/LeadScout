@@ -1,13 +1,18 @@
 'use client';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { CertCard } from './CertCard';
 import { friendlyError } from '@/lib/friendly-error';
+import { candidateLabel } from '@/lib/candidate-number';
+import { MismatchQuestion } from './MismatchQuestion';
 
 /**
  * Drop certificates (or any document) on a candidate's page (item 24). The files go through Verify's intake with this
- * candidate named, so they attach to them — no name matching decides it — and each certificate then goes to its issuing
- * body through Verify's lookup, exactly as a Verify drop does. The card shows the three layers as it arrives; the page
+ * candidate named. A file attaches to them only when the name on it fits theirs; one that names someone else is stored
+ * unattached and asked about here — attach anyway, or open a record for the person named (item 24 follow-up, 2026-09-15:
+ * Paul Daniel Pascale's certificate went onto #9 unasked). Each certificate then goes to its issuing body through
+ * Verify's lookup, exactly as a Verify drop does. The card shows the three layers as it arrives; the page
  * refreshes when everything has answered, so the certificate list, its expiry and Today's expiry line all read the same
  * stored verification.
  */
@@ -69,12 +74,48 @@ export function CandidateDocDrop({ candidateId, label }: { candidateId: string; 
               {f.kind === 'certificate' ? <CertCard res={f} busy={busy} />
                 : f.kind === 'other' || f.kind === 'unreadable' ? <div className="text-[13px]"><b>Not saved</b> — {f.file}{f.why ? ` · ${friendlyError(f.why, 'cv')}` : ''}</div>
                   : <div className="text-[13px]"><b>Saved as {f.kind}</b> — {f.file}</div>}
-              {f.holderNote && <div className="text-warn text-[12px] mt-1.5" data-holder-note>{f.holderNote}</div>}
+              {f.mismatch && <DropMismatch f={f} onSettled={() => router.refresh()} />}
               {f.lookupError && <div className="text-warn text-[12px] mt-1.5">The certificate was saved, but checking it with the issuer failed: {f.lookupError}</div>}
             </div>
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+
+/** A dropped file names someone else: nothing is attached until the recruiter answers the question. */
+function DropMismatch({ f, onSettled }: { f: any; onSettled: () => void }) {
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
+  const [done, setDone] = useState<{ created: boolean; reference: string; id: string } | null>(null);
+  const post = async (body: any, what: string) => {
+    setBusy(what); setErr('');
+    try {
+      const r = await fetch('/api/verify/attach', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ documentId: f.documentId, ...body }) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(j?.error ?? `nothing was attached (HTTP ${r.status})`);
+      setDone({ created: !!j.created, reference: j.candidate?.reference ?? '', id: j.candidate?.id ?? '' });
+      onSettled();
+    } catch (e: any) { setErr(String(e?.message ?? e)); } finally { setBusy(''); }
+  };
+  if (!f.documentId) return <div className="text-bad text-[12px] mt-1.5">It names {f.mismatch.holder ?? 'nobody'}, and it could not be saved.</div>;
+  if (done) {
+    return (
+      <div data-mismatch-done={done.created ? 'created' : 'attached'} className="text-ok text-[13px] mt-2">
+        {done.created
+          ? <>✓ Record opened — <Link href={`/app/candidates/${done.id}`} className="text-accent">{candidateLabel(done.reference)} · {f.mismatch.holder}</Link>, and the {f.kind === 'cv' ? 'CV' : f.kind} is on it</>
+          : <>✓ Attached to {candidateLabel(done.reference)} anyway — recorded as attached after being told the names differ</>}
+      </div>
+    );
+  }
+  return (
+    <>
+      <MismatchQuestion mismatch={f.mismatch} type={f.kind} busy={busy}
+        onAttachAnyway={() => post({ candidateId: f.mismatch.candidate.id, confirmMismatch: true, reason: 'dropped on their page' }, 'anyway')}
+        onOpenRecord={() => post({ create: true }, 'new')} />
+      {err && <div className="text-bad text-[12px] mt-1.5">{err}</div>}
+    </>
   );
 }

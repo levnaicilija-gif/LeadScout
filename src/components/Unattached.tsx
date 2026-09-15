@@ -48,7 +48,7 @@ export function Unattached({ docs }: { docs: Orphan[] }) {
         <div className="px-[18px] pb-4 border-t border-line2 pt-3 grid gap-3">
           {left.length === 0 && <div className="text-ink3 text-[13px]">Nothing left — every document has a person.</div>}
           {left.map((d) => (
-            <div key={d.id} className="border border-line rounded-card p-3">
+            <div key={d.id} data-unattached-doc={d.id} className="border border-line rounded-card p-3">
               <div className="text-[14px] font-semibold">
                 {d.type === 'certificate' ? `Certificate — ${d.cert_body ?? 'body not stated'}` : d.type.charAt(0).toUpperCase() + d.type.slice(1)}
                 {d.holder ? <span className="text-ink2 font-normal"> · {d.holder}</span> : <span className="text-ink3 font-normal"> · no holder name read</span>}

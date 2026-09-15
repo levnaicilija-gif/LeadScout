@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { candidateLabel } from '@/lib/candidate-number';
+import { MismatchQuestion, type Mismatch } from './MismatchQuestion';
 
 /**
  * Whose document is this?
@@ -37,6 +38,8 @@ export function AttachChoice({
   const [all, setAll] = useState<{ id: string; reference: string; name?: string | null }[] | null>(null);
   const [picked, setPicked] = useState('');
   const [offers, setOffers] = useState<Suggestion[]>(suggest ?? []);
+  // The name on the document does not fit the person picked: asked, and attached only on "Attach anyway".
+  const [mismatch, setMismatch] = useState<(Mismatch & { retry: any }) | null>(null);
 
   // A card rendered from stored rows has no suggestions with it; fetch them once.
   useEffect(() => {
@@ -54,7 +57,9 @@ export function AttachChoice({
     try {
       const r = await fetch('/api/verify/attach', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ documentId, ...body }) });
       const j = await r.json();
+      if (r.status === 409 && j?.mismatch) { setMismatch({ ...j.mismatch, retry: body }); return; }
       if (!r.ok) throw new Error(j?.error ?? `attach failed (HTTP ${r.status})`);
+      setMismatch(null);
       const result = { reference: j.candidate?.reference ?? '', created: !!j.created };
       setDone(result);
       onDone?.(result);
@@ -126,6 +131,11 @@ export function AttachChoice({
           )}
       </div>
 
+      {mismatch && (
+        <MismatchQuestion mismatch={mismatch} busy={busy}
+          onAttachAnyway={() => post({ ...mismatch.retry, confirmMismatch: true }, 'anyway')}
+          onOpenRecord={mismatch.holder ? () => post({ create: true }, 'new') : undefined} />
+      )}
       {err && <div className="text-bad mt-2 text-[12px]">{err}</div>}
     </div>
   );

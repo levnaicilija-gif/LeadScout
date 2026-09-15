@@ -878,3 +878,8 @@ permanent deletes (a candidate, a certificate document) are seniors only; taking
 is open to every recruiter.
 Step 1 done: the certificate (FROSIO No. 10810) taken off #9 and kept, attached to nobody, with its verification; #9
 holds 0 certificates. Migration 0037 (deletion log; a candidate's rows deleted in one transaction) waits to be applied.
+Step 2 built: a document goes on a chosen candidate only when the name on it fits theirs (order, case and punctuation
+ignored; an initial or a middle name allowed; a shared surname alone is not enough). Otherwise nothing is attached and the
+screen asks "This certificate is for X — this candidate is Y. Attach anyway, or open a record for X instead?". Checked
+in the attach route itself, so it covers a drop on a candidate's page and Verify's Unattached panel alike — which had no
+equivalent protection before: its "Attach to someone else…" attached anything to anyone.

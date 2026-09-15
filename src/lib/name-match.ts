@@ -13,7 +13,8 @@
  */
 
 export type Person = { id: string; reference_code: string; full_name?: string | null };
-export type Match<T extends Person = Person> = { candidate: T; kind: 'exact' | 'near'; why: string };
+/** `weak`: only the surname agrees — offered, but never enough to call a document this person's (holderFits). */
+export type Match<T extends Person = Person> = { candidate: T; kind: 'exact' | 'near'; why: string; weak?: true };
 
 /** Lower case, accents removed, punctuation dropped — "PEPLIŃSKI, Szymon" → "peplinski szymon". */
 export const normName = (n?: string | null) =>
@@ -67,7 +68,7 @@ export function matchName<T extends Person>(known: T[], name?: string | null): M
     }
     // Surname alone, nothing else agreeing. Weak, and said to be weak.
     if (sharesSurname && last.length > 3) {
-      out.push({ candidate: c, kind: 'near', why: `only the surname matches (${last}) — check before attaching` });
+      out.push({ candidate: c, kind: 'near', why: `only the surname matches (${last}) — check before attaching`, weak: true });
     }
   }
 
@@ -78,4 +79,21 @@ export function matchName<T extends Person>(known: T[], name?: string | null): M
 export function autoMatch<T extends Person>(known: T[], name?: string | null): T | undefined {
   const exact = matchName(known, name).filter((m) => m.kind === 'exact');
   return exact.length === 1 ? exact[0].candidate : undefined;
+}
+
+/**
+ * Is the name on a document this candidate's name? Asked before any document goes on a chosen candidate — dropped on their
+ * page, or attached from Verify's cards (item 24 follow-up, 2026-09-15: Paul Daniel Pascale's FROSIO certificate went onto
+ * #9, Bertescu Dumitrel, and nothing asked).
+ *
+ * Formatting and order do not matter ("PEPLIŃSKI, Szymon" is "Szymon Peplinski", "Dumitrel Bertescu" is "Bertescu
+ * Dumitrel"); a first name written as an initial, or a middle name only one side carries, still fits. A shared surname alone
+ * does not, and a document with no readable name fits nobody.
+ */
+export function holderFits(holder: string | null | undefined, candidateName: string | null | undefined): { fits: boolean; why: string } {
+  if (words(holder).length === 0) return { fits: false, why: 'no name could be read from the document' };
+  if (words(candidateName).length === 0) return { fits: false, why: 'the candidate has no name on file' };
+  const m = matchName([{ id: '', reference_code: '', full_name: candidateName }], holder)[0];
+  if (!m || m.weak) return { fits: false, why: m ? m.why : 'the names are different' };
+  return { fits: true, why: m.why };
 }

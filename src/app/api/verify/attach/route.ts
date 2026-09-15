@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
-import { matchName, normName } from '@/lib/name-match';
+import { matchName, holderFits } from '@/lib/name-match';
 import { hasAttachTrail, hasRightToWork, hasCandidateCrm } from '@/lib/schema-features';
 import { nextReferenceCode } from '@/lib/reference-code';
 import { isEea } from '@/lib/right-to-work';
@@ -15,10 +15,15 @@ export const maxDuration = 60;
  * the pool. Attaching a welder's ticket to the wrong welder puts an unqualified man on a plane,
  * so the near cases are offered and never taken.
  *
+ * Before a document goes on a chosen person, the name on it must fit theirs (holderFits). When it does not, the answer is
+ * 409 with the two names, and the document is attached only when the call says it has seen that (confirmMismatch) — the
+ * MismatchQuestion's "Attach anyway". Every way of attaching comes through here, so one check covers Verify's cards,
+ * "Attach to someone else…" and a candidate page's question (item 24 follow-up, 2026-09-15).
+ *
  * Three things it can do, all of them explicit:
  *
  *   GET  ?documentId=…            what this document is, and who it might belong to
- *   POST { documentId, candidateId }   attach to that person
+ *   POST { documentId, candidateId, confirmMismatch? }   attach to that person
  *   POST { documentId, create: true }  open a record for the person named on the document
  *
  * Creating from a certificate is allowed here and not on intake, and that is the point: intake
@@ -116,6 +121,16 @@ export async function POST(req: Request) {
     const { data: cand } = await db.from('candidates').select('id, reference_code, full_name, workspace_id').eq('id', candidateId).maybeSingle();
     if (!cand || cand.workspace_id !== me.workspace_id) return NextResponse.json({ error: 'no such candidate' }, { status: 404 });
 
+    if (!b.create && b.confirmMismatch !== true) {
+      const misfit = mine.map((d) => ({ d, holder: holderOf(d), fit: holderFits(holderOf(d), cand.full_name) })).find((x) => !x.fit.fits);
+      if (misfit) {
+        return NextResponse.json({
+          error: `the ${misfit.d.type} names ${misfit.holder ?? 'nobody'}, and this candidate is ${cand.full_name ?? 'unnamed'} — nothing was attached`,
+          mismatch: { documentId: misfit.d.id, type: misfit.d.type, holder: misfit.holder, candidate: { id: cand.id, reference: cand.reference_code, name: cand.full_name ?? null }, why: misfit.fit.why },
+        }, { status: 409 });
+      }
+    }
+
     // A CV attached to someone already in the pool brings its reading with it. Intake used to do this by itself on an
     // exact name; since item 24 it asks first, so the recruiter's choice is where the profile is refreshed.
     const cvDoc = !b.create ? mine.find((d) => d.type === 'cv' && (d.extracted as any)?.profile) : undefined;
@@ -126,11 +141,12 @@ export async function POST(req: Request) {
 
     // The reason is stored, not the fact alone. Six months from now the question is not whether
     // someone attached it but why they thought it was the same person.
-    const holder = (mine[0].extracted as any)?.holder ?? null;
-    const exact = normName(holder) === normName(cand.full_name);
-    const reason = b.reason ?? (b.create
-      ? 'record opened from this document'
-      : exact ? 'the name on the document matches the record' : `attached by ${me.name ?? me.email} — names differ (${holder ?? 'no holder on the document'} → ${cand.full_name ?? '—'})`);
+    const holder = holderOf(mine[0]);
+    const reason = b.create
+      ? (b.reason ?? 'record opened from this document')
+      : !holderFits(holder, cand.full_name).fits
+        ? `attached anyway by ${me.name ?? me.email} after being told the names differ (${holder ?? 'no name on the document'} → ${cand.full_name ?? '—'})${b.reason ? ` — ${b.reason}` : ''}`
+        : (b.reason ?? 'the name on the document fits the record');
 
     const trail = await hasAttachTrail(db);
     const patch: any = { candidate_id: candidateId };
@@ -167,4 +183,9 @@ export async function POST(req: Request) {
   } catch (e: any) {
     return NextResponse.json({ error: String(e?.message ?? e).slice(0, 300) }, { status: 500 });
   }
+}
+
+/** The name a document carries: a certificate's holder, or the name read from a CV. */
+function holderOf(d: any): string | null {
+  return d?.extracted?.holder ?? d?.extracted?.profile?.full_name ?? null;
 }
