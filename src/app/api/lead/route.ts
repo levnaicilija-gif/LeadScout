@@ -69,7 +69,7 @@ export async function POST(req: Request) {
       const quoted = contacts.find((c) => c.quote) ?? contacts[0] ?? null;
       // By company name, not its first word: "%AF%" offered people from other organisations (src/lib/attendee-match.ts).
       const { people: attendees, error: attendeesError } = await attendeesAt(sb, me.workspace_id, lead.companies?.name ?? '', 50);
-      if (attendeesError) return NextResponse.json({ error: `The attendee list could not be read: ${attendeesError}` }, { status: 500 });
+      if (attendeesError) return NextResponse.json({ error: `Industry Contacts could not be read: ${attendeesError}` }, { status: 500 });
       const pick = chooseRecipient(quoted, contacts.filter((c) => c !== quoted), attendees);
 
       const d = await draftOutreachChecked({

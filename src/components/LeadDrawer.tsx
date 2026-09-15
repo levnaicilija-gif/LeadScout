@@ -6,6 +6,7 @@ import { CountryPicker } from './CountryPicker';
 import { ScoredCandidate } from './ScoredCandidate';
 import { leadSource, LEAD_SOURCE_LABEL, LEAD_SOURCE_BADGE, SOURCE_FLAG_LABEL } from '@/lib/lead-source';
 import { AGE_TEXT, type AgeState } from '@/lib/lead-age';
+import { industryContactsLabel } from '@/lib/industry-contacts-label';
 export function LeadDrawer({ lead }: { lead: any }) {
   const r = useRouter(); const [tool, setTool] = useState<'jd' | 'pool' | 'xray' | 'q'>('jd');
   const [out, setOut] = useState<any>({}); const [busy, setBusy] = useState(''); const [draft, setDraft] = useState<any>(null);
@@ -79,8 +80,8 @@ export function LeadDrawer({ lead }: { lead: any }) {
       <div className="mt-2 grid gap-1">{c.phone && <span data-quoted-phone>{c.phone} <em className="not-italic text-ink3 text-[12px]">found{c.phone_source_url ? <> · <a href={c.phone_source_url} target="_blank" rel="noopener" className="underline">source</a></> : ''}</em></span>}{c.email ? <span data-quoted-email>{c.email} <em className={`not-italic text-[12px] ${c.email_status === 'found' ? 'text-ok' : 'text-warn'}`}>{c.email_status}</em>{c.email_source_url && <em className="not-italic text-ink3 text-[12px]"> · <a data-quoted-email-source href={c.email_source_url} target="_blank" rel="noopener" className="underline">source</a></em>}</span> : <span className="text-ink3">email unknown — use company address</span>}</div>
       <div className="mt-2 flex gap-2"><a className="btn" href={c.linkedin_search_url} target="_blank" rel="noopener">Find on LinkedIn</a><a className="btn" href={c.google_search_url} target="_blank" rel="noopener">Search name + company</a></div>
       {c.quote && <div className="mt-3 border-l-[3px] border-accent bg-accentsoft px-3 py-2 rounded-r">“{c.quote}”</div>}</div>
-      : <div className="text-ink3 text-[13px]">No named person quoted. {lead.lead_people?.length ? 'People at this company from the attendee list:' : ''}</div>}
-    {!!lead.lead_people?.length && <div className="border border-line rounded mt-2 text-[13px]">{lead.lead_people.map((lp: any, i: number) => <div key={i} className="px-3 py-2 border-b border-line2 last:border-0"><b className="font-medium">{lp.people.name}</b><div className="text-ink3 text-[12px]">{lp.people.title} · {lp.people.source} · title not verified</div></div>)}</div>}
+      : <div className="text-ink3 text-[13px]">No named person quoted. {lead.lead_people?.length ? 'People at this company from Industry Contacts:' : ''}</div>}
+    {!!lead.lead_people?.length && <div className="border border-line rounded mt-2 text-[13px]">{lead.lead_people.map((lp: any, i: number) => <div key={i} className="px-3 py-2 border-b border-line2 last:border-0"><b className="font-medium">{lp.people.name}</b><div className="text-ink3 text-[12px]">{lp.people.title} · {industryContactsLabel(lp.people.source)} · title not verified</div></div>)}</div>}
 
     {/* Item 21: what the company's own site gave, read once per company and shown on every lead it stands behind. */}
     {(() => {

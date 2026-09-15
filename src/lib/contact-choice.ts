@@ -1,3 +1,4 @@
+import { industryContactsLabel } from './industry-contacts-label';
 /**
  * Who the email actually goes to.
  *
@@ -57,7 +58,7 @@ export function chooseRecipient(quoted: Person | null, others: Person[], people:
     return {
       to: ops,
       hook: quoted,
-      why: `${quoted.name} is ${quoted.title} and does not book trades, so this is addressed to ${ops.name} (${ops.title})${ops.source ? ` from ${ops.source}` : ''}. The quote is kept as the opening because it is the reason for writing.`,
+      why: `${quoted.name} is ${quoted.title} and does not book trades, so this is addressed to ${ops.name} (${ops.title})${ops.source ? ` from ${industryContactsLabel(ops.source)}` : ''}. The quote is kept as the opening because it is the reason for writing.`,
       redirected: true,
     };
   }

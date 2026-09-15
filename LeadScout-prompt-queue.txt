@@ -72,7 +72,7 @@ fetched page stored with URL and time, checked with appearsIn, or shows as
 pattern/unknown. Never guess a contact from a name pattern and present it as
 verified. Sources in order: the contact printed on the posting (posting URL as
 source); the company's contact/careers page (switchboard, general email, HR or
-careers address, with source URL); attendee-list people at the company with
+careers address, with source URL); people from Industry Contacts at the company with
 ops/production/HR/yard titles, each with LinkedIn and Google search links; and if
 none of those, prepared searches for "<company> production manager / HR manager /
 yard manager / resourcing". Company switchboard and general email are always shown
@@ -440,7 +440,7 @@ OWNER'S DECISIONS
    industries, and have no "show all industries" escape hatch. Unlimited
    accounts (RFBT today, future unlimited tiers) keep the toggle. Entitlement
    stays per USER.
-2. Attendee lists (people, lead_people) and contacts found by web search are
+2. Industry Contacts (people, lead_people) and contacts found by web search are
    shared discovery, same bucket as leads / companies / job_posts.
 3. No customer-added private sources — do not design for them.
 4. Status and overrides live per WORKSPACE, with per-user attribution.
@@ -539,7 +539,7 @@ awards and news). Reuse the existing logic — do not build a second
 implementation:
 - Company contact/careers page (switchboard, general email, HR address)
 - Organisation/leadership page discovery
-- Attendee-list people looked up by name on the company's own site
+- Industry Contacts looked up by name on the company's own site
 - Prepared searches as the last resort
 
 Scope, both decided:
@@ -549,7 +549,7 @@ Scope, both decided:
      of these should get the full discovery chain run, since they have zero
      contact today.
    - News leads with an already-quoted person (kept by item 14's ranking):
-     run the SAME follow-up check already built for attendee matches (the
+     run the SAME follow-up check already built for Industry Contacts matches (the
      NorSea/Martin Andreasen pattern) — look for that specific named person
      on their own company's site, to recover an email/phone the article
      itself didn't print. Do not replace the quoted person if found; only
@@ -574,3 +574,43 @@ down by tender-award vs. news-with-quoted-person vs. news-without, the actual
 cost of running paid web search against the full set, and confirm the shared
 company-level cache is working (no duplicate discovery runs for the same
 company across multiple leads).
+
+-------------------------------------------------------------------------------
+22. SPAIN COVERAGE
+-------------------------------------------------------------------------------
+Confirmed gap from an earlier audit: 353 Spanish companies exist in the
+database (including Navantia and Seanergies) with no domain, because
+resolve-domains excludes Spain from its country list. There is no Spanish job
+board source, and nothing in any table mentions Cádiz — despite RFBT having
+an active project there (Cádiz EPC, corrosion/coating, Sep 2026–Sep 2027).
+
+1. Add Spain to resolve-domains' country list so the 353 existing companies
+   get a domain lookup run against them — report how many actually resolve.
+2. Add Spanish job board source(s) at priority tier: confirm and add InfoJobs
+   and Tecnoempleo (or equivalent — check what's actually scrapable) using the
+   same evaluation standard as item 4's named-board narrowing, don't add
+   aggregators. EURES already covers Spain as an EU-wide source per item 4, so
+   this fills the national-board gap specifically, not a duplicate of EURES.
+3. Check whether "Cádiz" or nearby EPC/offshore/naval yard names appear in any
+   currently-crawled source and simply aren't being picked up, versus
+   genuinely not covered by any source yet — report which it is before
+   assuming a new source is needed.
+
+ALSO, SMALL AND LOW-RISK, ALONGSIDE THE ABOVE:
+Rename every user-facing reference to the old event-list name to
+"Industry Contacts" throughout the app UI, CLAUDE.md, and the queue file.
+Display-name and documentation change only — underlying data, tables, and
+matching logic are unchanged. Confirm no functionality shifted, just labels.
+
+Commit after each step, two lines per step. Full release gate before every
+commit. Report: domains resolved for the 353 companies, any new leads/postings
+found once Spanish sources are added, confirm whether Navantia specifically
+now has a usable domain and contact-discovery path, and confirm the rename is
+applied consistently across the app, CLAUDE.md, and the queue file.
+
+Decisions and findings (2026-09-15): Spain 38 first (those passing resolve-
+domains' sector + ops-relevant Industry Contact filter), then decide on more.
+InfoJobs via its official API once the owner registers an app; Tecnoempleo is
+IT-only and rejected; EURES is not a source at all today (the premise above does
+not hold). Cádiz: covered once by TED (Arsenal de Cádiz frigate maintenance,
+not RFBT's project); no Spanish news or naval source exists.

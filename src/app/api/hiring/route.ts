@@ -101,7 +101,7 @@ export async function POST(req: Request) {
 
       // Attendee-list people at this company by name, not by the first word of it (src/lib/attendee-match.ts).
       const { people, error: peopleError } = await attendeesAt(sb, me.workspace_id, co.name, 100);
-      if (peopleError) return NextResponse.json({ error: `The attendee list for ${co.name} could not be read: ${peopleError}` }, { status: 500 });
+      if (peopleError) return NextResponse.json({ error: `Industry Contacts for ${co.name} could not be read: ${peopleError}` }, { status: 500 });
 
       const sheet = buildSheet({
         companyName: co.name,

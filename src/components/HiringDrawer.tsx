@@ -5,6 +5,7 @@ import { postingAge, AGE_TEXT } from '@/lib/lead-age';
 import { EmployerTypeOverride } from './EmployerTypeOverride';
 import { CountryPicker } from './CountryPicker';
 import { ScoredCandidate } from './ScoredCandidate';
+import { INDUSTRY_CONTACTS, industryContactsLabel } from '@/lib/industry-contacts-label';
 
 /**
  * The drawer on a Hiring now row.
@@ -131,14 +132,15 @@ export function HiringDrawer({ g }: { g: Group }) {
               {i === 0 && <div className="text-[11px] font-semibold text-accent uppercase tracking-wide mb-1">Try this one first</div>}
               <b className="font-semibold">{c.name}</b>
               {c.title && <span className="text-ink2"> · {c.title}</span>}
-              <span className={`badge ml-2 ${c.where === 'posting' ? 'badge-ok' : ''}`}>{c.where}</span>
+              {/* The value stays 'attendee list' in code; on screen it is Industry Contacts (owner's rename, 2026-09-15). */}
+              <span className={`badge ml-2 ${c.where === 'posting' ? 'badge-ok' : ''}`}>{c.where === 'attendee list' ? INDUSTRY_CONTACTS : c.where}</span>
               <div className="mt-1 grid gap-0.5">
                 {c.email && <span>{c.email} <em className={`not-italic text-[12px] ${c.emailStatus === 'found' ? 'text-ok' : 'text-warn'}`}>{c.emailStatus}</em></span>}
                 {c.phone && <span>{c.phone}</span>}
                 {!c.email && !c.phone && <span className="text-ink3 text-[12px]">no address or number printed — use the searches below</span>}
               </div>
               <div className="text-ink3 text-[12px] mt-1">
-                read from <a href={c.sourceUrl} target="_blank" rel="noopener" className="text-accent">{(() => { try { return new URL(c.sourceUrl).hostname.replace(/^www\./, ''); } catch { return c.sourceUrl; } })()}</a>
+                read from <a href={c.sourceUrl} target="_blank" rel="noopener" className="text-accent">{(() => { try { return new URL(c.sourceUrl).hostname.replace(/^www\./, ''); } catch { return industryContactsLabel(c.sourceUrl); } })()}</a>
                 {c.readAt ? ` · ${day(c.readAt)}` : ''}
               </div>
               {(c.linkedinSearchUrl || c.googleSearchUrl) && (
