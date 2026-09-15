@@ -116,6 +116,15 @@ type Seeded = { ref: string; trade: string; country: string; certs: string[]; pr
       light.push(Date.now() - t);
     }
     console.log(`  ...  the same read without certificate verifications: ${light.join(' / ')} ms`);
+    // And the candidates alone — no certificates, CV-sent rows or placements: the floor a stored search column could reach.
+    const flat: number[] = [];
+    for (let r = 0; r < 3; r++) {
+      const t = Date.now();
+      const { count } = await user.from('candidates').select('id', { count: 'exact', head: true });
+      await Promise.all(Array.from({ length: Math.ceil((count ?? 0) / 1000) }, (_, i) => user.from('candidates').select('id, reference_code, full_name, trade, nationality, availability_from, created_by, created_at, internal_notes, stage, employment_preference, country, owner_id').order('created_at', { ascending: false }).order('id').range(i * 1000, i * 1000 + 999)));
+      flat.push(Date.now() - t);
+    }
+    console.log(`  ...  the candidates alone, no certificates, CV-sent rows or placements: ${flat.join(' / ')} ms`);
     check(!pool.error && pool.rows.length === COUNT, `the signed-in read returns all ${COUNT} candidates across pages`, pool.error ?? `${pool.rows.length} rows · loads ${loads.join(' / ')} ms`);
 
     const bySeed = new Map(seeded.map((s) => [s.ref, s]));

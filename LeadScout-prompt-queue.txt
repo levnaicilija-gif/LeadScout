@@ -829,3 +829,14 @@ Owner's decisions (2026-09-15, asked before building):
 - Access: every recruiter in the workspace sees the full pool, with a "Mine"
   filter (candidates they created or own). No per-recruiter restriction in the
   database.
+
+Progress (2026-09-15): 0035 applied by the owner. Step 1 (a2a64ef) drop a CV anywhere,
+duplicates by name + email/phone/date of birth. Step 2 (04698c5) table + kanban +
+boolean search + Mine/stage/preference filters; Placed records client, date, who.
+Scale test at 2,500 synthetic candidates: search exact against an independent filter,
+0.6-1.6 ms per query; the signed-in database read 4.4-5.2 s (3.6-3.7 s without
+certificate verifications) — to decide before the pool reaches that size. RLS sweep ok
+on every table with rows; candidate_placements proven by candidate-rls-probe (8/8).
+0036 (candidate_number = the code's trailing number) waits to be applied by hand.
+Existing data (step 8, report only): 8 documents attached to nobody, 0 linkable,
+8 for manual review.

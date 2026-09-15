@@ -36,6 +36,7 @@ RLS_SWEEP_SOURCE=gate step rls-sweep npx tsx --env-file=.env.local scripts/rls-s
 # move itself into any workspace, and change or delete a teammate's row. 0028 closed it on 2026-09-14;
 # this tries those writes with throwaway accounts and fails the gate if a migration or the dashboard reopens it.
 step users-policy npx tsx --env-file=.env.local scripts/users-policy-probe.ts
+step candidate-rls npx tsx --env-file=.env.local scripts/candidate-rls-probe.ts
 step workspace-scope npx tsx --env-file=.env.local scripts/workspace-scope-check.ts
 step compound-signals npx tsx scripts/compound-signals-check.ts
 step phone-on npx tsx scripts/phone-on-check.ts
@@ -46,6 +47,7 @@ step model-meter npx tsx scripts/model-meter-check.ts
 step verify-adapters npx tsx scripts/verify-adapters-check.ts
 step candidate-search npx tsx scripts/candidate-search-check.ts
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts
+step candidate-phone npx tsx scripts/candidate-phone-check.ts
 
 if [[ " ${FAILED[*]-} " == *" build "* ]]; then
   echo "=== the build failed, so nothing was served or tested against it" | tee -a "$LOG"
