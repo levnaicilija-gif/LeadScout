@@ -36,8 +36,10 @@ const show = (j: any) => j.verdict === 'ask' ? `ask: ${j.matches.map((m: any) =>
   check(sameDob.verdict === 'ask' && /date of birth/.test(sameDob.matches[0].why) && sameDob.matches[0].strength === 'likely', 'date of birth agreeing is enough even when the email changed', show(sameDob));
   const noName = judgeDuplicate(pool, { full_name: '', email: 'marko.j@example.com' });
   check(noName.verdict === 'create' && /no name/.test(noName.why), 'a CV with no name is not matched on its email alone', show(noName));
-  const shortDigits = judgeDuplicate(pool, { full_name: 'Lars Nilsen', phone: '2023-2025' });
-  check(shortDigits.verdict === 'ask' && shortDigits.matches[0].strength === 'name_only', 'fewer than nine digits is not a phone number to compare', show(shortDigits));
+  const shortDigits = judgeDuplicate(pool, { full_name: 'Lars Nilsen', phone: '2023-25' });
+  check(shortDigits.verdict === 'ask' && shortDigits.matches[0].strength === 'name_only', 'fewer than eight digits is not a phone number to compare', show(shortDigits));
+  const local = judgeDuplicate(pool, { full_name: 'Lars Nilsen', phone: '912 34 567' });
+  check(local.verdict === 'ask' && local.matches[0].strength === 'likely' && /phone/.test(local.matches[0].why), 'a Norwegian number written locally (eight digits) agrees with the same number in international form', show(local));
 
   console.log(failures === 0 ? '\ncandidate dedupe check: all checks passed' : `\ncandidate dedupe check: ${failures} check(s) failed`);
   process.exitCode = failures === 0 ? 0 : 1;

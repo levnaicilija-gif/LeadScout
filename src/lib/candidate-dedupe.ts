@@ -24,8 +24,12 @@ export type Judgement<T extends CandidateIdentity> =
   | { verdict: 'ask'; matches: DuplicateMatch<T>[] };
 
 const email = (s?: string | null) => (s ?? '').trim().toLowerCase() || null;
-/** The last nine digits: "+47 912 34 567" and "0047 91234567" are one number; a date range's eight digits are not one. */
-const phone = (s?: string | null) => { const d = (s ?? '').replace(/\D/g, ''); return d.length >= 9 ? d.slice(-9) : null; };
+/**
+ * The last eight digits: "+47 912 34 567", "0047 91234567" and "912 34 567" are one number. Eight, not nine — Norwegian and
+ * Danish numbers are eight digits written locally, and nine never compared them (found by candidate-phone-check,
+ * 2026-09-15). Anything shorter is not compared.
+ */
+const phone = (s?: string | null) => { const d = (s ?? '').replace(/\D/g, ''); return d.length >= 8 ? d.slice(-8) : null; };
 const dob = (s?: string | null) => (s ?? '').match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
 
 type Compared = { agree: string[]; differ: string[] };

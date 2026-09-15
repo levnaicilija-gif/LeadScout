@@ -144,7 +144,9 @@ export function CandidateDrop() {
                 return (
                   <div key={`l${i}`} data-drop-result="rejected" className="border border-dashed border-line rounded p-3">
                     <div className="font-semibold">Not saved — {f.kind === 'other' ? 'not a candidate document' : 'could not be read'}</div>
-                    <div className="text-ink3 text-[12px] mt-0.5">{f.file}{f.why ? ` · ${friendlyError(f.why, 'cv')}` : ''}</div>
+                    {/* A file that is simply not a candidate document says only that: friendlyError turned the reason into
+                        "Something went wrong reading this CV" for a canteen menu on production (item 24 drop probe). */}
+                    <div className="text-ink3 text-[12px] mt-0.5">{f.file}{f.kind === 'unreadable' && f.why ? ` · ${friendlyError(f.why, 'cv')}` : ''}</div>
                   </div>
                 );
               }

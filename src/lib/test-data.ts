@@ -109,6 +109,16 @@ export async function clearTestWorkspace(db: SupabaseClient, workspaceId: string
     if (!ws.is_test) return `workspace ${workspaceId} is not marked is_test, so its content was not touched`;
   }
   const problems: string[] = [];
+  // A CV-sent row (sends) and a score point at a candidate with no cascade, so they go first or the candidate delete fails
+  // (item 24: the list probe and the scale test write CV-sent rows).
+  const { data: cands } = await db.from('candidates').select('id').eq('workspace_id', workspaceId).limit(10000);
+  const ids = (cands ?? []).map((c: any) => c.id);
+  for (let i = 0; i < ids.length; i += 200) {
+    for (const table of ['sends', 'scores'] as const) {
+      const { error } = await db.from(table).delete().in('candidate_id', ids.slice(i, i + 200));
+      if (error) problems.push(`${table} of workspace ${workspaceId}'s candidates were not deleted: ${error.message}`);
+    }
+  }
   for (const table of ['candidates', 'documents'] as const) {
     const { error } = await db.from(table).delete().eq('workspace_id', workspaceId);
     if (error) problems.push(`${table} in workspace ${workspaceId} were not deleted: ${error.message}`);
@@ -141,6 +151,11 @@ export async function removeProbe(
       if (notCleared) left.push(notCleared);
     }
     if (uid) {
+      // A CV-sent row records who sent it (sends.sent_by, no cascade), and one that points at no candidate is not reached
+      // through the workspace's candidates — on 2026-09-15 such rows kept a scale-test account from being deleted. A probe
+      // account is throwaway, so everything it sent is test data.
+      const { error: sendsError } = await db.from('sends').delete().eq('sent_by', uid);
+      if (sendsError) left.push(`CV-sent rows sent by the probe user ${uid} were not deleted: ${sendsError.message}`);
       const { error } = await db.auth.admin.deleteUser(uid);
       // Already gone — removed by the first attempt — is what was wanted.
       if (error && !/not.?found/i.test(error.message)) left.push(`the probe user ${uid} was not deleted: ${error.message}`);
