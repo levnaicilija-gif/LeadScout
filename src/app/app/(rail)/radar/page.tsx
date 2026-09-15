@@ -15,6 +15,7 @@ import { articlesByLead, peopleByLead } from '@/lib/lead-articles';
 import { rankQuoted } from '@/lib/quoted-contacts';
 import { OpenRow, OpenChevron } from '@/components/OpenRow';
 import { compoundByCompany } from '@/lib/compound-signals-load';
+import { preparedSearches } from '@/lib/hiring-contacts';
 import { boostedFit } from '@/lib/compound-signals';
 export const dynamic = 'force-dynamic';
 export default async function Radar({ searchParams }: { searchParams: { tab?: string; lead?: string; agencies?: string; company?: string; country?: string; trade?: string; employer?: string; pressure?: string; source?: string; sort?: string; industries?: string } }) {
@@ -71,7 +72,9 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const countryQs = (country ? `&country=${country}` : '') + viewQs;
   // 0024 gives an award notice its own award date; before it, an award lead ages from the notice's publication.
   const awardCols = (await hasAwardDate(sb)) ? ', award_date, award_date_basis' : '';
-  const leadCols = `*, companies(name, employer_type, size_band${coOverride}), contacts(name, title, email_status, phone, linkedin_search_url, google_search_url), job_posts(role, headcount, certs_required, hiring_pressure, posted_at)`;
+  // Item 21: the quoted contact's address and where it came from (the embed never loaded email or quote, so the drawer
+  // could show neither), and what the company's own site gave — switchboard, general email, people — with sources.
+  const leadCols = `*, companies(name, domain, employer_type, size_band, switchboard, switchboard_source_url, general_email, general_email_source_url, contacts_checked_at${coOverride}, contacts(name, title, email, email_status, email_source_url, phone, phone_source_url, source_url, lead_id, linkedin_search_url, google_search_url)), contacts(name, title, quote, email, email_status, email_source_url, phone, phone_source_url, linkedin_search_url, google_search_url), job_posts(role, headcount, certs_required, hiring_pressure, posted_at)`;
   const openLeads = (cols: string, head = false) => {
     const q = sb.from('leads').select(cols, head ? { count: 'exact', head: true } : undefined).eq('kind', tab).not('status', 'in', '("stale","not_for_us")');
     const inCountry = country ? q.eq('country', country) : q;
@@ -110,6 +113,14 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   for (const l of loaded) l.lead_articles = byLead.get(l.id) ?? [];
   const { byLead: peopleBy, error: peopleError } = await peopleByLead(loaded.map((l) => l.id));
   for (const l of loaded) l.lead_people = peopleBy.get(l.id) ?? [];
+  // Item 21: people read off the company's own site hang from the company (lead_id null), found once per company by the
+  // discovery pass and shown on every lead that company stands behind. A quoted person already on the lead is not
+  // repeated. With nothing at all, the drawer offers prepared searches — searches, never contacts.
+  for (const l of loaded) {
+    const quotedNames = new Set((l.contacts ?? []).map((c: any) => String(c.name).toLowerCase()));
+    l.company_people = (l.companies?.contacts ?? []).filter((c: any) => !c.lead_id && c.source_url && !quotedNames.has(String(c.name).toLowerCase()));
+    l.searches = preparedSearches(l.companies?.name ?? '');
+  }
   // Item 19: a company with two or more independent signal types inside 60 days — tender award, news mention, open
   // posting, re-advertised role — raises the fit of every one of its leads. Computed here and never stored: the row
   // shows the boost and what it was before, the drawer the full reason, and the Fit sort uses the boosted figure.
@@ -235,7 +246,9 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
         <OpenRow key={l.id} href={`/app/radar?tab=${searchParams.tab ?? 'won'}${source ? `&source=${source}` : ''}${sortQs}${countryQs}&lead=${l.id}`} selected={selected?.id === l.id} className={AGE_DIM[l.age.state as keyof typeof AGE_DIM]} attrs={{ 'data-lead-source': src, 'data-age': l.age.state, 'data-age-date': l.age.date ?? '' }}>
           <td><a href={`?tab=${searchParams.tab ?? 'won'}${source ? `&source=${source}` : ''}${sortQs}${countryQs}&lead=${l.id}`} className="block"><div className="font-medium whitespace-nowrap flex items-center gap-1.5">{l.companies?.name}<OpenChevron /></div><div className="text-ink3 text-[12px]">{l.project_location} · {l.companies?.employer_type?.replace('_', ' ')}{l.companies?.size_band ? ` · ${l.companies.size_band}` : ''}</div><div className="mt-1.5 flex items-center gap-1.5 flex-wrap"><span data-source={src} className={LEAD_SOURCE_BADGE[src]}>{LEAD_SOURCE_LABEL[src]}</span><span data-age-label title={l.age.why} className={`text-[12px] ${AGE_TEXT[l.age.state as keyof typeof AGE_TEXT]}`}>{l.age.label}</span>{also > 0 && <span className="text-ink3 text-[12px]" title="The same contract, reported by another source, linked to this lead">+{also} source{also === 1 ? '' : 's'}</span>}</div>{l.fit_boost && <div data-compound title={l.fit_boost.note} className="mt-1 text-[12px] text-accent font-medium whitespace-normal">{l.fit_boost.label}</div>}</a></td>
           <td>{tab === 'won_work' ? l.project_name : jp?.role}<div className="text-ink3 text-[12px]">{tab === 'won_work' ? [l.phase, l.project_value].filter(Boolean).join(' · ') : `${jp?.headcount ? `×${jp.headcount} · ` : ''}posted ${jp?.posted_at ?? '—'}`}</div></td>
-          <td>{c ? <><div className="font-medium">{c.name} <a href={c.linkedin_search_url} target="_blank" rel="noopener" className="ml-1 inline-grid place-items-center w-5 h-5 border border-line rounded text-[10px] font-semibold text-ink2">in</a> <a href={c.google_search_url} target="_blank" rel="noopener" className="inline-grid place-items-center w-5 h-5 border border-line rounded text-[10px] font-semibold text-ink2">G</a></div><div className="text-ink3 text-[12px]">{c.title} · email {c.email_status}{c.phone ? ' · phone found' : ''}</div></> : <span className="text-ink3">— {l.lead_people?.length ? `${l.lead_people.length} from attendee list` : src === 'tender' ? 'award notices name no person' : 'no named person'}</span>}</td>
+          <td>{c ? <><div className="font-medium">{c.name} <a href={c.linkedin_search_url} target="_blank" rel="noopener" className="ml-1 inline-grid place-items-center w-5 h-5 border border-line rounded text-[10px] font-semibold text-ink2">in</a> <a href={c.google_search_url} target="_blank" rel="noopener" className="inline-grid place-items-center w-5 h-5 border border-line rounded text-[10px] font-semibold text-ink2">G</a></div><div className="text-ink3 text-[12px]">{c.title} · email {c.email_status}{c.phone ? ' · phone found' : ''}</div></> : l.company_people?.[0] ? <div data-company-contact><div className="font-medium">{l.company_people[0].name}</div><div className="text-ink3 text-[12px]">{l.company_people[0].title} · from their site{l.company_people[0].email ? ' · email found' : ''}{l.company_people[0].phone ? ' · phone found' : ''}</div></div>
+            : (l.companies?.switchboard || l.companies?.general_email) ? <div data-company-contact><div className="font-medium">{l.companies.switchboard ? 'Switchboard' : 'General email'}</div><div className="text-ink3 text-[12px]">{l.companies.switchboard ?? l.companies.general_email} · from their site</div></div>
+            : <span className="text-ink3">— {l.lead_people?.length ? `${l.lead_people.length} from attendee list` : src === 'tender' ? 'award notices name no person' : 'no named person'}</span>}</td>
           <td>{(l.trades_inferred ?? []).map((t: string) => <span key={t} className="inline-block text-[12px] px-2 py-0.5 rounded-md bg-line2 text-ink2 mr-1 mb-1">{t}</span>)}</td>
           <td>{tab === 'won_work' ? <span className="text-[13px]">{l.phase_start ?? l.phase ?? '—'}</span> : <span className={`st ${jp?.hiring_pressure === 'high' ? 'st-bad' : jp?.hiring_pressure === 'medium' ? 'st-warn' : ''}`}>{jp?.hiring_pressure ?? 'low'}</span>}</td>
           <td><span className="inline-flex items-center gap-2 font-semibold"><i className="inline-block w-[56px] h-[6px] rounded-full bg-line overflow-hidden"><i className="block h-full rounded-full bg-tool-leads" style={{ width: `${l.fit_score}%` }} /></i>{l.fit_score}</span>{l.fit_boost && <div data-fit-from title={l.fit_boost.note} className="text-ink3 text-[12px] whitespace-nowrap">{l.fit_boost.to === l.fit_boost.from ? 'boost held by the cap' : `boosted, was ${l.fit_boost.from}`}</div>}</td>

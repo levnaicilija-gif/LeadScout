@@ -23,8 +23,10 @@ export async function middleware(req: NextRequest) {
   });
 
   // A failed auth check is asked again before it counts as signed out; see steadyUser.
-  const { user, reason } = await steadyUser(sb);
-  if (req.nextUrl.pathname.startsWith('/app') && !user) {
+  const { user, reason, failed } = await steadyUser(sb);
+  // A check that could not reach the auth server is not a sign-out: let the screen's own check (requireUser) ask again
+  // and say so if it still cannot, rather than bouncing a signed-in person to /login.
+  if (req.nextUrl.pathname.startsWith('/app') && !user && !failed) {
     const to = NextResponse.redirect(new URL('/login', req.url));
     // Why this request was sent to sign in, so a bounce mid-session can be told from an expired one.
     to.headers.set('x-signin-reason', `middleware: ${reason}`);

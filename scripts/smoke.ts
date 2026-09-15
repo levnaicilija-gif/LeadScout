@@ -49,12 +49,29 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     project_location: 'Norwegian Continental Shelf', country: 'NO', trades_inferred: ['welder'],
     fit_score: 75, status: 'new', source_url: 'https://example.invalid/smoke', source_fetched_at: new Date().toISOString(),
   }).select().single();
-  await admin.from('contacts').insert({ lead_id: lead!.id, company_id: co!.id, name: 'Smoke Person', title: 'Head of Operations', email_status: 'unknown' });
+  // Item 21: the quoted person's address was recovered from the company's own site, so it carries that page as its source.
+  // The article is the source of the name (contacts require one); the company's team page is the source of the address.
+  const { error: quotedErr } = await admin.from('contacts').insert({
+    lead_id: lead!.id, company_id: co!.id, name: 'Smoke Person', title: 'Head of Operations', source_url: 'https://example.invalid/smoke',
+    email: 'smoke.person@example.invalid', email_status: 'found', email_source_url: 'https://example.invalid/smoke-our-team', is_test: true,
+  });
+  if (quotedErr) console.log(`  ...  could not seed the quoted contact: ${quotedErr.message}`);
 
   // A lead from a contract award notice beside the news lead, so the Leads table has one of each
   // source to tag. The path starts "smoke-": no real TED notice id starts with a word.
-  const { data: tenderCo } = await admin.from('companies').insert({ workspace_id: workspace, name: 'Smoke Tender Winner AS', employer_type: 'unknown', country: 'DK' }).select().single();
+  // Item 21: the winner's own site gave a switchboard, a general address and its HR manager — read once for the company.
+  const { data: tenderCo } = await admin.from('companies').insert({
+    workspace_id: workspace, name: 'Smoke Tender Winner AS', employer_type: 'unknown', country: 'DK', domain: 'example.invalid',
+    switchboard: '+45 70 00 00 00', switchboard_source_url: 'https://example.invalid/smoke-contact',
+    general_email: 'post@example.invalid', general_email_source_url: 'https://example.invalid/smoke-contact', contacts_checked_at: new Date().toISOString(),
+  }).select().single();
   await markTest(admin, 'companies', [tenderCo!.id]);
+  const { error: siteContactErr } = await admin.from('contacts').insert({
+    company_id: tenderCo!.id, lead_id: null, name: 'Smoke Site Person', title: 'HR Manager',
+    email: 'smoke.site@example.invalid', email_status: 'found', email_source_url: 'https://example.invalid/smoke-organisation',
+    source_url: 'https://example.invalid/smoke-organisation', is_test: true,
+  });
+  if (siteContactErr) console.log(`  ...  could not seed the company-site contact: ${siteContactErr.message}`);
   const { data: tenderLead } = await admin.from('leads').insert({
     workspace_id: workspace, company_id: tenderCo!.id, kind: 'won_work', project_name: 'Smoke quay award',
     project_location: 'DNK', country: 'DK', trades_inferred: ['welder'], fit_score: 70, status: 'new',
@@ -290,6 +307,58 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     } finally {
       await boostPhone.close();
     }
+
+    // Item 21 on Won work: a tender award names nobody, so its row shows who the winner's own site gave; the drawer shows
+    // that person, the switchboard and the general address, each with its page. The news lead's quoted person keeps
+    // their place and shows the address recovered from the company site, with that page as its source. A company with
+    // no website on file gets prepared searches, said to be searches.
+    await page.goto(`${BASE}/app/radar?tab=won`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('tr[data-lead-source]', { timeout: 60000 }).catch(() => {});
+    const siteCell = await page.evaluate(() => {
+      const tr = Array.from(document.querySelectorAll('tr[data-lead-source]')).find((t) => (t as HTMLElement).innerText.includes('Smoke Tender Winner AS'));
+      return (tr?.querySelector('[data-company-contact]') as HTMLElement | null)?.innerText.replace(/\s+/g, ' ') ?? '';
+    });
+    check(/Smoke Site Person/.test(siteCell) && /HR Manager · from their site · email found/.test(siteCell), 'item 21: a tender award row shows the person the winner\'s own site gave', siteCell || 'no company contact on the row');
+    await page.goto(`${BASE}/app/radar?tab=won&lead=${tenderLead!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('aside [data-company-site]', { timeout: 30000 }).catch(() => {});
+    const siteBlock = await page.evaluate(() => {
+      const el = document.querySelector('aside [data-company-site]') as HTMLElement | null;
+      return el ? { text: el.innerText.replace(/\s+/g, ' '), sources: Array.from(el.querySelectorAll('a')).map((a) => a.getAttribute('href')).filter((h) => h?.startsWith('https://example.invalid/')) } : null;
+    });
+    check(!!siteBlock && /Smoke Site Person/.test(siteBlock.text) && /smoke\.site@example\.invalid/.test(siteBlock.text) && /Switchboard \+45 70 00 00 00/.test(siteBlock.text) && /General email post@example\.invalid/.test(siteBlock.text) && siteBlock.sources.length >= 3,
+      'item 21: the lead drawer shows the company-site person, switchboard and general email, each with its source page', JSON.stringify(siteBlock ?? 'no company-site block'));
+    await page.goto(`${BASE}/app/radar?tab=won&lead=${lead!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('aside [data-quoted-email]', { timeout: 30000 }).catch(() => {});
+    const quotedEmail = await page.evaluate(() => {
+      const aside = document.querySelector('aside') as HTMLElement | null;
+      return aside ? { name: /Smoke Person/.test(aside.innerText), email: (aside.querySelector('[data-quoted-email]') as HTMLElement | null)?.innerText ?? '', source: aside.querySelector('[data-quoted-email-source]')?.getAttribute('href') ?? '' } : null;
+    });
+    check(!!quotedEmail && quotedEmail.name && /smoke\.person@example\.invalid/.test(quotedEmail.email) && quotedEmail.source === 'https://example.invalid/smoke-our-team',
+      'item 21: the quoted person stays and shows the address recovered from their company\'s site, with its source', JSON.stringify(quotedEmail));
+    await page.goto(`${BASE}/app/radar?tab=won&lead=${compoundLead!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('aside [data-prepared-searches]', { timeout: 30000 }).catch(() => {});
+    const searches = await page.evaluate(() => {
+      const el = document.querySelector('aside [data-prepared-searches]') as HTMLElement | null;
+      return el ? { text: el.innerText.replace(/\s+/g, ' ').slice(0, 160), links: el.querySelectorAll('a').length } : null;
+    });
+    check(!!searches && /No website on file for this company/.test(searches.text) && /these are searches, not people we found/.test(searches.text) && searches.links === 4,
+      'item 21: a company with no website on file gets four prepared searches, labelled as searches', JSON.stringify(searches ?? 'no prepared searches'));
+    const sitePhone = await browser.newContext({ storageState: await page.context().storageState(), viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    try {
+      const m = await sitePhone.newPage();
+      await m.goto(`${BASE}/app/radar?tab=won&lead=${tenderLead!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await m.waitForSelector('aside [data-company-site]', { timeout: 30000 }).catch(() => {});
+      const onPhone = await m.evaluate(() => {
+        const el = document.querySelector('aside [data-company-site]') as HTMLElement | null;
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { left: Math.round(r.left), right: Math.round(r.right), person: /Smoke Site Person/.test(el.innerText), wide: document.documentElement.scrollWidth };
+      });
+      check(!!onPhone && onPhone.person && onPhone.left >= 0 && onPhone.right <= 390 && onPhone.wide <= 390,
+        'item 21 at 390px, touch: the company-site block fits the drawer with no sideways scroll', JSON.stringify(onPhone ?? 'no company-site block'));
+    } finally {
+      await sitePhone.close();
+    }
     await page.goto(`${BASE}/app/radar`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForSelector('tr[data-lead-source]', { timeout: 60000 }).catch(() => {});
 
@@ -492,8 +561,18 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     check(/Smoke Offshore AS/.test(hd), 'Hiring now drawer opens on the company');
     check(/Who to contact/.test(hd), 'drawer shows the contact block');
     check(/What they are hiring for/.test(hd) && /Smoke Welder/.test(hd), 'drawer lists the postings');
-    // Nobody was seeded with a contact, so the honest answer is searches — never a made-up name.
-    check(/searches to run/.test(hd), 'drawer offers searches when nobody was found');
+    // The person a story quoted about this company is a contact for its Hiring now row too, with the address their
+    // company's own site gave (item 21). Until 2026-09-15 that seed had no source and never existed, so this drawer
+    // showed searches; the searches are checked on a company with nobody on file instead.
+    check(/Smoke Person/.test(hd) && /smoke\.person@example\.invalid/.test(hd), 'the Hiring now drawer shows the person quoted about the company, with the address found on its site', hd.replace(/\s+/g, ' ').slice(0, 200));
+    await page.goto(`${BASE}/app/radar?tab=hiring&company=${readvertCo!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForFunction(
+      () => { const a = document.querySelector('aside'); return !!a && !a.innerText.includes('Reading what we hold'); },
+      undefined, { timeout: 60000 },
+    ).catch(() => {});
+    const nobodyDrawer = await page.locator('aside').first().innerText().catch(() => '');
+    // Nobody was seeded with a contact at this company, so the honest answer is searches — never a made-up name.
+    check(/searches to run/.test(nobodyDrawer), 'drawer offers searches when nobody was found', nobodyDrawer.replace(/\s+/g, ' ').slice(0, 200));
 
     // 4d — a contact on the company alone, as the organisation-page pass stores them.
     await page.goto(`${BASE}/app/radar?tab=hiring&company=${orgCo!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -672,7 +751,10 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       await admin.from('companies').delete().eq('id', c.id).eq('is_test', true);
     }
     await admin.from('companies').delete().eq('id', co!.id);
-    if (tenderCo) await admin.from('companies').delete().eq('id', tenderCo.id).eq('is_test', true);
+    if (tenderCo) {
+      await admin.from('contacts').delete().eq('company_id', tenderCo.id).eq('is_test', true);
+      await admin.from('companies').delete().eq('id', tenderCo.id).eq('is_test', true);
+    }
     // Item 19's company: its lead, then its posting, then the company. Left out on 2026-09-15, the company held the
     // workspace and the gate failed on cleanup with every item 19 check passing.
     if (compoundLead) await admin.from('leads').delete().eq('id', compoundLead.id).eq('is_test', true);

@@ -76,11 +76,49 @@ export function LeadDrawer({ lead }: { lead: any }) {
 
     <div className="text-[12px] text-ink3 mt-4 mb-2">Decision-maker</div>
     {c ? <div className="border border-line rounded p-3.5 text-[13px]"><b className="block font-semibold">{c.name}</b><div className="text-ink2">{c.title}</div>
-      <div className="mt-2 grid gap-1">{c.phone && <span>{c.phone} <em className="not-italic text-ink3 text-[12px]">found · <a href={c.phone_source_url} target="_blank" className="underline">source</a></em></span>}{c.email ? <span>{c.email} <em className={`not-italic text-[12px] ${c.email_status === 'found' ? 'text-ok' : 'text-warn'}`}>{c.email_status}</em></span> : <span className="text-ink3">email unknown — use company address</span>}</div>
+      <div className="mt-2 grid gap-1">{c.phone && <span data-quoted-phone>{c.phone} <em className="not-italic text-ink3 text-[12px]">found{c.phone_source_url ? <> · <a href={c.phone_source_url} target="_blank" rel="noopener" className="underline">source</a></> : ''}</em></span>}{c.email ? <span data-quoted-email>{c.email} <em className={`not-italic text-[12px] ${c.email_status === 'found' ? 'text-ok' : 'text-warn'}`}>{c.email_status}</em>{c.email_source_url && <em className="not-italic text-ink3 text-[12px]"> · <a data-quoted-email-source href={c.email_source_url} target="_blank" rel="noopener" className="underline">source</a></em>}</span> : <span className="text-ink3">email unknown — use company address</span>}</div>
       <div className="mt-2 flex gap-2"><a className="btn" href={c.linkedin_search_url} target="_blank" rel="noopener">Find on LinkedIn</a><a className="btn" href={c.google_search_url} target="_blank" rel="noopener">Search name + company</a></div>
       {c.quote && <div className="mt-3 border-l-[3px] border-accent bg-accentsoft px-3 py-2 rounded-r">“{c.quote}”</div>}</div>
       : <div className="text-ink3 text-[13px]">No named person quoted. {lead.lead_people?.length ? 'People at this company from the attendee list:' : ''}</div>}
     {!!lead.lead_people?.length && <div className="border border-line rounded mt-2 text-[13px]">{lead.lead_people.map((lp: any, i: number) => <div key={i} className="px-3 py-2 border-b border-line2 last:border-0"><b className="font-medium">{lp.people.name}</b><div className="text-ink3 text-[12px]">{lp.people.title} · {lp.people.source} · title not verified</div></div>)}</div>}
+
+    {/* Item 21: what the company's own site gave, read once per company and shown on every lead it stands behind. */}
+    {(() => {
+      const co = lead.companies ?? {};
+      const people: any[] = lead.company_people ?? [];
+      const any = people.length > 0 || !!co.switchboard || !!co.general_email;
+      if (any) return (
+        <div data-company-site className="mt-3">
+          <div className="text-[12px] text-ink3 mb-2">From the company's own site</div>
+          <div className="border border-line rounded text-[13px]">
+            {people.map((p, i) => (
+              <div key={i} className="px-3 py-2 border-b border-line2 last:border-0">
+                <b className="font-medium">{p.name}</b><div className="text-ink2">{p.title}</div>
+                <div className="grid gap-0.5 mt-1">
+                  {p.email && <span>{p.email} <em className="not-italic text-ok text-[12px]">{p.email_status}</em>{(p.email_source_url ?? p.source_url) && <em className="not-italic text-ink3 text-[12px]"> · <a href={p.email_source_url ?? p.source_url} target="_blank" rel="noopener" className="underline">source</a></em>}</span>}
+                  {p.phone && <span>{p.phone}{p.phone_source_url && <em className="not-italic text-ink3 text-[12px]"> · <a href={p.phone_source_url} target="_blank" rel="noopener" className="underline">source</a></em>}</span>}
+                  {!p.email && !p.phone && <span className="text-ink3 text-[12px]">named on <a href={p.source_url} target="_blank" rel="noopener" className="underline">their page</a>, no address or number printed</span>}
+                </div>
+                {(p.linkedin_search_url || p.google_search_url) && <div className="mt-1.5 flex gap-2 flex-wrap">{p.linkedin_search_url && <a className="btn" href={p.linkedin_search_url} target="_blank" rel="noopener">Find on LinkedIn</a>}{p.google_search_url && <a className="btn" href={p.google_search_url} target="_blank" rel="noopener">Search name + company</a>}</div>}
+              </div>
+            ))}
+            {co.switchboard && <div data-company-switchboard className="px-3 py-2 border-b border-line2 last:border-0">Switchboard {co.switchboard}{co.switchboard_source_url && <em className="not-italic text-ink3 text-[12px]"> · <a href={co.switchboard_source_url} target="_blank" rel="noopener" className="underline">source</a></em>}</div>}
+            {co.general_email && <div data-company-email className="px-3 py-2 border-b border-line2 last:border-0">General email {co.general_email}{co.general_email_source_url && <em className="not-italic text-ink3 text-[12px]"> · <a href={co.general_email_source_url} target="_blank" rel="noopener" className="underline">source</a></em>}</div>}
+          </div>
+        </div>
+      );
+      if (c) return null;
+      return (
+        <div data-prepared-searches className="mt-3 text-[13px]">
+          <div className="text-ink3 mb-1.5">{!co.domain
+            ? 'No website on file for this company, so its own pages have not been read. Searches to run — these are searches, not people we found:'
+            : co.contacts_checked_at
+              ? `Nothing printed on its own site when we read it on ${String(co.contacts_checked_at).slice(0, 10)}. Searches to run — these are searches, not people we found:`
+              : 'Its own site has not been read yet. Searches to run meanwhile — these are searches, not people we found:'}</div>
+          <div className="grid gap-1">{(lead.searches ?? []).map((s: any) => <a key={s.url} className="text-accent" href={s.url} target="_blank" rel="noopener">{s.label}</a>)}</div>
+        </div>
+      );
+    })()}
 
     <div className="text-[12px] text-ink3 mt-5 mb-2">Work this need</div>
     <div className="grid gap-1.5">{([['jd', '1 · Need as a job description'], ['pool', '2 · Score the pool'], ['xray', '3 · Find candidates on LinkedIn'], ['q', '4 · Screening questions']] as const).map(([k, l]) => <button key={k} onClick={() => setTool(k)} className={`text-left border rounded px-3 py-2 ${tool === k ? 'border-accent bg-accentsoft' : 'border-line'}`}>{l}</button>)}</div>

@@ -44,7 +44,10 @@ export async function currentUser() {
  * (`scripts/session-length-probe.ts`), so it was not expiry. `?why=` names the auth answer the screen got.
  */
 export async function requireUser() {
-  const { me, why } = await userOrWhy();
+  const { me, why, failed } = await userOrWhy();
+  // The auth server could not be asked (it answered `?why=page: AuthRetryableFetchError 0` on 2026-09-15, six times
+  // over now). That is not a sign-out, so it does not send the person to sign in: it says what happened.
+  if (!me && failed) throw new Error(`The sign-in service could not be reached (${why}). You are still signed in — reload the page.`);
   if (!me) redirect(`/login?why=${encodeURIComponent(`page: ${why}`)}`);
   return me;
 }
@@ -52,10 +55,10 @@ export async function requireUser() {
 async function userOrWhy() {
   const sb = supabaseServer();
   // A failed auth check is not "not signed in" either: it is asked again first.
-  const { user, reason } = await steadyUser(sb);
-  if (!user) return { me: null, why: reason };
+  const { user, reason, failed } = await steadyUser(sb);
+  if (!user) return { me: null, why: reason, failed };
   const { data, error } = await sb.from('users').select('*').eq('id', user.id).maybeSingle();
   if (error) throw new Error(`Signed in as ${user.email} but the users row could not be read: ${error.code} ${error.message}`);
   if (!data) throw new Error(`Signed in as ${user.email} but no users row exists — the sign-up trigger did not run.`);
-  return { me: { ...data, email: user.email }, why: '' };
+  return { me: { ...data, email: user.email }, why: '', failed: false };
 }
