@@ -107,7 +107,9 @@ After deploying, run `scripts/smoke.ts https://leadscout-rfbt.vercel.app` and re
 | 16 | Meter every model call | **not started** — recruiter tools recorded, never blocked; automated jobs hard-stop |
 | 17 | Lead-age thresholds | **done** — 0024 and 0025 applied 2026-09-13 |
 | 18 | Industry classification, country filter, recruiter follow, coverage report | **done** — all five parts live; 0031 backfilled, 0032 enforcement proven on production; watchlist 14 boards; 8 thin categories flagged for a scoped source item |
-| 19 | Compound signal scoring | **done** — step 1 Won work fit (d10f3c1), step 2 Hiring now pressure and Today; re-adverts are the posting signal, not a type (owner's decision) |
+| 19 | Compound signal scoring | **done** — step 1 Won work fit (d10f3c1), step 2 Hiring now pressure and Today (47821ec); re-adverts are the posting signal, not a type (owner's decision) |
+| 20 | Shared discovery pool | **design only — do not build** until the owner starts it as its own project; decisions and migration order are in the queue file |
+| 21 | Company-website contact discovery for Won work | **in progress** — step 1: one discovery engine for Hiring now and Won work, quoted people looked for on their own sites, route behind the cron secret; step 2 Won work display; step 3 measured run. The 103 companies with no website get prepared searches only until the yield on the 26 with one is known (owner's decision) |
 | — | Design pass (Claude Design MCP) | after real data is on screen |
 
 Also outstanding, outside the queue: the remaining verify adapters (cswip, ampp, irata, winda, cisrs, electrical_dk), and watching the first unattended overnight run of the recheck cron and the first Radar morning driven by pg_cron (`scripts/schedule-report.ts`).

@@ -11,7 +11,13 @@ const TABLES = ['cost_log', 'radar_runs', 'radar_verdicts', 'job_ticks', 'compan
       const { count, error } = await db.from(t).select('*', { count: 'exact', head: true }).eq('workspace_id', w.id);
       out.push(`${t} ${error ? `n/a (${error.message.slice(0, 40)})` : count}`);
     }
-    const { data: spend } = await db.from('cost_log').select('day, eur').eq('workspace_id', w.id);
+    // Paged: one unpaged read stops at 1,000 rows, and this workspace's spend runs past that.
+    const spend: any[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data } = await db.from('cost_log').select('day, eur').eq('workspace_id', w.id).order('id').range(from, from + 999);
+      spend.push(...(data ?? []));
+      if (!data || data.length < 1000) break;
+    }
     const byDay: Record<string, number> = {};
     for (const r of spend ?? []) byDay[r.day] = (byDay[r.day] ?? 0) + Number(r.eur ?? 0);
     console.log(`${w.name}: ${out.join(' · ')}`);

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { crawlWorkspace } from '@/lib/crawl-workspace';
 import { claude, MODEL_CLASSIFY } from '@/lib/ai/claude';
-import { logCost, logModelCall, modelCostEur, spentEur } from '@/lib/cost';
+import { Budget, logCost, logModelCall, modelCostEur, spentEur } from '@/lib/cost';
 export const maxDuration = 300;
 
 /**
@@ -71,6 +71,10 @@ async function run(req: Request) {
   const prior = await spentEur(db, { kind: 'search' });
   let spent = prior;
   if (spent >= capEur) return NextResponse.json({ ok: false, reason: 'search cap already reached', spentEur: Number(spent.toFixed(2)), capEur });
+  // The €2.00 daily cap as well as this job's own all-time search limit. Found 2026-09-15: it checked only the all-time
+  // limit (€100 by default), so a run could spend the whole day's budget and more while every other job hard-stopped.
+  const budget = await Budget.open(db);
+  if (budget.exhausted) return NextResponse.json({ ok: false, reason: 'daily budget already spent', spentToday: Number(budget.totalToday.toFixed(4)) });
 
   // Companies where somebody who hires trades actually works.
   const ops = new Set<string>();
@@ -92,7 +96,8 @@ async function run(req: Request) {
   const found: any[] = [];
 
   for (const c of todo) {
-    if (spent >= capEur) break;
+    // A company costs up to two model calls and a search: stop before one that the day cannot take.
+    if (spent >= capEur || !budget.canAfford(0.1)) break;
     stats.looked++;
     try {
       let msgs: any[] = [{ role: 'user', content: `Company: ${c.name}\nCountry: ${c.country}\nSector: ${c.sector}` }];
@@ -106,7 +111,9 @@ async function run(req: Request) {
           tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 1 }] as any,
           messages: msgs,
         } as any);
-        spent += await logModelCall(db, workspace, MODEL_CLASSIFY, `resolve ${c.name}`, r.usage);
+        const tokensEur = await logModelCall(db, workspace, MODEL_CLASSIFY, `resolve ${c.name}`, r.usage);
+        spent += tokensEur;
+        budget.add(tokensEur);
         searches += (r.content ?? []).filter((b: any) => b.type === 'server_tool_use' || b.type === 'web_search_tool_result').length;
         text = (r.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
         if (r.stop_reason !== 'pause_turn') break;
@@ -116,6 +123,7 @@ async function run(req: Request) {
         const eur = SEARCH_EUR * Math.min(searches, 1);
         await logCost(db, workspace, 'search', `web search · ${c.name}`, Math.min(searches, 1), eur);
         spent += eur;
+        budget.add(eur);
       }
 
       const m = text.match(/\{[\s\S]*\}/);

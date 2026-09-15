@@ -33,3 +33,23 @@ export async function recordPersonContact(
   if (error) throw new Error(`contact insert failed at ${companyName}: ${error.message}`);
   return 'stored';
 }
+
+/**
+ * Item 21: the person a news story quoted, found by name on their company's own site. They gain only the address or
+ * number they lack, with the page as its source — the quoted contact is never replaced, renamed or re-titled, and an
+ * address already on file is never overwritten by one read somewhere else.
+ */
+export async function addToQuotedContact(
+  db: SupabaseClient, contactId: string, companyName: string, hit: PersonOnPage,
+): Promise<'updated' | 'unchanged'> {
+  const { data: row, error: readError } = await db.from('contacts').select('id, email, phone').eq('id', contactId).maybeSingle();
+  if (readError) throw new Error(`the quoted contact at ${companyName} could not be read: ${readError.message}`);
+  if (!row) return 'unchanged';
+  const patch: Record<string, unknown> = {};
+  if (!row.email) Object.assign(patch, { email: hit.email, email_status: 'found', email_source_url: hit.url });
+  if (!row.phone && hit.phone) Object.assign(patch, { phone: hit.phone, phone_source_url: hit.url });
+  if (!Object.keys(patch).length) return 'unchanged';
+  const { error } = await db.from('contacts').update(patch).eq('id', contactId);
+  if (error) throw new Error(`the quoted contact at ${companyName} could not be updated: ${error.message}`);
+  return 'updated';
+}

@@ -418,3 +418,159 @@ independent corroboration from a separate source. A company reaches the 2+
 threshold only by combining a posting with something genuinely separate — a
 tender award or a news mention — never by reposting the same job. Three types
 in all: tender award, news mention, open posting (re-adverts included).
+
+-------------------------------------------------------------------------------
+20. SHARED DISCOVERY POOL — DESIGN ONLY, NOT BUILT (its own project, later)
+-------------------------------------------------------------------------------
+Status: design agreed 2026-09-15. Do NOT build until the owner starts it as its
+own dedicated project. Touches RLS across many tables — same care as the
+users-table lockdown (0028).
+
+WHY: today a sign-up gets its own empty workspace (handle_new_user, 0001) and
+the crawl files everything under RFBT Recruitment's workspace, so a new
+customer sees nothing on day one and nothing is ever crawled for them.
+Discovery (Radar, tender awards, Hiring now) becomes shared infrastructure:
+crawled once, visible across workspaces, filtered by entitlement. Candidates,
+CVs, Verify results and outreach stay strictly per-workspace — an explicit,
+enforced boundary, not an incidental one.
+
+OWNER'S DECISIONS
+1. industry_follow is a database-enforced boundary for CAPPED accounts
+   (industry_limit set): they never receive rows outside their followed
+   industries, and have no "show all industries" escape hatch. Unlimited
+   accounts (RFBT today, future unlimited tiers) keep the toggle. Entitlement
+   stays per USER.
+2. Attendee lists (people, lead_people) and contacts found by web search are
+   shared discovery, same bucket as leads / companies / job_posts.
+3. No customer-added private sources — do not design for them.
+4. Status and overrides live per WORKSPACE, with per-user attribution.
+
+PRINCIPLE: a record being shared shares only its FACTS. Confirm, Pursue,
+Not-for-us, notes, job descriptions and outreach drafts stay private to the
+workspace, or one customer's activity ("we're pursuing this") leaks to another
+looking at the same lead.
+
+THE HAZARD THAT FIXES THE ORDER: several private tables inherit their scope
+through leads — outreach's policy is "lead_id in leads where workspace = mine",
+and contacts, job_posts, lead_people and lead_articles likewise. Share leads
+first and every workspace's outreach opens silently. Private tables get their
+own boundary BEFORE anything becomes shared.
+
+ACTIVITY STORED ON WOULD-BE-SHARED ROWS TODAY
+- Confirm (lead): leads.confirmed_by / confirmed_at — api/lead/route.ts:18
+- Lead status: leads.status, updated_at — api/lead/route.ts:19
+- Pursue after a pack: leads.status = 'pursue' — api/leads/send-pack/route.ts:72
+- Outreach sent -> contacted: leads.status, leads.updated_at — api/outreach/route.ts:72
+- Hiring now Confirm: companies.hiring_confirmed_at / _by — api/hiring/route.ts
+- Hiring now status: companies.hiring_status / _at / _by — api/hiring/route.ts:241
+- Employer-type override: companies.employer_type_override / _set_by / _set_at /
+  _reason — api/company/employer-type/route.ts
+- Job description from a lead: leads.job_description, jd_version — api/lead/route.ts:20
+- Outreach drafts: outreach, no workspace_id of its own (scope via leads)
+- No notes field exists yet on leads or companies; it is born private.
+- leads.updated_at is bumped by outreach — an activity timestamp on a shared row.
+
+THE SPLIT
+Shared (facts; written only by the service role):
+- leads: id, company_id, kind, project_name, project_location, project_value,
+  phase, phase_start, phase_end, trades_inferred, country, region, source_url,
+  source_fetch_status, source_fetched_at, source_flag (+why, +at), industries,
+  industry_evidence, industries_at, created_at, is_test
+- companies: id, name, domain, size, country, region, sector, tier, registry
+  fields, careers_url and crawl fields, ats_type / ats_slug, switchboard,
+  general_email, email_pattern (with source URLs), contact_page_url, detected
+  employer_type with source / evidence / checked_at, industries, is_test
+- also: articles, lead_articles, job_posts (incl. the contact printed on an
+  advert), contacts (name, title, email / phone with sources),
+  company_email_patterns, radar_verdicts, people, lead_people
+Private (new tables, workspace_id + policy workspace_id = my_workspace()):
+- workspace_lead_state (workspace_id, lead_id): status (new, pursue, contacted,
+  replied, call, trial, framework, not_for_us), confirmed_by / confirmed_at,
+  notes, job_description / jd_version, fit_score (uses the workspace's own
+  trades and countries), updated_at / updated_by
+- workspace_company_state (workspace_id, company_id): hiring_status (+at, +by),
+  hiring_confirmed_at / _by, employer_type_override (+by, +at, +reason), notes,
+  relationship history (today companies.rfbt_history)
+- outreach: its own required workspace_id; policy no longer derived from leads;
+  lead_id / company_id stay as links to shared records
+- already private: candidates, documents, verifications, anonymized_cvs, scores
+  (via candidates), sends, campaigns, campaign_candidates, internal_downloads,
+  cert_library, cert_unknown, cert_bodies, users, workspaces, CV storage buckets
+- lead status 'stale' leaves the workspace list: automated processes only flag,
+  and that flag is shared (source_flag). A person's "source is gone" report is
+  private.
+
+MIGRATION ORDER (owner applies each; a probe passes before the next)
+1. Private tables get their own boundary: required workspace_id on outreach
+   (backfilled from leads); policies no longer derived from leads/companies.
+   Probe: two throwaway workspaces try to read each other's outreach,
+   candidates, documents, verifications.
+2. Activity moves off shared rows: create workspace_lead_state and
+   workspace_company_state, copy RFBT's current statuses, confirmations,
+   overrides and JDs, switch the app to them. Nothing shared yet.
+3. Discovery becomes shared: reads on shared tables through one security-
+   definer entitlement function (as my_workspace() gates the workspace) —
+   capped accounts get only rows in their followed industries, unlimited
+   accounts everything; every signed-in write on shared tables removed, as
+   0028 did for users.
+4. The boundary made explicit: one registry labels every table shared or
+   private; a new table missing from it fails the gate; the RLS sweep asserts
+   every private policy keys on my_workspace() directly and no shared table has
+   a signed-in write policy. Gate probe: workspace B marks a shared lead Pursue,
+   writes a note and a draft; workspace A sees that lead "new", no note, no draft.
+
+RULES THAT KEEP IT FROM LEAKING
+- No person's action changes a shared row: no bumped timestamps, no "last
+  touched", no counters.
+- No cross-workspace aggregates on screen ("3 teams pursuing"); reads join only
+  the reader's own state rows.
+- cost_log gets a scope (crawl vs workspace): crawl spend stays under the one
+  system €2.00 cap; recruiter tools metered per customer; workspace rows stay
+  private (their detail text names companies).
+- Existing decisions are copied before any old column is dropped.
+- Status per workspace with the acting user recorded; drafts keep their author
+  (sent_by plus an author field).
+
+-------------------------------------------------------------------------------
+21. COMPANY-WEBSITE CONTACT DISCOVERY FOR WON WORK
+-------------------------------------------------------------------------------
+Extends item 13's contact-discovery mechanism to Won work leads (both tender
+awards and news). Reuse the existing logic — do not build a second
+implementation:
+- Company contact/careers page (switchboard, general email, HR address)
+- Organisation/leadership page discovery
+- Attendee-list people looked up by name on the company's own site
+- Prepared searches as the last resort
+
+Scope, both decided:
+
+1. BOTH tender awards AND news leads are in scope, not just tender awards.
+   - Tender awards: currently show "award notices name no person" — every one
+     of these should get the full discovery chain run, since they have zero
+     contact today.
+   - News leads with an already-quoted person (kept by item 14's ranking):
+     run the SAME follow-up check already built for attendee matches (the
+     NorSea/Martin Andreasen pattern) — look for that specific named person
+     on their own company's site, to recover an email/phone the article
+     itself didn't print. Do not replace the quoted person if found; only
+     add contact details to them.
+   - News leads with no quoted person at all: run the full discovery chain,
+     same as tender awards.
+
+2. Paid web search IS in scope, but stays bounded exactly as it already is:
+   runs only from the existing script path, under the same €2.00 daily cap,
+   never as an unbounded background job. Report how much of the daily budget
+   this consumes when run against the full current lead set, before it
+   becomes a standing part of any automated crawl.
+
+Run once per COMPANY, not per lead — multiple leads can share a company
+(a company with both a tender award and a news mention), cache the result
+the same way item 13's org-page check already does.
+
+Commit after each step, two lines per step. Full release gate before every
+commit, screen checks as a signed-in user, both widths. Report: how many of
+the current 149 leads gained a contact that didn't have one before, broken
+down by tender-award vs. news-with-quoted-person vs. news-without, the actual
+cost of running paid web search against the full set, and confirm the shared
+company-level cache is working (no duplicate discovery runs for the same
+company across multiple leads).

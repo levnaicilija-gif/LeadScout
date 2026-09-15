@@ -49,7 +49,7 @@ const OPEN = '("stale","not_for_us")';
   const compounds = [...signals.entries()].map(([id, v]) => ({ id, name: v.name, c: compoundFor(v.list) }));
   const boosted = compounds.filter((x) => x.c.factor > 1);
   const byCount = (n: number) => compounds.filter((x) => x.c.types.length === n).length;
-  console.log(`companies with a signal inside ${SIGNAL_WINDOW_DAYS} days: ${compounds.filter((x) => x.c.types.length).length} · one type ${byCount(1)} · two ${byCount(2)} · three ${byCount(3)} · four ${byCount(4)}`);
+  console.log(`companies with a signal inside ${SIGNAL_WINDOW_DAYS} days: ${compounds.filter((x) => x.c.types.length).length} · one type ${byCount(1)} · two ${byCount(2)} · three ${byCount(3)}`);
   console.log(`won-work signals dated only by Radar's first reading (the source states no date): ${fromFirstSighting} of ${(leads ?? []).length}`);
   console.log(`\nboosted companies: ${boosted.length}`);
   for (const b of boosted) {
