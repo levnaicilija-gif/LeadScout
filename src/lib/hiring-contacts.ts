@@ -41,7 +41,12 @@ export type PreparedSearch = { label: string; url: string };
 
 // Deliberately conservative. A false positive here becomes a phone number a recruiter dials.
 const EMAIL_RE = /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/gi;
-const PHONE_RE = /(?:\+|00)\d[\d\s().-]{7,17}\d/g;
+// An en dash and a slash continue a number as printed: "+49 (0)3435 – 666 2-0", "+49 (0) 25 93 / 95 93 - 0". Without
+// them the read stopped at the area code and stored Kattner Stahlbau and Daldrup & Söhne as "+49 (0)3435" and
+// "+49 (0) 25 93" (2026-09-15) — a number a recruiter would dial and reach nobody.
+const PHONE_RE = /(?:\+|00)\d[\d\s().\-–/]{7,24}\d/g;
+/** Fewer digits than this is a fragment — an area code on its own — and a fragment is never offered to dial. */
+const PHONE_MIN_DIGITS = 9;
 
 /** Addresses that are a company's front door rather than a person's. */
 const GENERAL = /^(info|post|mail|office|kontakt|contact|firmapost|enquiries|hello|admin|sales)@/i;
@@ -70,8 +75,11 @@ export function emailsOn(page: { text: string; url: string }, domain?: string | 
 
 /** A switchboard number, normalised only in whitespace — never reformatted into something else. */
 export function phoneOn(page: { text: string }) {
-  const hit = (page.text.match(PHONE_RE) ?? [])[0];
-  return hit ? clean(hit) : null;
+  for (const hit of page.text.match(PHONE_RE) ?? []) {
+    const number = clean(hit);
+    if (number.replace(/\D/g, '').length >= PHONE_MIN_DIGITS) return number;
+  }
+  return null;
 }
 
 /**

@@ -29,6 +29,8 @@ const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPAB
 const search = process.argv.includes('--search');
 const write = process.argv.includes('--write');
 const quotedOnly = process.argv.includes('--quoted-only');
+/** Item 21: only companies behind an open won-work lead, so a measured run spends nothing on Hiring now's people. */
+const wonWorkOnly = process.argv.includes('--won-work');
 
 type Target = { id: string; name: string; domain: string | null; set: string };
 type Quoted = { id: string; name: string; email: string | null; phone: string | null };
@@ -53,7 +55,7 @@ type Quoted = { id: string; name: string; email: string | null; phone: string | 
   const { data: leads } = await db.from('leads').select('id, company_id, companies!inner(id, name, domain)').eq('workspace_id', W).eq('kind', 'won_work').eq('is_test', false).not('status', 'in', '("stale","not_for_us")');
   const targets = new Map<string, Target>();
   const asTarget = (c: any, set: string): Target => ({ id: c.id, name: c.name, domain: c.domain ?? null, set });
-  for (const p of posts ?? []) targets.set((p as any).company_id, asTarget((p as any).companies, 'Hiring now'));
+  if (!wonWorkOnly) for (const p of posts ?? []) targets.set((p as any).company_id, asTarget((p as any).companies, 'Hiring now'));
   for (const l of leads ?? []) if (!targets.has((l as any).company_id)) targets.set((l as any).company_id, asTarget((l as any).companies, 'won work'));
 
   // Item 21: the people news stories quoted, still without an email or a phone.

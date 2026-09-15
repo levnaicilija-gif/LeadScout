@@ -38,6 +38,7 @@ RLS_SWEEP_SOURCE=gate step rls-sweep npx tsx --env-file=.env.local scripts/rls-s
 step users-policy npx tsx --env-file=.env.local scripts/users-policy-probe.ts
 step workspace-scope npx tsx --env-file=.env.local scripts/workspace-scope-check.ts
 step compound-signals npx tsx scripts/compound-signals-check.ts
+step phone-on npx tsx scripts/phone-on-check.ts
 
 if [[ " ${FAILED[*]-} " == *" build "* ]]; then
   echo "=== the build failed, so nothing was served or tested against it" | tee -a "$LOG"
