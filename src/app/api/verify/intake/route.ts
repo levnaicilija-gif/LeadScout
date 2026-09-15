@@ -11,6 +11,7 @@ import { countriesFromText, norm } from '@/lib/geo';
 import { hasRightToWork, hasCandidateCrm } from '@/lib/schema-features';
 import { judgeDuplicate } from '@/lib/candidate-dedupe';
 import { matchName, autoMatch, normName } from '@/lib/name-match';
+import { allRows } from '@/lib/all-rows';
 export const maxDuration = 300;
 
 /**
@@ -40,6 +41,9 @@ async function handle(req: Request, me: SignedIn) {
     const form = await req.formData();
     const files = form.getAll('files') as File[];
     if (!files.length) return NextResponse.json({ error: 'at least one file is required' }, { status: 400 });
+    // Item 24: files dropped on a candidate's own page belong to that candidate — a recruiter chose the person by opening
+    // their page, so no name matching decides it. Checked against the workspace before anything is stored.
+    const targetId = String(form.get('candidate_id') ?? '').trim() || null;
 
     const db = supabaseAdmin();
     const results: any[] = [];
@@ -48,9 +52,11 @@ async function handle(req: Request, me: SignedIn) {
 
     // Candidates already in the workspace, for matching a document to a person — by name, and for a CV by a second field
     // too (email, phone, date of birth; item 24).
-    const { data: existing } = await db.from('candidates').select('id, reference_code, full_name, email, phone, profile, availability_from').eq('workspace_id', me.workspace_id);
+    const { data: existing } = await allRows((from, to) => db.from('candidates').select('id, reference_code, full_name, email, phone, profile, availability_from').eq('workspace_id', me.workspace_id).order('id').range(from, to));
     const known: any[] = (existing ?? []).map((c: any) => ({ ...c, key: normName(c.full_name), dob: c.profile?.pii?.dob ?? null }));
     const touched = new Map<string, any>();
+    const target = targetId ? known.find((c) => c.id === targetId) : null;
+    if (targetId && !target) return NextResponse.json({ error: 'no such candidate in your workspace' }, { status: 404 });
 
     for (const f of files) {
       const row: any = { file: f.name };
@@ -81,6 +87,17 @@ async function handle(req: Request, me: SignedIn) {
           const cvText = prepared.kind === 'text' ? prepared.text! : await transcribeCv(prepared.base64, prepared.mediaType);
           if (!cvText.trim()) { row.kind = 'unreadable'; row.why = 'no readable text in the file'; results.push(row); continue; }
           const profile = await parseCv(cvText);
+          // Dropped on a candidate's page: it is their CV. It refreshes their reading, as attaching a CV does, and says so
+          // when the name on it is not theirs.
+          if (target) {
+            await db.from('candidates').update({ profile, ...(profile.trade ? { trade: profile.trade } : {}), ...(profile.languages ? { languages: profile.languages } : {}) }).eq('id', target.id);
+            await store(db, me, bytes, f, 'cv', target.id, { text: cvText.slice(0, 5000), profile, holder: profile.full_name });
+            if (profile.full_name && normName(profile.full_name) !== normName(target.full_name)) row.holderNote = `The CV names ${profile.full_name}; it was added to ${target.reference_code} because it was dropped on their page.`;
+            row.candidateId = target.id; row.reference = target.reference_code; row.profile = anonymize(profile); row.trade = profile.trade;
+            touched.set(target.id, target);
+            results.push(row);
+            continue;
+          }
           // Is this someone already in the pool? Item 24 uses the rule proven on the WindEurope imports — a name plus a
           // second field (email, phone, date of birth), never the name alone (src/lib/candidate-dedupe.ts). Until
           // 2026-09-15 an exact name was enough and the CV silently rewrote that candidate's profile, so two welders
@@ -141,7 +158,8 @@ async function handle(req: Request, me: SignedIn) {
         // person — and the card offers the near matches, or offers to open a record from it.
         // A certificate never opens one by itself: a ticket says what someone can do, not that
         // we have them. That is a recruiter's call, taken on the card.
-        const cand = autoMatch(known, ext.holder);
+        const cand = target ?? autoMatch(known, ext.holder);
+        if (target && ext.holder && normName(ext.holder) !== normName(target.full_name)) row.holderNote = `The document names ${ext.holder}; it was attached to ${target.reference_code} because it was dropped on their page.`;
         const doc = await store(db, me, bytes, f, ext.doc_type, cand?.id ?? null, ext);
         row.documentId = doc?.id ?? null;
         row.candidateId = cand?.id ?? null;

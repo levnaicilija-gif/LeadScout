@@ -125,6 +125,29 @@ type Seeded = { ref: string; trade: string; country: string; certs: string[]; pr
       flat.push(Date.now() - t);
     }
     console.log(`  ...  the candidates alone, no certificates, CV-sent rows or placements: ${flat.join(' / ')} ms`);
+    // Option 1 for the owner: the same data as four flat reads — candidates, their certificates, CVs sent, placements — every
+    // page of every table at once, joined in memory. Measured, not shipped.
+    const paged = async (table: string, cols: string, narrow: (q: any) => any = (q) => q) => {
+      const { count } = await narrow(user.from(table).select('id', { count: 'exact', head: true }));
+      const pages = await Promise.all(Array.from({ length: Math.ceil((count ?? 0) / 1000) }, (_, i) => narrow(user.from(table).select(cols)).order('id').range(i * 1000, i * 1000 + 999)));
+      return pages.flatMap((p: any) => p.data ?? []);
+    };
+    const split: number[] = [];
+    let joinedCerts = 0;
+    for (let r = 0; r < 3; r++) {
+      const t = Date.now();
+      const [cs, ds, ss, ps] = await Promise.all([
+        paged('candidates', 'id, reference_code, full_name, trade, nationality, availability_from, created_by, created_at, internal_notes, stage, employment_preference, country, owner_id'),
+        paged('documents', 'candidate_id, type, cert_body, level:extracted->>level, number:extracted->>number, verifications(valid_until, state, checked_at)', (q) => q.not('candidate_id', 'is', null)),
+        paged('sends', 'candidate_id, sent_at, client_name, companies(name)'),
+        paged('candidate_placements', 'candidate_id, client_name, placed_on, ended_on'),
+      ]);
+      const byCand = new Map<string, any[]>();
+      for (const d of ds) (byCand.get(d.candidate_id) ?? byCand.set(d.candidate_id, []).get(d.candidate_id)!).push(d);
+      joinedCerts = cs.reduce((n: number, c: any) => n + (byCand.get(c.id)?.length ?? 0), 0) + ss.length * 0 + ps.length * 0;
+      split.push(Date.now() - t);
+    }
+    console.log(`  ...  option 1, four flat reads joined in memory (${joinedCerts} documents joined): ${split.join(' / ')} ms`);
     check(!pool.error && pool.rows.length === COUNT, `the signed-in read returns all ${COUNT} candidates across pages`, pool.error ?? `${pool.rows.length} rows · loads ${loads.join(' / ')} ms`);
 
     const bySeed = new Map(seeded.map((s) => [s.ref, s]));

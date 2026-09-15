@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { allRows } from './all-rows';
 
 /**
  * Marking probe and smoke data as what it is.
@@ -111,7 +112,7 @@ export async function clearTestWorkspace(db: SupabaseClient, workspaceId: string
   const problems: string[] = [];
   // A CV-sent row (sends) and a score point at a candidate with no cascade, so they go first or the candidate delete fails
   // (item 24: the list probe and the scale test write CV-sent rows).
-  const { data: cands } = await db.from('candidates').select('id').eq('workspace_id', workspaceId).limit(10000);
+  const { data: cands } = await allRows((from, to) => db.from('candidates').select('id').eq('workspace_id', workspaceId).order('id').range(from, to));
   const ids = (cands ?? []).map((c: any) => c.id);
   for (let i = 0; i < ids.length; i += 200) {
     for (const table of ['sends', 'scores'] as const) {

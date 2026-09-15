@@ -4,6 +4,7 @@ import { matchName, normName } from '@/lib/name-match';
 import { hasAttachTrail, hasRightToWork, hasCandidateCrm } from '@/lib/schema-features';
 import { nextReferenceCode } from '@/lib/reference-code';
 import { isEea } from '@/lib/right-to-work';
+import { allRows } from '@/lib/all-rows';
 export const maxDuration = 60;
 
 /**
@@ -35,7 +36,7 @@ export async function GET(req: Request) {
   const { data: doc } = await db.from('documents').select('id, type, cert_body, extracted, candidate_id, workspace_id').eq('id', id).maybeSingle();
   if (!doc || doc.workspace_id !== me.workspace_id) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
-  const { data: known } = await db.from('candidates').select('id, reference_code, full_name').eq('workspace_id', me.workspace_id);
+  const { data: known } = await allRows<{ id: string; reference_code: string; full_name: string }>((from, to) => db.from('candidates').select('id, reference_code, full_name').eq('workspace_id', me.workspace_id).order('id').range(from, to));
   const holder = (doc.extracted as any)?.holder ?? null;
   return NextResponse.json({
     document: { id: doc.id, type: doc.type, cert_body: doc.cert_body, holder, attached: doc.candidate_id },

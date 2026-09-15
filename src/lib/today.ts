@@ -37,7 +37,7 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
     sb.from('verifications').select('id, issuer_email_sent_at, documents(candidate_id, extracted, candidates!candidate_id(reference_code))').eq('result', 'pending'),
     sb.from('outreach').select('id, sent_at, leads(project_name, companies(name))').eq('status', 'sent').is('reply_at', null).lte('sent_at', day(-3)),
     sb.from('leads').select(`id, kind, company_id, country, project_name, fit_score, trades_inferred, source_url, companies(name)${industriesOn ? ', industries' : ''}`).eq('status', 'new').gte('created_at', day(-7)).order('fit_score', { ascending: false }).limit(20),
-    sb.from('verifications').select('id, valid_until, documents(cert_body, candidates!candidate_id(reference_code))').eq('result', 'valid').lte('valid_until', day(60).slice(0, 10)),
+    sb.from('verifications').select('id, valid_until, documents(cert_body, candidates!candidate_id(id, reference_code))').eq('result', 'valid').lte('valid_until', day(60).slice(0, 10)),
     campaignsMissingDocs(sb),
     hiringWorthCalling(sb, industriesOn, followedFirst),
   ]);
@@ -130,7 +130,8 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
         ? `${doc?.candidates?.reference_code ?? 'A candidate'} · ${doc?.cert_body?.toUpperCase() ?? 'certificate'} EXPIRED ${v.valid_until}`
         : `${doc?.candidates?.reference_code ?? 'A candidate'} · ${doc?.cert_body?.toUpperCase() ?? 'certificate'} expires ${v.valid_until}${days !== null ? ` — ${days} day${days === 1 ? '' : 's'}` : ''}`,
       sub: gone ? 'Cannot be sent to a client until it is renewed' : 'Renewal message drafted',
-      href: `/app/candidates?ref=${doc?.candidates?.reference_code ?? ''}`,
+      // Item 24: the candidate's own page, where the certificate, its expiry and a replacement drop zone are.
+      href: doc?.candidates?.id ? `/app/candidates/${doc.candidates.id}` : `/app/candidates?ref=${doc?.candidates?.reference_code ?? ''}`,
       why: 'An expired certificate found on site means a sent-home worker, and a client who stops calling.',
       from: 'verifications valid_until ≤ 60 days',
     });

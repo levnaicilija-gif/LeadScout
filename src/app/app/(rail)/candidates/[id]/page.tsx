@@ -8,6 +8,7 @@ import { CertCard } from '@/components/CertCard';
 import { CandidateTableStage } from '@/components/CandidateTableStage';
 import { CandidateEditForm } from '@/components/CandidateEditForm';
 import { CvSentLog } from '@/components/CvSentLog';
+import { CandidateDocDrop } from '@/components/CandidateDocDrop';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -117,6 +118,7 @@ export default async function CandidatePage({ params }: { params: { id: string }
         </Card>
 
         <Card title={`Certificates · ${certificates.length}`} hook="certificates">
+          <CandidateDocDrop candidateId={c.id} label={candidateLabel(c.reference_code)} />
           {certificates.length === 0 ? <div className="text-ink3 text-[13px]">No certificates on file.</div> : (
             <div className="grid gap-4">
               {certificates.map((d: any) => {
