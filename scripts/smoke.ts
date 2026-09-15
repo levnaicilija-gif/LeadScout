@@ -211,6 +211,8 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     check(/Smoke Tender Winner AS first/.test(today) && /Smoke Offshore AS \(stale signal\)/.test(today),
       'Today names an undated lead before a stale signal and labels the stale one', today.match(/Read \d+ new leads?[^\n]*/)?.[0] ?? 'no new-leads item on Today');
     check(/Smoke Readvert AS \(hiring now\)/.test(today), 'Today lists a hiring-now company for a re-advertised role', today.match(/Read \d+ new leads?[^\n]*\n?[^\n]*/)?.[0] ?? 'no new-leads item on Today');
+    // Item 19: a new lead whose company has a tender award and an open posting is labelled boosted on Today too.
+    check(/Smoke Compound AS \(boosted\)/.test(today), 'item 19: Today labels a lead whose company has two signal types "boosted"', today.match(/Read \d+ new leads?[^\n]*\n?[^\n]*/)?.[0] ?? 'no new-leads item on Today');
 
     // 4 — Leads
     await page.goto(`${BASE}/app/radar`, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -396,6 +398,43 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       'a company whose newest advert is 70 days old reads "ageing", is dimmed and sorts last', JSON.stringify({ index: rowAt('Smoke Aged Hiring AS'), of: hiringRows.length, row: agedRow ?? 'not found' }));
     const freshRow = hiringRows[rowAt('Smoke Offshore AS')];
     check(freshRow?.age === 'fresh' && freshRow.opacity === '1' && /0 days old/.test(freshRow.label), 'a company first seen today is fresh and not dimmed', JSON.stringify(freshRow ?? 'not found'));
+
+    // Item 19 on Hiring now: Smoke Compound AS has one advert (low pressure) and a tender award today, so its pressure goes
+    // one step up to medium with the signals named on the row. Smoke Readvert AS re-advertised a role twice and has nothing
+    // else — a repost is the same signal as its advert (owner's decision, 2026-09-15), so it is not boosted.
+    const pressureRows = await page.evaluate(() => Array.from(document.querySelectorAll('tr[data-row-href]')).map((tr) => ({
+      name: (tr as HTMLElement).innerText.split('\n')[0],
+      boost: (tr.querySelector('[data-compound]') as HTMLElement | null)?.innerText ?? '',
+      pressure: (tr.querySelector('[data-pressure]') as HTMLElement | null)?.innerText.replace(/\s+/g, ' ').trim() ?? '',
+    })));
+    const liftedRow = pressureRows.find((r) => r.name.includes('Smoke Compound AS'));
+    check(!!liftedRow && /boosted ×1\.1: tender award \+ open Hiring now posting/.test(liftedRow.boost) && /^medium boosted, was low/.test(liftedRow.pressure),
+      'item 19: Hiring now lifts pressure one step, low → medium, with the signals named on the row', JSON.stringify(liftedRow ?? 'row not found'));
+    const repostOnly = pressureRows.find((r) => r.name.includes('Smoke Readvert AS'));
+    check(!!repostOnly && !repostOnly.boost && !/boosted, was/.test(repostOnly.pressure),
+      'item 19: a company that only re-advertised its own role is not boosted — a repost is the same signal as its advert', JSON.stringify(repostOnly ?? 'row not found'));
+    await page.goto(`${BASE}/app/radar?tab=hiring&company=${compoundCo!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('aside [data-compound-why]', { timeout: 30000 }).catch(() => {});
+    const liftedWhy = await page.locator('aside [data-compound-why]').first().innerText().catch(() => '');
+    check(/^Boosted ×1\.1 — 2 independent signals inside 60 days, on the same day: tender award \d{4}-\d{2}-\d{2} \(first read by Radar — the notice states no date\); open Hiring now posting \d{4}-\d{2}-\d{2} \(advert posted\)\. Pressure low → medium\.$/.test(liftedWhy),
+      'item 19: the Hiring now drawer says why pressure was lifted, each signal with its date', liftedWhy || 'no reason in the drawer');
+    const liftPhone = await browser.newContext({ storageState: await page.context().storageState(), viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    try {
+      const m = await liftPhone.newPage();
+      await m.goto(`${BASE}/app/radar?tab=hiring`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await m.waitForSelector('tr[data-row-href]', { timeout: 60000 }).catch(() => {});
+      const onPhone = await m.evaluate(() => {
+        const tr = Array.from(document.querySelectorAll('tr[data-row-href]')).find((t) => (t as HTMLElement).innerText.includes('Smoke Compound AS'));
+        const el = tr?.querySelector('[data-compound]') as HTMLElement | null;
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { text: el.innerText, left: Math.round(r.left), right: Math.round(r.right), shown: r.width > 0 && r.height > 0 };
+      });
+      check(!!onPhone && onPhone.shown && onPhone.left >= 0 && onPhone.right <= 390 && /boosted ×1\.1: tender award \+ open Hiring now posting/.test(onPhone.text),
+        'item 19 at 390px, touch: the Hiring now row shows the boost and its signals without hover', JSON.stringify(onPhone ?? 'no boost on the row'));
+    } finally {
+      await liftPhone.close();
+    }
 
     // Hiring now, Latest activity: the re-advertised company keeps first place whatever the sort, the rest
     // follow the same state-then-date rule (the 70-day company last), and the agencies toggle keeps the sort.

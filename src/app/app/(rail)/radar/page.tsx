@@ -113,9 +113,11 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // Item 19: a company with two or more independent signal types inside 60 days — tender award, news mention, open
   // posting, re-advertised role — raises the fit of every one of its leads. Computed here and never stored: the row
   // shows the boost and what it was before, the drawer the full reason, and the Fit sort uses the boosted figure.
-  const { byCompany: compounds, error: compoundError } = hiring
-    ? { byCompany: new Map(), error: null as string | null }
-    : await compoundByCompany(sb, loaded.map((l) => l.company_id), awardCols);
+  // Hiring now (step 2): the same signals lift a company's pressure one step, for every company with an open posting here.
+  const { byCompany: compounds, error: compoundError } = await compoundByCompany(
+    sb, hiring ? ((postings ?? []) as any[]).map((p) => p.company_id) : loaded.map((l) => l.company_id), awardCols,
+  );
+  const compoundsByCompany = Object.fromEntries(compounds);
   for (const l of loaded) {
     const c = compounds.get(l.company_id);
     if (!c || c.factor <= 1) continue;
@@ -170,7 +172,7 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   }
 
   const agencyFiltered = (showAgencies ? live : live.filter((p: any) => !isAgency(p))) as any[];
-  const groupsAll = hiring ? groupByCompany(agencyFiltered as any) : [];
+  const groupsAll = hiring ? groupByCompany(agencyFiltered as any, compoundsByCompany) : [];
   const options = {
     countries: [...new Set(groupsAll.map((g) => g.country).filter(Boolean))].sort() as string[],
     trades: [...new Set(groupsAll.flatMap((g) => g.trades))].sort(),
@@ -185,7 +187,7 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   for (const c of options.countries) rightToWork[c] = checkRightToWork(c, {} as any).rule;
 
   const openCompany = searchParams.company
-    ? (groupsAll.find((g) => g.companyId === searchParams.company) ?? groupByCompany(((showAgencies ? liveEvery : liveEvery.filter((p: any) => !isAgency(p))) as any)).find((g) => g.companyId === searchParams.company)) ?? null
+    ? (groupsAll.find((g) => g.companyId === searchParams.company) ?? groupByCompany(((showAgencies ? liveEvery : liveEvery.filter((p: any) => !isAgency(p))) as any), compoundsByCompany).find((g) => g.companyId === searchParams.company)) ?? null
     : null;
 
   const hiringProps = {
@@ -199,6 +201,7 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
     options,
     state,
     rightToWork,
+    compounds: compoundsByCompany,
   };
 
   const selected = leads?.find((l) => l.id === searchParams.lead) ?? null;
@@ -214,6 +217,7 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
     {/* v4 segmented control: the tab you are on is the navy one, not an underline. */}
     <div className="flex gap-1 bg-panel border border-line rounded-[12px] p-1 w-max mb-3.5">{[['won', 'Won work'], ['hiring', 'Hiring now']].map(([t, l]) => <a key={t} href={`?tab=${t}`} className={`px-3.5 py-2 rounded-[9px] font-medium ${(t === 'hiring') === (tab === 'job_post') ? 'bg-rail text-white' : 'text-ink2 hover:bg-line2'}`}>{l}</a>)}</div>
     {followBanner}
+    {hiring && compoundError && <div className="mb-3 text-bad text-[13px]">A company's other signals could not be read: {compoundError}. No pressure below is boosted, which may be wrong.</div>}
     {hiring ? <HiringNow {...hiringProps} /> : (
     <>
     <div className="flex items-center gap-1.5 flex-wrap mb-3" data-source-filter>{([[null, "All", (newsCount.count ?? 0) + (tenderCount.count ?? 0)], ["news", "News", newsCount.count ?? 0], ["tender", "Tender awards", tenderCount.count ?? 0]] as const).map(([k, label, n]) => <a key={label} href={k ? `?tab=won&source=${k}${sortQs}${countryQs}` : `?tab=won${sortQs}${countryQs}`} className={`chip ${source === k ? "!bg-rail !text-white !border-rail" : ""}`}>{label} <span className={source === k ? "text-white/70" : "text-ink3"}>{n}</span></a>)}</div>
@@ -255,6 +259,7 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
         certs: openCompany.certs,
         pressure: openCompany.pressure,
         pressureWhy: openCompany.pressureWhy,
+        compound: openCompany.compound,
         confirmedAt: state[openCompany.companyId]?.confirmedAt ?? null,
         status: state[openCompany.companyId]?.status ?? null,
         readyByTrade: openCompany.trades

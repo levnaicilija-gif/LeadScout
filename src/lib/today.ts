@@ -5,6 +5,8 @@ import { hasPostingContact, hasHiringState, hasAwardDate } from './schema-featur
 import { newsLeadAge, tenderLeadAge, postingAge, reAdverts, roleKey, ageSink, REPOST_WINDOW_DAYS } from './lead-age';
 import { leadSource, primaryArticle } from './lead-source';
 import { articlesByLead } from './lead-articles';
+import { compoundByCompany } from './compound-signals-load';
+import { boostedFit, boostedPressure, type Pressure } from './compound-signals';
 
 /**
  * The day, in order. Six queries in a fixed priority — no model chooses any of this.
@@ -34,7 +36,7 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
   const [pending, noReply, newLeads, expiring, missingDocs, hiring] = await Promise.all([
     sb.from('verifications').select('id, issuer_email_sent_at, documents(candidate_id, extracted, candidates!candidate_id(reference_code))').eq('result', 'pending'),
     sb.from('outreach').select('id, sent_at, leads(project_name, companies(name))').eq('status', 'sent').is('reply_at', null).lte('sent_at', day(-3)),
-    sb.from('leads').select(`id, kind, project_name, fit_score, trades_inferred, source_url, companies(name)${industriesOn ? ', industries' : ''}`).eq('status', 'new').gte('created_at', day(-7)).order('fit_score', { ascending: false }).limit(20),
+    sb.from('leads').select(`id, kind, company_id, country, project_name, fit_score, trades_inferred, source_url, companies(name)${industriesOn ? ', industries' : ''}`).eq('status', 'new').gte('created_at', day(-7)).order('fit_score', { ascending: false }).limit(20),
     sb.from('verifications').select('id, valid_until, documents(cert_body, candidates!candidate_id(reference_code))').eq('result', 'valid').lte('valid_until', day(60).slice(0, 10)),
     campaignsMissingDocs(sb),
     hiringWorthCalling(sb, industriesOn, followedFirst),
@@ -53,15 +55,23 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
   // read fails, the leads still show, each "age unknown", rather than the item vanishing.
   const { byLead } = await articlesByLead(((newLeads.data ?? []) as any[]).map((l) => l.id), awardCols);
   for (const l of (newLeads.data ?? []) as any[]) l.lead_articles = byLead.get(l.id) ?? [];
+  // Item 19: a lead whose company has two or more signal types inside 60 days ranks by its boosted fit and says
+  // "boosted"; Leads and its drawer give the reason. If the signals cannot be read, the stored fit ranks it, as before.
+  const { byCompany: leadSignals } = await compoundByCompany(sb, ((newLeads.data ?? []) as any[]).map((l) => l.company_id), awardCols);
   const aged = ((newLeads.data ?? []) as any[]).map((l) => {
     const a: any = primaryArticle(l.lead_articles, l.source_url);
     const age = leadSource(l.source_url) === 'tender'
       ? tenderLeadAge({ awardDate: a?.award_date, awardBasis: a?.award_date_basis, publishedAt: a?.published_at, awardDateRead: !!awardCols })
       : newsLeadAge({ publishedAt: a?.published_at });
-    return { l, age };
-  }).sort((x, y) => (followedFirst(x.l.industries) - followedFirst(y.l.industries)) || (ageSink(x.age.state) - ageSink(y.age.state)) || ((y.l.fit_score ?? 0) - (x.l.fit_score ?? 0))).slice(0, 6);
+    const signals = leadSignals.get(l.company_id);
+    const lifted = signals && signals.factor > 1 ? boostedFit(l.fit_score ?? 0, signals, l.country) : null;
+    return { l, age, fit: lifted?.fit ?? l.fit_score ?? 0, boosted: !!lifted };
+  }).sort((x, y) => (followedFirst(x.l.industries) - followedFirst(y.l.industries)) || (ageSink(x.age.state) - ageSink(y.age.state)) || (y.fit - x.fit)).slice(0, 6);
   const leadNames = aged
-    .map(({ l, age }) => l.companies?.name && `${l.companies.name}${age.state === 'stale' ? ' (stale signal)' : age.state === 'flagged' ? ' (ageing)' : ''}`)
+    .map(({ l, age, boosted }) => {
+      const notes = [age.state === 'stale' ? 'stale signal' : age.state === 'flagged' ? 'ageing' : '', boosted ? 'boosted' : ''].filter(Boolean);
+      return l.companies?.name && `${l.companies.name}${notes.length ? ` (${notes.join(', ')})` : ''}`;
+    })
     .filter(Boolean) as string[];
   const hiringNames = hiring.map((h) => `${h.name} (hiring now${h.ageing ? ', ageing' : ''})`);
   const allNames = [...leadNames, ...hiringNames];
@@ -76,8 +86,8 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
         ? 'Contract awards are demand months before a job is posted; an open advert is demand today.'
         : 'Contract awards are demand months before a job is posted.',
       from: hiring.length
-        ? 'leads with status = new in the last 7 days (fresh signals first, then fit), plus hiring-now companies under high pressure, naming a contact or re-advertising a role'
-        : 'leads with status = new in the last 7 days, fresh signals first, then by fit',
+        ? 'leads with status = new in the last 7 days (fresh signals first, then fit — boosted where the company has an award, a story or an open advert together inside 60 days), plus hiring-now companies under high pressure (an award or a story beside the adverts lifts pressure one step), naming a contact or re-advertising a role'
+        : 'leads with status = new in the last 7 days, fresh signals first, then by fit — boosted where the company has an award, a story or an open advert together inside 60 days',
     });
   }
 
@@ -233,13 +243,21 @@ async function hiringWorthCalling(sb: SupabaseClient, industriesOn = false, foll
     (byCompany.get(k) ?? byCompany.set(k, []).get(k)!).push(p);
   }
 
+  // Item 19: each company's signals inside 60 days. A company with an award or a story beside its adverts is one pressure
+  // step up, the same rule as Hiring now's row — so medium can qualify here as high, and the reason says why.
+  const { byCompany: signalsBy } = await compoundByCompany(sb, [...byCompany.keys()], (await hasAwardDate(sb)) ? ', award_date, award_date_basis' : '');
+
   const out: { id: string; name: string; why: string; ageing: boolean; sink: number; first: number }[] = [];
   for (const [id, ps] of byCompany) {
     const openings = ps.reduce((n, p) => n + (p.headcount && p.headcount > 0 ? p.headcount : 1), 0);
     const newest = ps.map((p) => p.posted_at ?? p.first_seen_at).filter(Boolean).sort().pop();
     const fresh = newest ? (Date.now() - Date.parse(newest)) / 86400000 <= 30 : false;
     const named = contacts ? ps.find((p) => p.contact_name) : null;
-    const high = openings >= 5 && fresh;
+    const base: Pressure = openings >= 5 && fresh ? 'high' : openings >= 5 || (openings >= 2 && fresh) ? 'medium' : 'low';
+    const signals = signalsBy.get(id);
+    const lifted = signals && signals.factor > 1 ? boostedPressure(base, signals) : null;
+    const high = (lifted?.pressure ?? base) === 'high';
+    const liftedToHigh = high && base !== 'high';
     const byRole = new Map<string, any[]>();
     for (const p of ps) { const k = roleKey(p) || 'Trade role'; byRole.set(k, [...(byRole.get(k) ?? []), p]); }
     const raised = [...byRole.entries()].map(([role, list]) => ({ role, ...reAdverts(list) })).find((r) => r.boosted);
@@ -250,7 +268,7 @@ async function hiringWorthCalling(sb: SupabaseClient, industriesOn = false, foll
       name: ps[0].companies?.name ?? 'a company',
       why: raised
         ? `${raised.role} re-advertised ${raised.count}× in ${REPOST_WINDOW_DAYS} days`
-        : high ? `${openings} openings, newest within a month` : `${named.contact_name} is named on the advert`,
+        : high ? (liftedToHigh ? `${openings} opening${openings === 1 ? '' : 's'}, pressure ${base} → high — ${signals!.label}` : `${openings} openings, newest within a month`) : `${named.contact_name} is named on the advert`,
       ageing: !raised && age.state === 'flagged',
       sink: ageSink(age.state, !!raised),
       first: followedFirst(ps[0].companies?.industries),

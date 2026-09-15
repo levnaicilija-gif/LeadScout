@@ -30,6 +30,8 @@ type Group = {
   certs: string[];
   pressure: 'high' | 'medium' | 'low';
   pressureWhy: string;
+  /** Item 19: pressure lifted by an award or a story beside the adverts, and the full reason. */
+  compound?: { label: string; note: string; from: string } | null;
   confirmedAt?: string | null;
   status?: string | null;
   readyByTrade: { trade: string; n: number }[];
@@ -117,6 +119,7 @@ export function HiringDrawer({ g }: { g: Group }) {
         {g.status === 'pursued' && <span className="badge badge-info">pursued</span>}
         {g.confirmedAt && <span className="badge badge-ok">✓ board checked</span>}
       </div>
+      {g.compound && <div data-compound-why className="-mt-1 mb-3 text-[13px] text-accent">{g.compound.note}</div>}
 
       {/* ---------------------------------------------------- who to contact */}
       <Label>Who to contact</Label>

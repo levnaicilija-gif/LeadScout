@@ -1,6 +1,7 @@
 import { Help } from './Help';
 import { OpenRow, OpenChevron } from './OpenRow';
 import { postingAge, reAdverts, roleKey, ageSink, latestActivityCompare, AGE_TEXT, AGE_DIM, REPOST_WINDOW_DAYS, type Age } from '@/lib/lead-age';
+import { boostedPressure, type Compound } from '@/lib/compound-signals';
 
 /**
  * Hiring now — one row per company, not per posting.
@@ -61,6 +62,8 @@ type Group = {
   readvertised: { role: string; count: number; days: string[] }[];
   /** A role re-advertised often enough to raise the row above the others. */
   boosted: boolean;
+  /** Item 19: pressure lifted one step by an award or a story beside the adverts, and why. Null when not lifted. */
+  compound: { label: string; note: string; from: 'high' | 'medium' | 'low' } | null;
 };
 
 const day = (s?: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null);
@@ -68,7 +71,7 @@ const day = (s?: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', 
 // roleKey — two "Servicemonteur" adverts in two towns are one role hiring twice — lives in
 // src/lib/lead-age.ts, because re-advertising is counted per role too.
 
-export function groupByCompany(postings: Posting[]): Group[] {
+export function groupByCompany(postings: Posting[], compounds?: Record<string, Compound>): Group[] {
   const byCompany = new Map<string, Posting[]>();
   for (const p of postings) {
     const k = p.company_id ?? p.companies?.name ?? 'unknown';
@@ -100,7 +103,12 @@ export function groupByCompany(postings: Posting[]): Group[] {
     // A row is as old as its newest advert; an advert with no date at all never makes it older.
     const age = ps.map((p) => postingAge(p)).sort((a, b) => (a.days ?? Infinity) - (b.days ?? Infinity))[0];
     const days = newest ? Math.floor((Date.now() - Date.parse(newest)) / 86400000) : null;
-    const pressure: Group['pressure'] = openings >= 5 && fresh ? 'high' : openings >= 5 || (openings >= 2 && fresh) ? 'medium' : 'low';
+    const base: Group['pressure'] = openings >= 5 && fresh ? 'high' : openings >= 5 || (openings >= 2 && fresh) ? 'medium' : 'low';
+    // Item 19: one step up when the company also has a tender award or a news story inside 60 days. Re-advertising
+    // alone never lifts it — a repost is the same signal as the advert (src/lib/compound-signals.ts).
+    const signals = compounds?.[ps[0].company_id];
+    const lifted = signals && signals.factor > 1 ? boostedPressure(base, signals) : null;
+    const pressure: Group['pressure'] = lifted?.pressure ?? base;
 
     return {
       companyId: ps[0].company_id,
@@ -124,6 +132,7 @@ export function groupByCompany(postings: Posting[]): Group[] {
       age,
       readvertised: readvertised.map(({ role, count, days: on }) => ({ role, count, days: on })),
       boosted,
+      compound: lifted?.note && signals?.label ? { label: signals.label, note: lifted.note, from: base } : null,
       pressureWhy: [
         `${openings} opening${openings === 1 ? '' : 's'} across ${ps.length} advert${ps.length === 1 ? '' : 's'}`,
         ...readvertised.map((r) => `${r.role} re-advertised ${r.count}× in ${REPOST_WINDOW_DAYS} days (${r.days.join(', ')})${r.boosted ? ' — priority raised' : ''}`),
@@ -147,7 +156,7 @@ const Pressure = ({ p }: { p: Group['pressure'] }) => (
 
 export function HiringNow({
   postings, crawledAt, companiesWithBoards, showAgencies, hiddenAgencies, duplicates = 0,
-  filters, options, state, rightToWork,
+  filters, options, state, rightToWork, compounds,
 }: {
   postings: Posting[];
   crawledAt?: string | null;
@@ -164,8 +173,10 @@ export function HiringNow({
   state?: Record<string, { confirmedAt?: string | null; status?: string | null }>;
   /** The rule for a job in that country — one line, keyed on where the work is. */
   rightToWork?: Record<string, string>;
+  /** Item 19: each company's signals inside 60 days, from compoundByCompany. */
+  compounds?: Record<string, Compound>;
 }) {
-  const all = groupByCompany(postings);
+  const all = groupByCompany(postings, compounds);
   const f = filters ?? {};
   const groups = all.filter((g) =>
     (!f.country || g.country === f.country)
@@ -240,6 +251,7 @@ export function HiringNow({
                 </div>
                 <div data-age-label title={g.age.why} className={`text-[12px] ${AGE_TEXT[g.age.state]}`}>{g.age.label}</div>
                 {g.boosted && <span data-boosted-label title={g.pressureWhy} className="badge badge-info mt-1 mr-1">re-advertised {g.readvertised[0].count}× — priority raised</span>}
+                {g.compound && <div data-compound title={g.compound.note} className="mt-1 text-[12px] text-accent font-medium whitespace-normal">{g.compound.label}</div>}
                 {state?.[g.companyId]?.status === 'pursued' && <span className="badge badge-info mt-1">pursued</span>}
                 {state?.[g.companyId]?.confirmedAt && <span className="badge badge-ok mt-1 ml-1">✓ checked</span>}
                 {!g.fromOwnBoard && <div className="text-ink3 text-[12px]">from a job board{g.boardPosters.length ? `, placed by ${g.boardPosters.slice(0, 2).join(', ')}` : ', advertiser not named'}</div>}
@@ -259,8 +271,9 @@ export function HiringNow({
                 {!g.trades.length && <span className="text-ink3 text-[12px]">—</span>}
               </td>
               <td className="text-[13px]">{g.certs.join(', ') || <span className="text-ink3">none stated</span>}</td>
-              <td title={g.pressureWhy}>
+              <td data-pressure title={g.compound ? `${g.pressureWhy} · ${g.compound.note}` : g.pressureWhy}>
                 <Pressure p={g.pressure} />
+                {g.compound && <div className="text-accent text-[12px] whitespace-nowrap">{g.compound.from === g.pressure ? 'boost held: already high' : `boosted, was ${g.compound.from}`}</div>}
                 <div className="text-ink3 text-[12px]">{g.openings} open{g.reposted > 0 ? ` · re-advertised ${g.reposted}×` : ''}</div>
               </td>
               <td className="text-[13px] whitespace-nowrap">
@@ -295,7 +308,7 @@ export const HiringHelp = () => (
     rows={[
       ['Comes from', 'The company\'s own board. Where they use an ATS we read its published list; otherwise the careers page itself.'],
       ['Filtered by', 'Every title is read in its own language and mapped to our trades — industrirørlegger is a pipefitter. Only trades we place are kept.'],
-      ['Pressure', 'Volume and recency together: five or more open trade roles in the last month is high; one advert from March is low.'],
+      ['Pressure', 'Volume and recency together: five or more open trade roles in the last month is high; one advert from March is low. A company that also has a tender award or a news story inside 60 days goes one step up, and the row says which and why. Re-advertising alone never lifts it.'],
       ['Age', 'A company is ageing when its newest advert is 60 days old — from the posting date, else the day we first saw it. It sinks and dims; it is never hidden. Several adverts on one day are openings, not reposts.'],
       ['Re-advertised', 'The same role advertised again on another day. Twice or more inside 180 days raises the company to the top: a role that keeps coming back is demand, not a stale advert.'],
       ['Agencies', 'Hidden by default — a staffing agency\'s vacancies are a competitor\'s, not a customer\'s. The toggle shows them when you want the market view.'],
