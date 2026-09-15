@@ -841,6 +841,16 @@ on every table with rows; candidate_placements proven by candidate-rls-probe (8/
 Existing data (step 8, report only): 8 documents attached to nobody, 0 linkable,
 8 for manual review.
 
-Owner's decisions (2026-09-15, later): list read option 1 — four flat reads joined in memory (1912â1939 ms at 2,500
+Owner's decisions (2026-09-15, later): list read option 1 — four flat reads joined in memory (1912–1939 ms at 2,500
 candidates), not a trigger-maintained search column, to avoid silent staleness; revisit only if the real pool nears
 2,500. 0036 applied by the owner.
+
+Item 24 DONE (2026-09-15). Steps: 1 drop anywhere (a2a64ef) · 2 list, kanban, boolean search (04698c5) · 3 candidate
+page (34be025) · 4 certificate drop on the page (3f290a8) · 5 CV view and original download (7fa581f) · 6 certificate
+original beside its reading (7f2f422) · 7 client version (f27cf95) · list read option 1 + closing walkthrough (18be13d).
+Security: rls-sweep ok on candidates, documents, sends, scores, anonymized_cvs, verifications; candidate_placements
+has no rows, so candidate-rls-probe (in every gate, 8/8) proves reads and writes stay in the workspace; the file route
+refuses signed-out (401) and other workspaces (404) with no storage link. Scale: 2,500 synthetic candidates, every
+search exact, 0.5-1.6 ms a search, list read 1.9 s. Loose documents: 8, 0 linkable, 8 for manual review. Walkthrough
+in test workspaces (sandblaster CV, test certificate, Test Client Ltd) passed on production at 1500px and 390px.
+Not decided yet: the deletion policy behind data_retention_until.
