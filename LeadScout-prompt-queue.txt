@@ -628,3 +628,73 @@ InfoJobs via its official API once the owner registers an app; Tecnoempleo is
 IT-only and rejected; EURES is not a source at all today (the premise above does
 not hold). Cádiz: covered once by TED (Arsenal de Cádiz frigate maintenance,
 not RFBT's project); no Spanish news or naval source exists.
+
+-------------------------------------------------------------------------------
+23. SIX MISSING VERIFY ADAPTERS
+-------------------------------------------------------------------------------
+Only 2 of 16 certificate schemes in the library (FROSIO, PCN) are currently
+auto-verified against the real issuer register — the rest require manual
+confirmation. This adds automatic verification for six more: CSWIP, AMPP,
+IRATA, WINDA, CISRS, electrical_dk (Danish §17 electrical authorization).
+
+STEP 1 — INVESTIGATE BEFORE BUILDING, same discipline as item 12's TED/Doffin
+research. Do not assume any of these six has a public verification API or
+lookup the way FROSIO/PCN do. For each of the six, confirm and report:
+- Does the issuing body have a public register/lookup (web page, API) that
+  can verify a certificate number/holder name?
+- If yes: what does it return (holder name, expiry, level/grade)? Rate
+  limits? Any auth required?
+- If no public lookup exists: report that plainly. Don't scrape a login-
+  walled member portal, don't guess at a URL pattern. A scheme with no real
+  public verification path stays manual — same as it is today — and that's
+  an acceptable, honest outcome, not a failure to force around.
+
+Specific notes per scheme, to speed up the investigation (confirm, don't
+assume these are accurate):
+- CSWIP: administered by TWI. Check for a public certificate-holder lookup.
+- AMPP: (formerly NACE) — check for a public certification verification
+  database.
+- IRATA: rope access — check for a public member/certification lookup.
+- WINDA: GWO's training passport database — check whether GWO offers any
+  public verification, or if this is member/employer-portal only.
+- CISRS: UK scaffolding — check the CISRS card scheme's public verification
+  options.
+- electrical_dk: Danish §17 electrical authorization — likely a Danish
+  Safety Technology Authority (Sikkerhedsstyrelsen) register; confirm the
+  actual public lookup, don't assume English-language access exists.
+
+STEP 2 — build ONLY the adapters confirmed to have a real, usable public
+verification path from step 1. For each: same pattern as FROSIO/PCN — read
+the raw certificate designation, decode it, check the issuer's register,
+render the three-layer result (raw / decoded / fits-our-jobs). Nothing
+invented — an unconfirmed check stays "unknown, confirm manually" exactly
+like the current 14 unverified schemes.
+
+Commit after each step, two lines per step. Full release gate before every
+commit, screen checks as a signed-in user, both widths. Report: which of the
+six actually got a working automatic adapter, which stayed manual and why
+(no public lookup available), and confirm the model call cost per
+verification (this now gets metered per item 16, report the real number).
+
+Step 1 findings (checked live 2026-09-15 — details and endpoints in CLAUDE.md):
+- CSWIP: PUBLIC. cswip.com/verification → JSON API, certificate/candidate number
+  + date of birth, no captcha token, no login. Returns holder name, candidate
+  number, date of birth, photo, and per certificate role, level, certificate
+  number, expiry. Every error shows the same "contact us" message — an error is
+  not a "not found". → build.
+- AMPP: PUBLIC. nace.useclarus.com/view/verify/ (linked from ampp.org "Find A
+  Certified Professional") → JSON API by certification number and/or name, no
+  login, no captcha. Returns name, location, contact details, and per credential
+  type, number, issued date, expiry. Lists only current holders who opted in —
+  not listed is not invalid. → build.
+- IRATA: MANUAL. The TechConnect tool sends a reCAPTCHA v3 token with every
+  search; the existing adapter drove a browser through it. → retire to manual.
+- WINDA: MANUAL. Only organisations with a WINDA profile see records, using the
+  WINDA ID the technician gives them; the site is a login.
+- CISRS: MANUAL. No checker of its own; CSCS Smart Check (web: captcha, API:
+  approved IT partners only) and NOCN's card checker (reCAPTCHA).
+- electrical_dk: MANUAL for the person. Erhvervsstyrelsen's autorisationsregister
+  is public (web + CSV, 10,250 rows, 4,721 electrical) but lists companies only —
+  Denmark authorises the company, not the electrician.
+- Model cost: a register lookup makes no model call; the only model call in a
+  verification is reading the uploaded document (document-read, item 16).
