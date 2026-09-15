@@ -76,7 +76,7 @@ async function fileTransfer(p: Page, file: string, type: string) {
 const dropSettled = (p: Page) => p.waitForFunction(() => document.querySelector('[data-candidate-drop-panel]')?.getAttribute('data-candidate-drop-busy') === 'false'
   && !!document.querySelector('[data-drop-result], [data-candidate-drop-panel] .text-bad'), undefined, { timeout: 180000 }).then(() => true).catch(() => false);
 const docSettled = (p: Page) => p.waitForFunction(() => document.querySelector('[data-candidate-doc-drop]')?.getAttribute('data-candidate-doc-busy') === 'false'
-  && !!document.querySelector('[data-candidate-doc-result]'), undefined, { timeout: 180000 }).then(() => true).catch(() => false);
+  && !!document.querySelector('[data-candidate-doc-result], [data-candidate-doc-added]'), undefined, { timeout: 180000 }).then(() => true).catch(() => false);
 
 /** Type into the Candidates search box and press Enter; the ids of the rows or cards on screen. */
 async function typeSearch(p: Page, q: string) {
@@ -172,9 +172,9 @@ async function desktop(browser: Browser, a: Account) {
   const certAsked = flat(await page.locator('[data-mismatch-question]').first().innerText().catch(() => ''));
   check(/This certificate is for .+ — this candidate is /.test(certAsked), '1500px: the certificate names someone else, so their page asks before attaching', certAsked.slice(0, 160));
   await page.locator('[data-mismatch-attach]').first().click();
-  await page.waitForSelector('[data-mismatch-done]', { timeout: 30000 }).catch(() => {});
+  await page.waitForSelector('[data-candidate-certificate]', { timeout: 30000 }).catch(() => {});
   await page.waitForFunction(() => !/Reading the code…/i.test(document.body.innerText), undefined, { timeout: 30000 }).catch(() => {});
-  const certResult = flat(await page.locator('[data-candidate-doc-result="certificate"]').first().innerText().catch(() => ''));
+  const certResult = flat(await page.locator('[data-candidate-certificate]').first().innerText().catch(() => ''));
   const { data: certs } = await admin.from('documents').select('id, candidate_id, verifications(state, valid_until)').eq('workspace_id', a.workspace).eq('type', 'certificate');
   check(certDone && (certs ?? []).length === 1 && certs![0].candidate_id === cand.id && (certs![0].verifications as any[]).length === 1,
     '1500px: "Attach anyway" puts the certificate dragged onto their page on them, checked with its issuer', JSON.stringify(certs?.map((c: any) => ({ mine: c.candidate_id === cand.id, verifications: c.verifications }))));
@@ -299,7 +299,7 @@ async function phone(browser: Browser, a: Account) {
     await certChooser.setFiles(CERT);
     const certDone = await docSettled(m);
     await m.locator('[data-mismatch-attach]').first().tap().catch(() => {});
-    await m.waitForSelector('[data-mismatch-done]', { timeout: 30000 }).catch(() => {});
+    await m.waitForSelector('[data-candidate-doc-added]', { timeout: 30000 }).catch(() => {});
     const { data: certs } = await admin.from('documents').select('candidate_id, verifications(state)').eq('workspace_id', a.workspace).eq('type', 'certificate');
     check(certDone && (certs ?? []).length === 1 && certs![0].candidate_id === cand.id && (certs![0].verifications as any[]).length === 1, '390px: the certificate chosen through their zone asks, and "Attach anyway" puts it on them, checked', JSON.stringify(certs));
     check(await sideways(m) <= 1, '390px: the certificate result does not scroll the page sideways', `${await sideways(m)}px`);

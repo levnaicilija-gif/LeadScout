@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { AttachChoice } from './AttachChoice';
 import { candidateLabel } from '@/lib/candidate-number';
@@ -29,6 +29,7 @@ const IDLE_MS = 1000;
 
 export function CandidateDrop() {
   const pathname = usePathname() ?? '';
+  const router = useRouter();
   const standAside = pathname.startsWith('/app/verify') || pathname.startsWith('/app/onboarding');
   const [dragging, setDragging] = useState(false);
   const [overlayLeft, setOverlayLeft] = useState(0);
@@ -57,6 +58,8 @@ export function CandidateDrop() {
       try { j = text ? JSON.parse(text) : null; } catch { /* not JSON */ }
       if (!r.ok || !j) throw new Error(j?.error ?? `the files could not be read (HTTP ${r.status})`);
       setResult(j);
+      // The screen behind the panel re-reads, so a new candidate is in the list and a new CV in its count without a reload.
+      router.refresh();
     } catch (e: any) {
       setErr(e?.name === 'AbortError' ? `took longer than ${TIMEOUT_MS / 1000}s and was stopped` : String(e?.message ?? e));
     } finally {
@@ -204,7 +207,7 @@ export function CandidateDrop() {
                   <div className="font-semibold">{f.kind === 'cv' ? 'Check before adding' : `Saved — ${f.kind}`}</div>
                   <div className="text-ink3 text-[12px] mt-0.5">{f.file}</div>
                   {f.needsDecision && <div className="text-warn text-[12px] mt-1">{f.needsDecision}</div>}
-                  {f.documentId && !f.candidateId && <AttachChoice documentId={f.documentId} holder={f.extracted?.holder ?? f.profile?.full_name} suggest={f.suggest} compact />}
+                  {f.documentId && !f.candidateId && <AttachChoice documentId={f.documentId} holder={f.extracted?.holder ?? f.profile?.full_name} suggest={f.suggest} compact onDone={() => router.refresh()} />}
                 </div>
               );
             })}

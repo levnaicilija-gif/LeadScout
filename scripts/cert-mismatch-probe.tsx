@@ -80,7 +80,7 @@ async function dropFile(page: Page, target: string, file: string) {
 
 // Called on a freshly loaded page, where no result is on screen until intake has answered.
 const docSettled = (p: Page) => p.waitForFunction(() => document.querySelector('[data-candidate-doc-drop]')?.getAttribute('data-candidate-doc-busy') === 'false'
-  && !!document.querySelector('[data-candidate-doc-result]'), undefined, { timeout: 180000 }).then(() => true).catch(() => false);
+  && !!document.querySelector('[data-candidate-doc-result], [data-candidate-doc-added]'), undefined, { timeout: 180000 }).then(() => true).catch(() => false);
 
 (async () => {
   fs.mkdirSync('.cache', { recursive: true });
@@ -164,7 +164,7 @@ const docSettled = (p: Page) => p.waitForFunction(() => document.querySelector('
     await dropFile(page, '[data-candidate-doc-drop]', PASCALE);
     await docSettled(page);
     await page.locator('[data-mismatch-attach]').first().click();
-    await page.waitForSelector('[data-mismatch-done="attached"]', { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('[data-candidate-doc-added]', { timeout: 30000 }).catch(() => {});
     all = await docs();
     const anyway = all.filter((d) => d.candidate_id === cand.id);
     check(anyway.length === 1 && /attached anyway by .+ after being told the names differ \(paul daniel pascale → bertescu dumitrel\)/i.test(String(anyway[0].attach_reason)),

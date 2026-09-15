@@ -43,7 +43,7 @@ async function dropOn(p: Page, selector: string, file: string, type: string) {
   await p.dispatchEvent(selector, 'dragover', { dataTransfer: dt });
   await p.dispatchEvent(selector, 'drop', { dataTransfer: dt });
 }
-const docSettled = (p: Page) => p.waitForFunction(() => document.querySelector('[data-candidate-doc-drop]')?.getAttribute('data-candidate-doc-busy') === 'false' && !!document.querySelector('[data-candidate-doc-result]'), undefined, { timeout: 180000 }).then(() => true).catch(() => false);
+const docSettled = (p: Page) => p.waitForFunction(() => document.querySelector('[data-candidate-doc-drop]')?.getAttribute('data-candidate-doc-busy') === 'false' && !!document.querySelector('[data-candidate-doc-result], [data-candidate-doc-added]'), undefined, { timeout: 180000 }).then(() => true).catch(() => false);
 
 (async () => {
   for (const f of [CV, CERT]) if (!fs.existsSync(f)) { console.error(`${f} is not on this machine`); process.exit(1); }
@@ -87,10 +87,17 @@ const docSettled = (p: Page) => p.waitForFunction(() => document.querySelector('
       const asked = (await page.locator('[data-mismatch-question]').first().innerText().catch(() => '')).replace(/\s+/g, ' ');
       const { data: waiting } = await admin.from('documents').select('candidate_id').eq('workspace_id', workspace).eq('type', 'certificate');
       check(/This certificate is for .+ — this candidate is /.test(asked) && (waiting ?? []).length === 1 && waiting![0].candidate_id === null, 'at 1500px the name on it is not theirs, so the page asks and attaches nothing yet', asked.slice(0, 160));
+      const attachAnswer = page.waitForResponse((r) => r.url().includes('/api/verify/attach'), { timeout: 30000 }).catch(() => null);
       await page.locator('[data-mismatch-attach]').first().click();
-      await page.waitForSelector('[data-mismatch-done]', { timeout: 30000 }).catch(() => {});
+      const answered = await attachAnswer;
+      const attachSaid = answered ? `HTTP ${answered.status()} ${(await answered.text().catch(() => '')).slice(0, 200)}` : 'the attach route was never called';
+      await page.waitForSelector('[data-candidate-doc-added]', { timeout: 30000 }).catch(() => {});
       await page.waitForFunction(() => !/Reading the code…/i.test(document.body.innerText), undefined, { timeout: 30000 }).catch(() => {});
-      const result = (await page.locator('[data-candidate-doc-result="certificate"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ');
+      // Step 4: the page re-reads by itself — the certificate is in the list without a reload, and nothing is left on screen.
+      const listed = await page.waitForSelector('[data-candidate-certificate]', { timeout: 30000 }).then(() => true).catch(() => false);
+      const leftover = await page.evaluate(() => ({ overlay: document.querySelectorAll('[data-candidate-drop-overlay]').length, busy: document.querySelector('[data-candidate-doc-drop]')?.getAttribute('data-candidate-doc-busy'), cards: document.querySelectorAll('[data-candidate-doc-result]').length, added: document.querySelector('[data-candidate-doc-added]')?.textContent ?? '', cardText: Array.from(document.querySelectorAll('[data-candidate-doc-result]')).map((e) => (e.textContent ?? '').replace(/\s+/g, ' ').slice(0, 220)).join(' || ') }));
+      check(listed && leftover.overlay === 0 && leftover.busy === 'false' && leftover.cards === 0 && /Added to/.test(leftover.added), 'at 1500px, with no reload, the certificate is in the list and the drop leaves nothing behind — no overlay, no spinner, one "Added" line', `${attachSaid} · ${JSON.stringify(leftover)}`);
+      const result = (await page.locator('[data-candidate-certificate]').first().innerText().catch(() => '')).replace(/\s+/g, ' ');
       const { data: certs } = await admin.from('documents').select('id, candidate_id, extracted, verifications(id, state, valid_until)').eq('workspace_id', workspace).eq('type', 'certificate');
       const cert = certs?.[0];
       check((certs ?? []).length === 1 && cert?.candidate_id === cand.id, '"Attach anyway" attached it to this candidate', JSON.stringify(certs?.map((c: any) => c.candidate_id === cand.id)));
@@ -100,6 +107,37 @@ const docSettled = (p: Page) => p.waitForFunction(() => document.querySelector('
       check(/attached anyway/.test(String(trail?.attach_reason ?? '')), 'the attach trail records it was attached after being told the names differ', String(trail?.attach_reason ?? '').slice(0, 160));
       await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
       check((await page.locator('[data-candidate-certificate]').count()) === 1, 'after the refresh the certificate is on the candidate\'s page');
+
+      // Step 4: a new CV for them, dropped on their page — their CV count moves without a reload.
+      const cvCount = async () => ((await page.locator('[data-candidate-section="cv"]').innerText().catch(() => '')).match(/(\d+) CV files? on file/) ?? [])[1];
+      const cvBefore = await cvCount();
+      // Does the page ask the server for fresh data after the drop at all? A refresh is an RSC request for this route.
+      const refreshes: number[] = [];
+      const noteRefresh = (res: any) => { if (res.url().includes(`/app/candidates/${cand.id}`) && (res.url().includes('_rsc') || res.request().headers().rsc)) refreshes.push(res.status()); };
+      page.on('response', noteRefresh);
+      const intakeAnswer = page.waitForResponse((r) => r.url().includes('/api/verify/intake'), { timeout: 180000 }).catch(() => null);
+      await dropOn(page, '[data-candidate-doc-drop]', CV, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      const intakeAnswered = await intakeAnswer;
+      const intakeSaid = intakeAnswered ? `HTTP ${intakeAnswered.status()} ${(await intakeAnswered.text().catch(() => '')).slice(0, 260)}` : 'intake was never called by the CV drop';
+      await docSettled(page);
+      const { data: cvRows } = await admin.from('documents').select('id, candidate_id').eq('workspace_id', workspace).eq('type', 'cv');
+      const stored = `${(cvRows ?? []).length} CV row(s), ${(cvRows ?? []).filter((d: any) => d.candidate_id === cand.id).length} on them`;
+      for (let i = 0; i < 15; i++) {
+        const now = await cvCount();
+        const line = await page.locator('[data-candidate-doc-added]').innerText().catch(() => '');
+        console.log(`  ...  ${i * 2}s: the CV card says ${now ?? 'no count'} · added line "${line.trim()}"`);
+        if (now !== cvBefore) break;
+        await page.waitForTimeout(2000);
+      }
+      const addedBeforeReload = (await page.locator('[data-candidate-doc-added]').innerText().catch(() => '')).trim();
+      const cvAfter = await cvCount();
+      const cvLeft = await page.evaluate(() => ({ overlay: document.querySelectorAll('[data-candidate-drop-overlay]').length, busy: document.querySelector('[data-candidate-doc-drop]')?.getAttribute('data-candidate-doc-busy'), question: document.querySelectorAll('[data-mismatch-question]').length, error: (document.querySelector('[data-candidate-doc-drop]')?.parentElement?.querySelector('.text-bad')?.textContent ?? '').replace(/\s+/g, ' ').slice(0, 160) }));
+      // Tells a page that did not refresh itself (a reload shows the new CV) from a CV the reader cannot see at all.
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await hydrated(page);
+      page.off('response', noteRefresh);
+      const cvAfterReload = await cvCount();
+      check(Number(cvAfter) === Number(cvBefore) + 1 && cvLeft.overlay === 0 && cvLeft.busy === 'false' && cvLeft.question === 0, 'at 1500px their own CV dropped on their page is counted with no reload, and nothing is left on screen', `CV files ${cvBefore} → ${cvAfter} (after a reload: ${cvAfterReload}) · database: ${stored} · ${intakeSaid} · refresh requests: ${refreshes.length ? refreshes.join(', ') : 'none'} · added line: "${addedBeforeReload}" · ${JSON.stringify(cvLeft)}`);
     }
 
     if (STEPS.has('5')) {
@@ -186,7 +224,7 @@ const docSettled = (p: Page) => p.waitForFunction(() => document.querySelector('
       await dropOn(m, '[data-candidate-doc-drop]', CERT, 'application/pdf');
       check(await docSettled(m), 'at 390px a certificate dropped on the page is read and checked');
       await m.locator('[data-mismatch-attach]').first().tap().catch(() => {});
-      await m.waitForSelector('[data-mismatch-done]', { timeout: 30000 }).catch(() => {});
+      await m.waitForSelector('[data-candidate-doc-added]', { timeout: 30000 }).catch(() => {});
       const { data: again } = await admin.from('documents').select('candidate_id').eq('workspace_id', workspace).eq('type', 'certificate');
       check((again ?? []).length === 2 && again!.every((d: any) => d.candidate_id === cand.id), 'at 390px it asks too, and "Attach anyway" attaches it', `${(again ?? []).length} certificates`);
       check(await sideways(m) <= 1, 'at 390px the drop result does not scroll the page sideways', `${await sideways(m)}px`);

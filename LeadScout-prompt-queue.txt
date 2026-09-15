@@ -886,3 +886,5 @@ equivalent protection before: its "Attach to someone else…" attached anything 
 Step 3 built: the drop overlay ends when the drag does — the cursor leaving the window, a dragleave the browser never
 sent, a drag cancelled with Escape — because it also ends a second after dragover stops arriving; it stays up only while
 a file is really being dragged over the page.
+Step 4 built: after a drop the page re-reads itself — the new certificate in its list, the CV count up — and a settled
+drop result collapses into one "Added" line; a card stays only where something still needs answering.

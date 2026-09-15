@@ -23,10 +23,14 @@ export function CandidateDocDrop({ candidateId, label }: { candidateId: string; 
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const [files, setFiles] = useState<any[]>([]);
+  // What this drop put on the candidate, once it is settled and the page has re-read: one line, while the certificate
+  // itself shows in the list below. A result card stays only while it still needs something — a question, a file not
+  // saved, an issuer check that failed (item 24 follow-up 3, step 4: the page returns to its normal state after a drop).
+  const [added, setAdded] = useState<string[]>([]);
 
   const run = async (list: File[]) => {
     if (!list.length || busy) return;
-    setErr(''); setFiles([]);
+    setErr(''); setFiles([]); setAdded([]);
     setBusy(`Reading ${list.length} file${list.length === 1 ? '' : 's'}…`);
     try {
       const fd = new FormData();
@@ -46,6 +50,10 @@ export function CandidateDocDrop({ candidateId, label }: { candidateId: string; 
         } catch (e: any) { f.lookupError = String(e?.message ?? e); }
         setFiles([...got]);
       }
+      const settled = got.filter((x) => x.candidateId === candidateId && !x.lookupError);
+      setAdded(settled.map(describe));
+      setFiles(got.filter((x) => !settled.includes(x)));
+      // The page re-reads what changed: the certificate in its list, the CV in its count, with no reload.
       router.refresh();
     } catch (e: any) {
       setErr(String(e?.message ?? e));
@@ -67,6 +75,9 @@ export function CandidateDocDrop({ candidateId, label }: { candidateId: string; 
         <input ref={input} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.docx,.txt" className="hidden" disabled={!!busy} onChange={(e) => { const l = Array.from(e.target.files ?? []); e.target.value = ''; run(l); }} />
       </label>
       {err && <div className="text-bad text-[13px] mt-2">{friendlyError(err, 'cv')}</div>}
+      {added.length > 0 && !busy && (
+        <div data-candidate-doc-added className="text-ok text-[13px] mt-2">✓ Added to {label}: {added.join(', ')} — {added.every((a) => a === 'CV') ? 'counted in the CV card' : 'now in the list below'}</div>
+      )}
       {files.length > 0 && (
         <div className="grid gap-3 mt-3" data-candidate-doc-results>
           {files.map((f, i) => (
@@ -74,7 +85,11 @@ export function CandidateDocDrop({ candidateId, label }: { candidateId: string; 
               {f.kind === 'certificate' ? <CertCard res={f} busy={busy} />
                 : f.kind === 'other' || f.kind === 'unreadable' ? <div className="text-[13px]"><b>Not saved</b> — {f.file}{f.why ? ` · ${friendlyError(f.why, 'cv')}` : ''}</div>
                   : <div className="text-[13px]"><b>Saved as {f.kind}</b> — {f.file}</div>}
-              {f.mismatch && <DropMismatch f={f} onSettled={() => router.refresh()} />}
+              {f.mismatch && <DropMismatch f={f} onSettled={(how) => {
+                // Attached here after all: it is in this candidate's list now. A record opened for someone else keeps its line.
+                if (how === 'attached') { setFiles((now) => now.filter((x) => x !== f)); setAdded((now) => [...now, describe(f)]); }
+                router.refresh();
+              }} />}
               {f.lookupError && <div className="text-warn text-[12px] mt-1.5">The certificate was saved, but checking it with the issuer failed: {f.lookupError}</div>}
             </div>
           ))}
@@ -86,7 +101,7 @@ export function CandidateDocDrop({ candidateId, label }: { candidateId: string; 
 
 
 /** A dropped file names someone else: nothing is attached until the recruiter answers the question. */
-function DropMismatch({ f, onSettled }: { f: any; onSettled: () => void }) {
+function DropMismatch({ f, onSettled }: { f: any; onSettled: (how: 'attached' | 'created') => void }) {
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const [done, setDone] = useState<{ created: boolean; reference: string; id: string } | null>(null);
@@ -97,7 +112,7 @@ function DropMismatch({ f, onSettled }: { f: any; onSettled: () => void }) {
       const j = await r.json().catch(() => null);
       if (!r.ok) throw new Error(j?.error ?? `nothing was attached (HTTP ${r.status})`);
       setDone({ created: !!j.created, reference: j.candidate?.reference ?? '', id: j.candidate?.id ?? '' });
-      onSettled();
+      onSettled(j.created ? 'created' : 'attached');
     } catch (e: any) { setErr(String(e?.message ?? e)); } finally { setBusy(''); }
   };
   if (!f.documentId) return <div className="text-bad text-[12px] mt-1.5">It names {f.mismatch.holder ?? 'nobody'}, and it could not be saved.</div>;
@@ -118,4 +133,11 @@ function DropMismatch({ f, onSettled }: { f: any; onSettled: () => void }) {
       {err && <div className="text-bad text-[12px] mt-1.5">{err}</div>}
     </>
   );
+}
+
+/** How a settled file reads in the "Added" line. */
+function describe(f: any): string {
+  if (f.kind === 'cv') return 'CV';
+  if (f.kind === 'certificate') return `${String(f.extracted?.cert_body ?? '').toUpperCase() || 'a'} certificate`.trim();
+  return String(f.kind ?? 'document');
 }
