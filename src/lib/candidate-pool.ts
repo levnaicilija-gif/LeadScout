@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { fold, matches, parseQuery, type Node } from './candidate-search';
 import { candidateNumber } from './candidate-number';
+import { sendKind, sendSearchText, type SendKind } from './cv-sent-entry';
 import { STAGES, STAGE_LABEL, PREFERENCES, PREFERENCE_LABEL, type Stage, type Preference } from './candidate-stages';
 export { STAGES, STAGE_LABEL, PREFERENCES, PREFERENCE_LABEL, type Stage, type Preference } from './candidate-stages';
 
@@ -13,7 +14,8 @@ export { STAGES, STAGE_LABEL, PREFERENCES, PREFERENCE_LABEL, type Stage, type Pr
  * heavy part of a candidate. Each row gets one
  * folded text the boolean search runs over: number, reference code, name, trade, where they are based, nationality,
  * stage, employment preference, availability, notes, certificates (body, level, number), every client a CV was sent to
- * ("sent to …") and every placement ("placed at …", "currently placed at …" while it has no end date).
+ * ("sent to …"), every pack prepared for a lead ("pack for …" — no sent date, so never "sent to"; cv-sent-entry.ts) and
+ * every placement ("placed at …", "currently placed at …" while it has no end date).
  */
 
 export type PoolCertificate = { body: string | null; level: string | null; number: string | null; validUntil: string | null; state: string | null };
@@ -22,7 +24,7 @@ export type PoolRow = {
   country: string | null; nationality: string | null; stage: Stage; preference: Preference | null;
   availableFrom: string | null; ownerId: string | null; createdBy: string | null; createdAt: string; notes: string | null;
   certificates: PoolCertificate[];
-  sentTo: { client: string; sentAt: string | null }[];
+  sentTo: { client: string; sentAt: string | null; kind: SendKind }[];
   placements: { client: string; placedOn: string; endedOn: string | null }[];
   haystack: string;
 };
@@ -80,7 +82,7 @@ function toRow(c: any): PoolRow {
     const v = [...(d.verifications ?? [])].sort((a: any, b: any) => String(b.checked_at ?? '').localeCompare(String(a.checked_at ?? '')))[0];
     return { body: d.cert_body ?? null, level: d.level ?? null, number: d.number ?? null, validUntil: v?.valid_until ?? null, state: v?.state ?? null };
   });
-  const sentTo: PoolRow['sentTo'] = (c.sends ?? []).map((s: any) => ({ client: String(s.client_name ?? s.companies?.name ?? '').trim(), sentAt: s.sent_at ?? null })).filter((s: any) => s.client);
+  const sentTo: PoolRow['sentTo'] = (c.sends ?? []).map((s: any) => ({ client: String(s.client_name ?? s.companies?.name ?? '').trim(), sentAt: s.sent_at ?? null, kind: sendKind(s.sent_at) })).filter((s: any) => s.client);
   const placements: PoolRow['placements'] = (c.candidate_placements ?? []).map((p: any) => ({ client: String(p.client_name ?? '').trim(), placedOn: p.placed_on, endedOn: p.ended_on ?? null })).filter((p: any) => p.client);
   const stage: Stage = (STAGES as readonly string[]).includes(c.stage) ? c.stage : 'new';
   const preference: Preference | null = (PREFERENCES as readonly string[]).includes(c.employment_preference) ? c.employment_preference : null;
@@ -92,7 +94,7 @@ function toRow(c: any): PoolRow {
     // The designation as a recruiter writes it — "CSWIP 3.1", "FROSIO III" — and as the certificate words it ("level 3.1").
     // The first version wrote "cswip level 3.1 3.1", so the phrase "cswip 3.1" matched nobody (candidate-pool-scale, 2,500 candidates).
     ...certificates.map((x) => [x.body && x.level ? `${x.body} ${x.level}` : x.body, x.level ? `level ${x.level}` : '', x.number].filter(Boolean).join(' · ')),
-    ...sentTo.map((s) => `sent to ${s.client}`),
+    ...sentTo.map((s) => sendSearchText(s.client, s.sentAt)),
     ...placements.map((p) => `placed at ${p.client}${p.endedOn ? '' : ` currently placed at ${p.client}`}`),
   ].filter(Boolean).join(' | '));
   return {

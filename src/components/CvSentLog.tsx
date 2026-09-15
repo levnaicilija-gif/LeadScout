@@ -1,11 +1,15 @@
 'use client';
 import { useState } from 'react';
+import { sendKind, sendDateLabel } from '@/lib/cv-sent-entry';
 
 /**
  * The CVs sent to clients for one candidate (item 24): an appendable log — which client, when, who logged it — and a form
  * to add to it. Nothing here edits or removes an entry. Before 0035 the log is shown read-only.
+ *
+ * A pack prepared for a lead ("Send to this lead") has no sent date by design and is shown as a pack, never as a CV sent
+ * on 01/01/1970 (src/lib/cv-sent-entry.ts).
  */
-export type SentEntry = { id: string; client: string; sentAt: string; by: string; note: string | null };
+export type SentEntry = { id: string; client: string; sentAt: string | null; by: string; note: string | null };
 
 export function CvSentLog({ candidateId, enabled, initial }: { candidateId: string; enabled: boolean; initial: SentEntry[] }) {
   const [entries, setEntries] = useState(initial);
@@ -34,12 +38,15 @@ export function CvSentLog({ candidateId, enabled, initial }: { candidateId: stri
     <div className="grid gap-3 text-[13px]" data-cv-sent-log>
       {entries.length === 0 ? <div className="text-ink3">No CV sent yet.</div> : (
         <ul className="list-none m-0 p-0 grid gap-1.5">
-          {entries.map((s) => (
-            <li key={s.id} data-cv-sent-entry className="border border-line2 rounded px-3 py-2">
-              <b className="font-semibold">{s.client}</b> · {new Date(s.sentAt).toLocaleDateString('en-GB')}
-              <div className="text-ink3 text-[12px]">logged by {s.by}{s.note ? ` · ${s.note}` : ''}</div>
-            </li>
-          ))}
+          {entries.map((s) => {
+            const pack = sendKind(s.sentAt) === 'prepared';
+            return (
+              <li key={s.id} data-cv-sent-entry={pack ? 'pack' : 'sent'} className="border border-line2 rounded px-3 py-2">
+                <b className="font-semibold">{s.client}</b> · {pack ? 'pack prepared for a lead, not marked sent' : sendDateLabel(s.sentAt)}
+                <div className="text-ink3 text-[12px]">{pack ? `${sendDateLabel(s.sentAt)} · prepared by ${s.by}` : `logged by ${s.by}`}{s.note ? ` · ${s.note}` : ''}</div>
+              </li>
+            );
+          })}
         </ul>
       )}
       {enabled ? (

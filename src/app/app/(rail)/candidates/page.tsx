@@ -109,7 +109,7 @@ export default async function Candidates({ searchParams }: { searchParams: Param
                 <td>{crm ? <CandidateTableStage candidate={{ id: r.id, name: r.name, stage: r.stage, placedAt: current(r) }} /> : <span className="text-ink3">—</span>}</td>
                 <td>{r.preference ? PREFERENCE_LABEL[r.preference] : '—'}</td>
                 <td>{r.certificates.length ? r.certificates.map((c, i) => <span key={i} className="st mr-2 text-[12.5px]">{c.body}{c.level ? ` ${c.level}` : ''}{c.validUntil ? ` · ${c.validUntil}` : ''}</span>) : <span className="text-ink3">none on file</span>}</td>
-                <td>{r.sentTo.map((s) => s.client).join(', ') || '—'}</td>
+                <td>{r.sentTo.filter((s) => s.kind === 'sent').map((s) => s.client).join(', ') || '—'}</td>
                 <td>{current(r) ?? '—'}</td>
                 <td>{r.availableFrom ?? '—'}</td>
               </tr>

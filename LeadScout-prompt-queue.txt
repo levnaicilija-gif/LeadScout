@@ -854,3 +854,15 @@ refuses signed-out (401) and other workspaces (404) with no storage link. Scale:
 search exact, 0.5-1.6 ms a search, list read 1.9 s. Loose documents: 8, 0 linkable, 8 for manual review. Walkthrough
 in test workspaces (sandblaster CV, test certificate, Test Client Ltd) passed on production at 1500px and 390px.
 Not decided yet: the deletion policy behind data_retention_until.
+
+Item 24 follow-up (owner's review of the production page, 2026-09-15) — two fixes:
+1. "01/01/1970" on #9's McDermott CV-sent entry. Found: not a CV logged as sent, and not item 24's logging route (which
+   always writes the signed-in user and a real date). It is the pack "Send to this lead" attached on 2026-09-10, before
+   item 24; send-pack writes sent_at null by design (prepared, not sent) and wrote no sent_by, and item 24 showed every
+   sends row as a CV sent, turning the null into 1970 and matching "sent to mcdermott". Fixed: a pack reads "pack prepared
+   for a lead, not marked sent", "date not recorded", searches as "pack for", and send-pack records who prepared it. All
+   sends rows: 1, that one — no other candidate affected.
+2. A persistent CV drop zone at the foot of the rail on every rail screen ("Drop a CV here — or click to browse"; drop
+   and click are one control; highlights on drag-over), and a floating "+ Add CV" button only at narrow widths.
+   Owner's decisions (asked before building): Home, which has no rail, gets the same dashed zone as a card; Verify stands
+   aside — its own drop zone is the entry point there, no rail zone and no button.

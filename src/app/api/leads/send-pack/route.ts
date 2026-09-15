@@ -67,6 +67,7 @@ export async function POST(req: Request) {
       await db.from('sends').insert({
         candidate_id: i.candidateId, company_id: lead.company_id, anonymized_cv_id: i.anonymizedCvId,
         sent_at: null,                                  // prepared, not sent: outreach does that
+        sent_by: me.id,                                 // who prepared it — until 2026-09-15 a pack recorded nobody (cv-sent-entry.ts)
       });
     }
     await db.from('leads').update({ status: 'pursue' }).eq('id', leadId);

@@ -14,6 +14,9 @@
  *      records client, sent_by and sent_at, and the list's search finds "sent to semco"; the page's stage picker records a
  *      placement at AIBEL, shown as current with who entered it.
  *   4. 390px: the page does not scroll sideways, and the edit form saves from a phone.
+ *   With 0035 it also seeds a pack prepared for a lead with no sent date and nobody recorded — #9's McDermott row, which
+ *   read "01/01/1970 · logged by —" on production — and checks at both widths that it reads as a pack with "date not
+ *   recorded", never 1970, and that the list finds it as "pack for", never as "sent to" (src/lib/cv-sent-entry.ts).
  * Without 0035 the checks in 3 cannot run, and the probe fails saying so: step 3 is not confirmed without them.
  * Everything it made is removed afterwards; a leftover fails the run.
  */
@@ -59,6 +62,10 @@ async function saveForm(p: Page) {
   // A candidate made from a CV has the CV as a document (intake stores it); the page's CV section reads the profile beside it.
   await admin.from('documents').insert({ candidate_id: cand!.id, workspace_id: workspace, type: 'cv', storage_path: `page-probe/${ref}-cv`, extracted: { doc_type: 'cv' }, is_test: true });
   await admin.from('verifications').insert({ document_id: doc!.id, method: 'manual', result: 'valid', valid_until: '2026-03-01', state: 'verified_credential', checked_at: new Date().toISOString(), checked_where: 'https://www.credential.net/' });
+  // A pack prepared for a lead: sent_at null by design, and sent_by null as send-pack wrote it before 2026-09-15.
+  const { data: pack } = crm
+    ? await admin.from('sends').insert({ candidate_id: cand!.id, client_name: 'Probe Pack Client', sent_at: null, sent_by: null }).select('id').single()
+    : { data: null };
 
   const browser = await chromium.launch();
   try {
@@ -86,6 +93,12 @@ async function saveForm(p: Page) {
     const cvText = await page.locator('[data-candidate-section="cv"]').innerText().catch(() => '');
     check(/Industrial painter/.test(cvText) && /2 periods on the CV/.test(cvText) && /FROSIO Level III/.test(cvText), 'the CV section reads the parsed profile', cvText.replace(/\s+/g, ' ').slice(0, 200));
     check(await sideways(page) <= 1, 'at 1500px the page does not scroll sideways', `${await sideways(page)}px`);
+    if (crm) {
+      const logText = (await page.locator('[data-cv-sent-log]').innerText().catch(() => '')).replace(/\s+/g, ' ');
+      check(!!pack && (await page.locator('[data-cv-sent-entry="pack"]').count()) === 1 && /Probe Pack Client · pack prepared for a lead, not marked sent/.test(logText)
+        && /date not recorded · prepared by not recorded/.test(logText) && !/1970/.test(logText),
+      'at 1500px a pack with no sent date reads "pack prepared", "date not recorded", "prepared by not recorded" — never 01/01/1970', logText.slice(0, 200));
+    }
 
     // ---- 2. edits: refused with a reason, then saved
     await page.locator('[data-edit-field="phone"] input').fill('call me');
@@ -116,10 +129,18 @@ async function saveForm(p: Page) {
       await page.locator('[data-cv-sent-date]').fill(today);
       await page.locator('[data-cv-sent-add]').click();
       await page.waitForFunction(() => /Semco Maritime/.test(document.querySelector('[data-cv-sent-log]')?.textContent ?? '') && !!document.querySelector('[data-cv-sent-entry]'), undefined, { timeout: 30000 }).catch(() => {});
-      const { data: sent } = await admin.from('sends').select('client_name, sent_by, sent_at').eq('candidate_id', cand!.id);
+      const { data: sent } = await admin.from('sends').select('client_name, sent_by, sent_at').eq('candidate_id', cand!.id).not('sent_at', 'is', null);
       check((sent ?? []).length === 1 && sent![0].client_name === 'Semco Maritime' && sent![0].sent_by === uid && String(sent![0].sent_at).startsWith(today), 'logging a CV sent records the client, who and when', JSON.stringify(sent));
       await page.goto(`${BASE}/app/candidates?q=${encodeURIComponent('"sent to semco"')}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
       check((await page.locator(`[data-candidate-row="${cand!.id}"]`).count()) === 1, 'the list finds the candidate by the client their CV was sent to');
+      await page.goto(`${BASE}/app/candidates?q=${encodeURIComponent('"sent to probe pack client"')}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      const packAsSent = await page.locator(`[data-candidate-row="${cand!.id}"]`).count();
+      await page.goto(`${BASE}/app/candidates?q=${encodeURIComponent('"pack for probe pack client"')}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      const packFound = await page.locator(`[data-candidate-row="${cand!.id}"]`).count();
+      // Column 8 of the table is "CV sent to".
+      const sentCell = await page.locator(`[data-candidate-row="${cand!.id}"] td`).nth(7).innerText().catch(() => '');
+      check(packAsSent === 0 && packFound === 1 && /Semco Maritime/.test(sentCell) && !/Probe Pack Client/.test(sentCell),
+        'the pack is found as "pack for", never as "sent to", and "CV sent to" lists only the CV sent', `"sent to" matched ${packAsSent}, "pack for" matched ${packFound}, column "${sentCell}"`);
 
       await page.goto(`${BASE}/app/candidates/${cand!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await hydrated(page);
@@ -142,6 +163,10 @@ async function saveForm(p: Page) {
     await hydrated(m);
     await m.waitForFunction(() => !/Reading the code…/i.test(document.body.innerText), undefined, { timeout: 30000 }).catch(() => {});
     check(await sideways(m) <= 1, 'at 390px the page does not scroll sideways', `${await sideways(m)}px`);
+    if (crm) {
+      const mLog = (await m.locator('[data-cv-sent-log]').innerText().catch(() => '')).replace(/\s+/g, ' ');
+      check(/Probe Pack Client · pack prepared for a lead, not marked sent/.test(mLog) && /date not recorded/.test(mLog) && !/1970/.test(mLog), 'at 390px the pack reads the same, with no 1970', mLog.slice(0, 200));
+    }
     await m.locator('[data-edit-field="notes"] textarea').fill('Probe note from a phone.');
     await m.locator('[data-edit-save]').tap();
     await m.waitForFunction(() => document.querySelector('[data-edit-message]')?.textContent === 'Saved', undefined, { timeout: 30000 }).catch(() => {});
@@ -150,6 +175,8 @@ async function saveForm(p: Page) {
     await phone.close();
   } finally {
     await browser.close();
+    // The seeded pack recorded nobody, so removeProbe's delete by sent_by does not reach it.
+    if (pack) await admin.from('sends').delete().eq('id', pack.id);
     const leftBehind = await removeProbe(admin, uid, workspace, null, { clearContent: true });
     if (leftBehind) { failures++; console.log(`\n  FAIL  cleanup — ${leftBehind}`); } else console.log('\nprobe user, its workspace and every seeded row removed');
   }

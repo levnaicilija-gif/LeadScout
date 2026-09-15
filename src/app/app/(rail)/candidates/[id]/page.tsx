@@ -8,6 +8,7 @@ import { CertCard } from '@/components/CertCard';
 import { CandidateTableStage } from '@/components/CandidateTableStage';
 import { CandidateEditForm } from '@/components/CandidateEditForm';
 import { CvSentLog } from '@/components/CvSentLog';
+import { sendKind } from '@/lib/cv-sent-entry';
 import { AnonymizeAction } from '@/components/AnonymizeAction';
 import { CandidateDocDrop } from '@/components/CandidateDocDrop';
 export const dynamic = 'force-dynamic';
@@ -52,8 +53,13 @@ export default async function CandidatePage({ params }: { params: { id: string }
   const profile: any = c.profile ?? {};
   const placements = [...(c.candidate_placements ?? [])].sort((a: any, b: any) => String(b.placed_on).localeCompare(String(a.placed_on)));
   const current = placements.find((p: any) => !p.ended_on);
-  const sends = [...(c.sends ?? [])].sort((a: any, b: any) => String(b.sent_at).localeCompare(String(a.sent_at))).map((s: any) => ({
-    id: s.id, client: s.client_name ?? s.companies?.name ?? 'client not recorded', sentAt: s.sent_at, by: nameOf(s.sent_by), note: s.note ?? null,
+  // CVs sent, newest first, then packs prepared for a lead (no sent date by design). A row that recorded nobody says so.
+  const sends = [...(c.sends ?? [])].sort((a: any, b: any) => {
+    const ka = sendKind(a.sent_at), kb = sendKind(b.sent_at);
+    return ka !== kb ? (ka === 'sent' ? -1 : 1) : String(b.sent_at ?? '').localeCompare(String(a.sent_at ?? ''));
+  }).map((s: any) => ({
+    id: s.id, client: s.client_name ?? s.companies?.name ?? 'client not recorded', sentAt: s.sent_at ?? null,
+    by: s.sent_by ? nameOf(s.sent_by) : 'not recorded', note: s.note ?? null,
   }));
   const stage: Stage = (STAGES as readonly string[]).includes(c.stage) ? c.stage : 'new';
   const Card = ({ title, hook, children, aside }: { title: string; hook: string; children: React.ReactNode; aside?: React.ReactNode }) => (
