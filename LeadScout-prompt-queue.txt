@@ -866,3 +866,15 @@ Item 24 follow-up (owner's review of the production page, 2026-09-15) — two fi
    and click are one control; highlights on drag-over), and a floating "+ Add CV" button only at narrow widths.
    Owner's decisions (asked before building): Home, which has no rail, gets the same dashed zone as a card; Verify stands
    aside — its own drop zone is the entry point there, no rail zone and no button.
+
+Item 24 follow-up 3 (owner's report, 2026-09-15) — Paul Daniel Pascale's FROSIO certificate on #9 (Bertescu Dumitrel).
+Nine parts: take it off; a name check before attaching (also Verify's Unattached panel); the stuck drop overlay; a clean
+page after a drop; a list of every attached file; editing persists; delete a candidate completely (typed confirmation,
+audit log written first, no orphaned rows); "Remove from this candidate" vs "Delete permanently" for a certificate; a new
+CV for a candidate who already has one. An earlier version of this request never reached a session — none of it had
+been started.
+Owner's decisions (asked 2026-09-15): older CVs are kept as history when a new CV arrives, the newest is current;
+permanent deletes (a candidate, a certificate document) are seniors only; taking a certificate off the wrong candidate
+is open to every recruiter.
+Step 1 done: the certificate (FROSIO No. 10810) taken off #9 and kept, attached to nobody, with its verification; #9
+holds 0 certificates. Migration 0037 (deletion log; a candidate's rows deleted in one transaction) waits to be applied.
