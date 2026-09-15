@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { anonymize, buildBullets, clientSummary, scoreAgainstJob, piiRegexHits, piiModelReview } from '@/lib/ai/documents';
+import { meterRecruiter } from '@/lib/ai/meter';
 import { renderClientCv, clientCvText, clientCvAllowed, type ClientCvData } from '@/lib/pdf/render';
 import { explainCert, clientLine } from '@/lib/certs/explain';
 import { loadLibrary } from '@/lib/certs/library';
@@ -19,6 +20,12 @@ export const maxDuration = 120;
 export async function POST(req: Request) {
   const me = await currentUser();
   if (!me) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
+  // Item 16: every model call below is logged against this workspace, and never stopped by the daily cap.
+  return meterRecruiter(me, () => handle(req, me));
+}
+
+type SignedIn = NonNullable<Awaited<ReturnType<typeof currentUser>>>;
+async function handle(req: Request, me: SignedIn) {
 
   try {
     const { candidate_id: candidateId, job } = await req.json();

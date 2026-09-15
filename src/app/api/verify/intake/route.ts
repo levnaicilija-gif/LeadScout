@@ -1,8 +1,8 @@
 import { documentPath } from '@/lib/storage-path';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
-import { extractDocument, parseCv, anonymize } from '@/lib/ai/documents';
-import { claude, MODEL_EXTRACT } from '@/lib/ai/claude';
+import { extractDocument, parseCv, anonymize, transcribeCv } from '@/lib/ai/documents';
+import { meterRecruiter } from '@/lib/ai/meter';
 import { fileToBase64 } from '@/lib/files';
 import { appearsIn } from '@/lib/ai/claude';
 import { isEea } from '@/lib/right-to-work';
@@ -27,6 +27,12 @@ export const maxDuration = 300;
 export async function POST(req: Request) {
   const me = await currentUser();
   if (!me) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
+  // Item 16: every model call below is logged against this workspace, and never stopped by the daily cap.
+  return meterRecruiter(me, () => handle(req, me));
+}
+
+type SignedIn = NonNullable<Awaited<ReturnType<typeof currentUser>>>;
+async function handle(req: Request, me: SignedIn) {
 
   try {
     const form = await req.formData();
@@ -69,7 +75,7 @@ export async function POST(req: Request) {
 
         // ---- CV: the only document that may create a candidate.
         if (ext.doc_type === 'cv') {
-          const cvText = prepared.kind === 'text' ? prepared.text! : await transcribe(prepared.base64, prepared.mediaType);
+          const cvText = prepared.kind === 'text' ? prepared.text! : await transcribeCv(prepared.base64, prepared.mediaType);
           if (!cvText.trim()) { row.kind = 'unreadable'; row.why = 'no readable text in the file'; results.push(row); continue; }
           const profile = await parseCv(cvText);
           let cand = autoMatch(known, profile.full_name);
@@ -257,12 +263,4 @@ async function store(db: any, me: any, bytes: Buffer, f: File, type: string, can
   }).select().single();
   if (error) throw new Error(`could not save the document: ${error.message}`);
   return data;
-}
-
-async function transcribe(base64: string, mediaType: string) {
-  const r = await claude.messages.create({
-    model: MODEL_EXTRACT, max_tokens: 4000,
-    messages: [{ role: 'user', content: [{ type: mediaType === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: mediaType as any, data: base64 } } as any, { type: 'text', text: 'Transcribe this CV as plain text, preserving structure. Output text only.' }] }],
-  });
-  return r.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
 }

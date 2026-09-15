@@ -1,7 +1,18 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { jsonFromReply } from './json-reply';
+import { recordUsage } from './meter';
 export const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+/**
+ * A model call that logs its own usage (item 16) — for what askJson cannot carry, a PDF or an image. Logged under the
+ * request and tool in scope (src/lib/ai/meter.ts), or as 'unattributed' when there is none.
+ */
+export async function createMessage(params: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> {
+  const r = await claude.messages.create(params);
+  await recordUsage(params.model, r.usage);
+  return r;
+}
 // Sonnet 5: newer than 4-6 and cheaper with it ($2/$10 per Mtok against $3/$15).
 export const MODEL_EXTRACT = 'claude-sonnet-5';
 export const MODEL_CLASSIFY = 'claude-haiku-4-5';
@@ -50,8 +61,10 @@ export async function askJson<S extends z.ZodTypeAny>(schema: S, system: string,
       system: attempt === 0 ? base : `${base}\n\nA previous attempt could not be used: ${lastProblem}\nReturn the whole object again, corrected. Keep every value complete — do not truncate.`,
       messages: [{ role: 'user', content: user }],
     });
-    // Every attempt is billed, the failed first one included.
+    // Every attempt is billed, the failed first one included. A caller's own meter (Radar, the jobs) logs it; otherwise the
+    // request and tool in scope do — a recruiter's button — and a call with neither still logs, as 'unattributed'.
     if (onUsage) await onUsage(r.usage, model);
+    else await recordUsage(model, r.usage);
     const text = r.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
 
     try {

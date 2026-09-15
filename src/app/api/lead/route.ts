@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseServer, currentUser } from '@/lib/supabase/server';
 import { jdFromLead, screeningQuestions, draftOutreachChecked, scoreWithRightToWork, anonymize } from '@/lib/ai/documents';
+import { meterRecruiter } from '@/lib/ai/meter';
 import { checkRightToWork, searchCountriesFor } from '@/lib/right-to-work';
 import { chooseRecipient } from '@/lib/contact-choice';
 import { attendeesAt } from '@/lib/attendee-match';
@@ -10,6 +11,12 @@ export const maxDuration = 120;
 /** POST { lead_id, action: 'jd' | 'questions' | 'score_pool' | 'xray' | 'draft' | 'confirm' | 'status', ... } */
 export async function POST(req: Request) {
   const me = await currentUser(); if (!me) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
+  // Item 16: every model call below is logged against this workspace, and never stopped by the daily cap.
+  return meterRecruiter(me, () => handle(req, me));
+}
+
+type SignedIn = NonNullable<Awaited<ReturnType<typeof currentUser>>>;
+async function handle(req: Request, me: SignedIn) {
   const sb = supabaseServer(); const b = await req.json();
   const { data: lead } = await sb.from('leads').select('*, companies(*), contacts(*), lead_articles(articles(text))').eq('id', b.lead_id).single();
   if (!lead) return NextResponse.json({ error: 'not found' }, { status: 404 });

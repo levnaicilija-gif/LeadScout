@@ -1,8 +1,8 @@
 import { documentPath } from '@/lib/storage-path';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
-import { parseCv, anonymize } from '@/lib/ai/documents';
-import { claude, MODEL_EXTRACT } from '@/lib/ai/claude';
+import { parseCv, anonymize, transcribeCv } from '@/lib/ai/documents';
+import { meterRecruiter } from '@/lib/ai/meter';
 import { fileToBase64 } from '@/lib/files';
 export const maxDuration = 120;
 
@@ -17,6 +17,12 @@ export const maxDuration = 120;
 export async function POST(req: Request) {
   const me = await currentUser();
   if (!me) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
+  // Item 16: every model call below is logged against this workspace, and never stopped by the daily cap.
+  return meterRecruiter(me, () => handle(req, me));
+}
+
+type SignedIn = NonNullable<Awaited<ReturnType<typeof currentUser>>>;
+async function handle(req: Request, me: SignedIn) {
 
   try {
     const form = await req.formData();
@@ -33,7 +39,7 @@ export async function POST(req: Request) {
         const prepared = await fileToBase64(bytes, f.type, f.name);
         if (prepared.kind === 'unsupported') { failed.push({ file: f.name, why: 'unsupported file type — use PDF, DOCX, an image or text' }); continue; }
 
-        const text = prepared.kind === 'text' ? prepared.text! : await transcribe(prepared.base64, prepared.mediaType);
+        const text = prepared.kind === 'text' ? prepared.text! : await transcribeCv(prepared.base64, prepared.mediaType);
         if (!text.trim()) { failed.push({ file: f.name, why: 'no readable text in the file' }); continue; }
 
         const profile = await parseCv(text);
@@ -71,12 +77,4 @@ export async function POST(req: Request) {
   } catch (e: any) {
     return NextResponse.json({ error: String(e?.message ?? e).slice(0, 300) }, { status: 500 });
   }
-}
-
-async function transcribe(base64: string, mediaType: string) {
-  const r = await claude.messages.create({
-    model: MODEL_EXTRACT, max_tokens: 4000,
-    messages: [{ role: 'user', content: [{ type: mediaType === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: mediaType as any, data: base64 } } as any, { type: 'text', text: 'Transcribe this CV as plain text, preserving structure. Output text only.' }] }],
-  });
-  return r.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
 }

@@ -2,6 +2,7 @@ import { documentPath } from '@/lib/storage-path';
 import { NextResponse } from 'next/server';
 import { supabaseServer, supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { extractDocument } from '@/lib/ai/documents';
+import { meterRecruiter } from '@/lib/ai/meter';
 import { ISSUER_EMAIL_BODIES } from '@/lib/verify/adapters';
 import { fileToBase64 } from '@/lib/files';
 export const maxDuration = 120;
@@ -22,6 +23,12 @@ export const maxDuration = 120;
 export async function POST(req: Request) {
   const me = await currentUser();
   if (!me) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
+  // Item 16: the document read below is logged against this workspace, and never stopped by the daily cap.
+  return meterRecruiter(me, () => handle(req, me));
+}
+
+type SignedIn = NonNullable<Awaited<ReturnType<typeof currentUser>>>;
+async function handle(req: Request, me: SignedIn) {
 
   try {
     const form = await req.formData();

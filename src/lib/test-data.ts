@@ -66,6 +66,16 @@ export async function deleteTestRows(db: SupabaseClient, table: TestTable, colum
 export async function deleteTestWorkspace(db: SupabaseClient, workspaceId: string | null | undefined, keep?: string | null): Promise<string | null> {
   if (!workspaceId || workspaceId === keep) return null;
   const flag = await haveFlag(db);
+  // Item 16: a probe's recruiter tools log real spend against its workspace, and cost_log.workspace_id has no cascade, so
+  // those rows would block the delete. They are kept — the money was spent and still counts in the day — detached from
+  // the workspace; each row's detail already says "test workspace". Only a workspace marked is_test is touched.
+  if (flag) {
+    const { data: ws } = await db.from('workspaces').select('is_test').eq('id', workspaceId).maybeSingle();
+    if (ws?.is_test) {
+      const { error } = await db.from('cost_log').update({ workspace_id: null }).eq('workspace_id', workspaceId);
+      if (error) return `workspace ${workspaceId} was not deleted: its cost_log rows could not be detached: ${error.message}`;
+    }
+  }
   let why = '';
   for (let attempt = 1; attempt <= 2; attempt++) {
     let q = db.from('workspaces').delete().eq('id', workspaceId);

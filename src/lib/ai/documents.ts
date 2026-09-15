@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { askJson, claude, MODEL_EXTRACT } from './claude';
+import { askJson, createMessage, MODEL_EXTRACT } from './claude';
+import { asTool } from './meter';
 import { jsonFromReply } from './json-reply';
 import { checkRightToWork, type Rtw } from '../right-to-work';
 
@@ -22,7 +23,9 @@ export const CertSchema = z.object({
 export type CertExtraction = z.output<typeof CertSchema>;
 
 /** Extraction from a PDF, an image, or plain text (DOCX arrives here already converted). */
-export async function extractDocument(base64: string, mediaType: string): Promise<CertExtraction> {
+export const extractDocument = (base64: string, mediaType: string): Promise<CertExtraction> => asTool('document-read', () => readDocument(base64, mediaType));
+
+async function readDocument(base64: string, mediaType: string): Promise<CertExtraction> {
   const asText = mediaType === 'text/plain';
   const source = asText
     ? [{ type: 'text', text: Buffer.from(base64, 'base64').toString('utf8').slice(0, 30000) }]
@@ -67,7 +70,7 @@ NEVER return pay rate, allowances, pension, bonus or bank details, on any docume
   // wrong file type. Now the problem is described back once, and a second failure says what it was.
   let problem = '';
   for (let attempt = 0; attempt < 2; attempt++) {
-    const r = await claude.messages.create({
+    const r = await createMessage({
       model: MODEL_EXTRACT, max_tokens: attempt === 0 ? 800 : 1600,
       // The key names are not negotiable. Asked in prose, the model returns sensible names of
       // its own ("document_type", "certificate_number", "issuing_body") and every parse fails,
@@ -88,6 +91,18 @@ NEVER return pay rate, allowances, pension, bonus or bank details, on any docume
   throw new Error('unreachable');
 }
 
+/**
+ * A PDF or image CV as plain text, for parseCv. Verify intake and the anonymiser each had their own copy of this call,
+ * neither logged (item 16); this is the one.
+ */
+export const transcribeCv = (base64: string, mediaType: string) => asTool('cv-transcribe', async () => {
+  const r = await createMessage({
+    model: MODEL_EXTRACT, max_tokens: 4000,
+    messages: [{ role: 'user', content: [{ type: mediaType === 'application/pdf' ? 'document' : 'image', source: { type: 'base64', media_type: mediaType as any, data: base64 } } as any, { type: 'text', text: 'Transcribe this CV as plain text, preserving structure. Output text only.' }] }],
+  });
+  return r.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
+});
+
 export const ProfileSchema = z.object({
   full_name: z.string().optional(), trade: z.string(), trade_code: z.enum(['P', 'W', 'F', 'N', 'R', 'E', 'O']).default('O'),
   /** Every trade the CV actually supports. trade is the headline; a blaster who also insulates
@@ -104,7 +119,7 @@ export const ProfileSchema = z.object({
   pii: z.object({ phone: z.string().optional(), email: z.string().optional(), address: z.string().optional(), dob: z.string().optional() }).default({}),
 });
 export type Profile = z.output<typeof ProfileSchema>;
-export const parseCv = (cvText: string) => askJson(ProfileSchema, `Parse this CV (any language) into a structured profile in English for an industrial/offshore staffing agency. Copy facts; do not embellish.
+export const parseCv = (cvText: string) => asTool('cv-parse', () => askJson(ProfileSchema, `Parse this CV (any language) into a structured profile in English for an industrial/offshore staffing agency. Copy facts; do not embellish.
 
 Return ONLY this JSON object, using these exact keys and no others:
 {
@@ -141,7 +156,7 @@ A facility — yard, shipyard, fabrication hall, dock, plant, refinery — is de
 
 EVERY dated period in the CV gets its own entry, including the earliest one. Do not merge two roles into one, and do not stop at the recent ones: a CV showing work from 2005 must produce an entry starting 2005.
 
-Right to work is a legal fact, not an inference: state nationality only where the CV names it, and eu_passport or uk_right_to_work only where the CV says so in words. Having worked in Norway does not make someone Norwegian, and an EU passport is never evidence of UK right to work. Return the JSON only, with no prose and no markdown fences.`, cvText.slice(0, 30000), undefined, 8000);
+Right to work is a legal fact, not an inference: state nationality only where the CV names it, and eu_passport or uk_right_to_work only where the CV says so in words. Having worked in Norway does not make someone Norwegian, and an EU passport is never evidence of UK right to work. Return the JSON only, with no prose and no markdown fences.`, cvText.slice(0, 30000), undefined, 8000));
 
 /**
  * Remove an employer's name from text that is going to a client.
@@ -333,7 +348,7 @@ export const PiiReviewSchema = z.object({
  * "Marko J., FROSIO Level II" through.
  */
 export async function piiModelReview(clientFacingText: string, allowed: string[] = []) {
-  const r = await askJson(
+  const r = await asTool('pii-review', () => askJson(
     PiiReviewSchema,
     `This text is about to be sent to a client as an ANONYMISED candidate summary. It must not identify the candidate or their current/previous employers. Find anything that does: personal names, employer or agency names, phone numbers, emails, addresses, dates of birth, passport/licence/ID numbers, social or portfolio links, a named vessel/site/project so specific it identifies the person, or an unusually small home town. Certificate numbers, certifying bodies (FROSIO, BINDT, IRATA...), countries, years, trades, rotations and languages are all FINE and must not be reported.
 
@@ -349,7 +364,7 @@ A town on its own is fine. A town next to a yard or a platform is part of its na
 
 Quote each offending span verbatim in "text". clean = true only when you find nothing.`,
     clientFacingText.slice(0, 20000),
-  );
+  ));
   const findings = r.findings.filter((f) => !!f.text.trim() && !isAllowedSpan(f.text, allowed));
   return { findings, clean: findings.length === 0 };
 }
@@ -388,7 +403,7 @@ export const BulletsSchema = z.preprocess(toBullets, z.object({
 export const SummarySchema = z.object({ summary: z.array(z.string()).min(1).max(2) });
 
 export const clientSummary = (anon: any, verified: object[]) =>
-  askJson(SummarySchema, `Write a two-line professional summary of this candidate for a client, from the data given and nothing else.
+  asTool('client-summary', () => askJson(SummarySchema, `Write a two-line professional summary of this candidate for a client, from the data given and nothing else.
 
 Line 1: what they are and how long — use "years_in_trade" from the data, which is already counted from the earliest project to the latest. Do not count it yourself. Then the trade, and the heaviest or most relevant type of work.
 Line 2: where and on what — countries, kinds of structure or system, and any standards or methods actually named in the data.
@@ -407,7 +422,7 @@ Return JSON: {"summary":["line one","line two"]}`, JSON.stringify({
     candidate: { ...anon, certificates: undefined },
     verified_certificates: verified,
     claimed_certificates: anon?.certificates ?? [],
-  }));
+  })));
 
 const BULLETS_SYSTEM = `Write exactly three bullets describing this candidate for a client.
 
@@ -459,13 +474,13 @@ A good bullet reads like a record, not a pitch:
 No name. No employer names. Max 28 words each.`;
 
 export const clientBullets = (anon: any, verified: object[], jobContext?: string) =>
-  askJson(BulletsSchema, BULLETS_SYSTEM, JSON.stringify({
+  asTool('bullets', () => askJson(BulletsSchema, BULLETS_SYSTEM, JSON.stringify({
     years_in_trade: experienceSpan(anon?.projects ?? []),
     candidate: { ...anon, certificates: undefined },
     verified_certificates: verified,
     claimed_certificates: anon?.certificates ?? [],
     job: jobContext ?? null,
-  }));
+  })));
 
 /** Per-bullet verdict: which claims in it cannot be traced back to the source. */
 export const BulletCheckSchema = z.object({
@@ -477,7 +492,7 @@ export const BulletCheckSchema = z.object({
 });
 
 export const checkBullets = (bullets: string[], source: object) =>
-  askJson(
+  asTool('bullets-audit', () => askJson(
     BulletCheckSchema,
     `You are checking bullets about a job candidate against the ONLY data we hold on them. This is a factual audit, not editing.
 
@@ -488,7 +503,7 @@ A bullet is supported only when every claim in it appears in the source. Restati
 
 Return {"results":[{"i":0,"supported":true,"unsupported":[]}]} with one entry per bullet, in order.`,
     JSON.stringify({ bullets: bullets.map((b, i) => ({ i, text: b })), source }),
-  );
+  ));
 
 /**
  * Three bullets that survive an audit against the source.
@@ -520,7 +535,7 @@ export async function buildBullets(anon: object, verified: object[], jobContext?
       // Name the exact phrases and ask again, rather than throwing the whole set away.
       const complaint = bad.map((r) => `bullet ${r.i + 1}: remove ${r.unsupported.map((u) => `"${u}"`).join(', ')}`).join('; ');
       const kept = bullets.filter((_, i) => !bad.some((b) => b.i === i));
-      bullets = (await askJson(
+      bullets = (await asTool('bullets', () => askJson(
         BulletsSchema,
         `${BULLETS_SYSTEM}
 
@@ -529,7 +544,7 @@ A previous attempt failed the factual audit. Fix exactly these problems and chan
 These bullets already passed and must be returned unchanged: ${JSON.stringify(kept)}
 Replace only the failing ones, with a different fact from the data — do not return two bullets where three were asked for.`,
         JSON.stringify({ candidate: anon, verified_certificates: verified, job: jobContext ?? null }),
-      )).bullets;
+      ))).bullets;
       continue;
     }
 
@@ -567,11 +582,11 @@ export async function scoreWithRightToWork(anon: object, verified: object[], jd:
 }
 
 export const scoreAgainstJob = (anon: object, verified: object[], jd: string) =>
-  askJson(ScoreSchema, 'Score how well this candidate matches the job (0–100). fits: evidence from the CV. missing: what is absent and what would close it (e.g. "ICATS card — FROSIO accepted by most UK yards, confirm"). blockers: hard requirements not met (passport, required cert level, language). Be strict and specific.', JSON.stringify({ candidate: anon, verified_certificates: verified, job: jd }));
+  asTool('candidate-score', () => askJson(ScoreSchema, 'Score how well this candidate matches the job (0–100). fits: evidence from the CV. missing: what is absent and what would close it (e.g. "ICATS card — FROSIO accepted by most UK yards, confirm"). blockers: hard requirements not met (passport, required cert level, language). Be strict and specific.', JSON.stringify({ candidate: anon, verified_certificates: verified, job: jd })));
 
 export const JdSchema = z.object({ job_description: z.string(), assumptions: z.array(z.string()) });
 export const jdFromLead = (lead: object, articleText: string) =>
-  askJson(JdSchema, 'Write a working job description for a trades staffing agency from this lead. Use only stated facts; where you must assume (typical certs for this company type, rotation), list each assumption separately so the recruiter can confirm on the call.', JSON.stringify({ lead, source_text: articleText.slice(0, 8000) }));
+  asTool('job-description', () => askJson(JdSchema, 'Write a working job description for a trades staffing agency from this lead. Use only stated facts; where you must assume (typical certs for this company type, rotation), list each assumption separately so the recruiter can confirm on the call.', JSON.stringify({ lead, source_text: articleText.slice(0, 8000) })));
 
 /** The nested keys drift as readily as the top-level ones, and askJson can only name those. */
 const Question = z.preprocess((v: any) => {
@@ -585,12 +600,12 @@ const Question = z.preprocess((v: any) => {
 
 export const QuestionsSchema = z.object({ questions: z.array(Question).min(1).max(12) });
 export const screeningQuestions = (jd: string) =>
-  askJson(QuestionsSchema, `Write 6–8 screening questions a recruiter asks a candidate for this role: technical (process/positions/standards), certificates and expiry, rotation history, offshore medical/safety training, passport/A1, English on site, rate and start, conflicts. For each, what a good answer sounds like.
+  asTool('screening-questions', () => askJson(QuestionsSchema, `Write 6–8 screening questions a recruiter asks a candidate for this role: technical (process/positions/standards), certificates and expiry, rotation history, offshore medical/safety training, passport/A1, English on site, rate and start, conflicts. For each, what a good answer sounds like.
 
 "today" is the current date. Any date in the job that is already past is history, not a plan: never ask a candidate whether they can start on a date that has gone. Ask for the earliest date they could mobilise, and about notice period, instead.
 
 Each entry in "questions" is an object with exactly these keys:
-{"q":"the question the recruiter asks","good_answer":"what a good answer sounds like"}`, JSON.stringify({ job: jd, today: new Date().toISOString().slice(0, 10) }), undefined, 4000);
+{"q":"the question the recruiter asks","good_answer":"what a good answer sounds like"}`, JSON.stringify({ job: jd, today: new Date().toISOString().slice(0, 10) }), undefined, 4000));
 
 /** email and linkedin came back as objects ({subject, body}) rather than the plain text asked for. */
 const flat = (v: any): string => {
@@ -608,7 +623,7 @@ const flat = (v: any): string => {
  * Without one they cover the trade — processes, certificates, rotation, safety, right to work.
  */
 export const candidateScreening = (candidate: object, verified: object[], job?: string | null, score?: object | null) =>
-  askJson(QuestionsSchema, `Write 6-8 screening questions a recruiter asks THIS candidate, in the order they should be asked.
+  asTool('candidate-questions', () => askJson(QuestionsSchema, `Write 6-8 screening questions a recruiter asks THIS candidate, in the order they should be asked.
 
 ${job ? `A job is attached, and so is the score against it. Lead with the score: every blocker gets a question, then every item in "missing". Ask what would close the gap, not whether it exists — the recruiter can already see that it does. Only then ask the general trade questions.` : 'No job is attached, so cover the trade: processes, positions and standards; certificates and expiry; rotation history; offshore medical and safety training; passport, A1 and right to work; English on site; rate and earliest mobilisation.'}
 
@@ -621,7 +636,7 @@ Ground every question in what the candidate's own data says. A certificate in ve
 Each entry in "questions" is an object with exactly these keys:
 {"q":"the question the recruiter asks","good_answer":"what a good answer sounds like"}`,
     JSON.stringify({ candidate, verified_certificates: verified, job: job ?? null, score: score ?? null, today: new Date().toISOString().slice(0, 10) }),
-    undefined, 4000);
+    undefined, 4000));
 
 export const OutreachSchema = z.preprocess((v: any) => {
   if (!v || typeof v !== 'object') return v;
@@ -641,7 +656,7 @@ export const DraftCheckSchema = z.object({
 });
 
 export const checkDraft = (draft: { subject: string; email: string; linkedin: string }, source: object) =>
-  askJson(
+  asTool('outreach-audit', () => askJson(
     DraftCheckSchema,
     `You are auditing an outreach email against the ONLY data behind it. This is a factual audit, not editing.
 
@@ -656,10 +671,10 @@ Claims about the CLIENT — their contract, assets, timing, and their own quoted
 
 Return {"unsupported":[{"phrase":"...","why":"..."}]}, empty when everything traces.`,
     JSON.stringify({ draft, source }),
-  );
+  ));
 
 export const draftOutreach = (ctx: object) =>
-  askJson(OutreachSchema, `Draft an outreach email and a LinkedIn connection message (<300 chars) from a staffing agency to this decision-maker. Open with their own quote or the posting. Ask for one small step. Short. reasoning: one line on why it is written this way.
+  asTool('outreach-draft', () => askJson(OutreachSchema, `Draft an outreach email and a LinkedIn connection message (<300 chars) from a staffing agency to this decision-maker. Open with their own quote or the posting. Ask for one small step. Short. reasoning: one line on why it is written this way.
 
 THE POOL. Everything you say about our candidates must come from "pool" in the data below, and nothing else. It lists what we actually hold today.
 - Name a certificate, a standard, a level or a number ONLY if it appears in pool.verified_certificates. That list is what has been checked with the issuer.
@@ -673,7 +688,7 @@ WHO IT GOES TO. "recipient" is the person to address. "hook" is the person whose
 
 DATES. "today" is the current date. Treat any date before it as past: a contract that started in March when it is now September is running, not starting, so ask about the earliest date someone could mobilise rather than about a start that has already happened.
 
-"subject", "email", "linkedin" and "reasoning" are each PLAIN TEXT, not nested objects. Put the subject line in "subject" and the body in "email". Begin "reasoning" with why this recipient was chosen.`, JSON.stringify({ ...ctx, today: new Date().toISOString().slice(0, 10) }));
+"subject", "email", "linkedin" and "reasoning" are each PLAIN TEXT, not nested objects. Put the subject line in "subject" and the body in "email". Begin "reasoning" with why this recipient was chosen.`, JSON.stringify({ ...ctx, today: new Date().toISOString().slice(0, 10) })));
 
 /**
  * Draft, then audit what it says about our own people, and give it one chance to correct
