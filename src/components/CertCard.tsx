@@ -6,8 +6,10 @@ import { CertExplanation } from './CertExplanation';
 
 const tone = (t: 'ok' | 'warn' | 'bad' | 'none') => (t === 'ok' ? 'text-ok' : t === 'warn' ? 'text-warn' : t === 'bad' ? 'text-bad' : 'text-ink2');
 
+// minmax(0, 1fr) and min-w-0: a 1fr column is as wide as its longest unbreakable text, so a register's URL in "Checked where"
+// (https://techconnect.irata.org/verify/tech) pushed Verify 10px past a 390px phone screen (item 23's probe).
 const Row = ({ k, children }: { k: string; children: React.ReactNode }) => (
-  <div className="grid grid-cols-[130px_1fr] gap-y-1.5 py-1.5 border-t border-line2 text-[13px]"><span className="text-ink3">{k}</span><span>{children}</span></div>
+  <div className="grid grid-cols-[130px_minmax(0,1fr)] gap-y-1.5 py-1.5 border-t border-line2 text-[13px]"><span className="text-ink3">{k}</span><span className="min-w-0 break-words">{children}</span></div>
 );
 
 /**
@@ -82,7 +84,7 @@ export function CertCard({ res, busy }: { res: any; busy?: string }) {
           {state ? <span className={tone(STATE_TONE[state])}>{STATE_LABEL[state]}</span> : busy ? <span className="text-ink3">checking…</span> : <span className="text-ink3">not checked yet</span>}
           {res?.certBody?.instructions && <div className="text-ink2 text-[12px] mt-0.5">{res.certBody.instructions}</div>}
         </Row>
-        <Row k="Checked where">{ver?.checked_where ? <a className="text-accent" href={ver.checked_where} target="_blank" rel="noopener">{ver.checked_where}</a> : '—'}</Row>
+        <Row k="Checked where">{ver?.checked_where ? <a className="text-accent break-all" href={ver.checked_where} target="_blank" rel="noopener">{ver.checked_where}</a> : '—'}</Row>
         <Row k="Checked">{ver?.checked_at ? new Date(ver.checked_at).toLocaleString() : '—'}</Row>
         {ver?.notes && <Row k="Notes">{ver.notes}</Row>}
         {res?.warnings?.length > 0 && <Row k="Warnings"><span className="text-warn">{res.warnings.join(' · ')}</span></Row>}

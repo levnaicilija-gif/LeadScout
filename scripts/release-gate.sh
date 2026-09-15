@@ -43,6 +43,7 @@ step winner-address npx tsx scripts/winner-address-check.ts
 step site-scope npx tsx scripts/site-scope-check.ts
 step site-trust npx tsx scripts/site-trust-check.ts
 step model-meter npx tsx scripts/model-meter-check.ts
+step verify-adapters npx tsx scripts/verify-adapters-check.ts
 
 if [[ " ${FAILED[*]-} " == *" build "* ]]; then
   echo "=== the build failed, so nothing was served or tested against it" | tee -a "$LOG"

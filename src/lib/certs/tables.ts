@@ -87,7 +87,7 @@ export const CERT_TABLE: CertEntry[] = [
     notCovered: 'Welding itself — this is an inspection qualification, not a welder qualification. And NDT interpretation beyond visual, which needs PCN or an ISO 9712 certificate.',
     whoRequires: 'Operators and EPC contractors on offshore and pressure work; usually a named role in the contract.',
     validity: '5 years, renewable.',
-    verification: 'TWI certificate check — by certificate number.',
+    verification: "TWI's CSWIP register — by candidate or certificate number and the holder's date of birth.",
     trades: T('welder', 'ndt'),
   },
   {
@@ -98,7 +98,7 @@ export const CERT_TABLE: CertEntry[] = [
     notCovered: 'Signing off as a senior inspector, and any NDT method beyond visual.',
     whoRequires: 'Fabrication yards, offshore construction, pipeline spreads.',
     validity: '5 years, renewable.',
-    verification: 'TWI certificate check.',
+    verification: "TWI's CSWIP register — by number and date of birth.",
     trades: T('welder', 'ndt'),
   },
   {
@@ -109,7 +109,7 @@ export const CERT_TABLE: CertEntry[] = [
     notCovered: 'The wider inspection duties of 3.1, and any NDT method.',
     whoRequires: 'Yards wanting a visual check in the production line rather than a contract inspector.',
     validity: '5 years, renewable.',
-    verification: 'TWI certificate check.',
+    verification: "TWI's CSWIP register — by number and date of birth.",
     trades: T('welder'),
   },
 
@@ -155,7 +155,7 @@ export const CERT_TABLE: CertEntry[] = [
     notCovered: 'Applying coating, welding, and NDT.',
     whoRequires: 'Operators outside Norway, particularly on US-specified and Middle East work.',
     validity: '3 years, with continuing-education renewal.',
-    verification: 'AMPP certification directory.',
+    verification: "AMPP's public credential registry — lists current holders who opted in; not listed is not a verdict.",
     trades: T('painter', 'blaster'),
   },
   {
@@ -166,7 +166,7 @@ export const CERT_TABLE: CertEntry[] = [
     notCovered: 'Applying coating. Some Norwegian specifications name FROSIO and will not take AMPP in its place — check the specification.',
     whoRequires: 'Coating contractors and operators outside Scandinavia.',
     validity: '3 years, with continuing-education renewal.',
-    verification: 'AMPP certification directory.',
+    verification: "AMPP's public credential registry — lists current holders who opted in; not listed is not a verdict.",
     trades: T('painter', 'blaster'),
   },
   {
@@ -177,7 +177,7 @@ export const CERT_TABLE: CertEntry[] = [
     notCovered: 'Independent inspection and sign-off.',
     whoRequires: 'Larger coating crews.',
     validity: '3 years.',
-    verification: 'AMPP certification directory.',
+    verification: "AMPP's public credential registry — lists current holders who opted in; not listed is not a verdict.",
     trades: T('painter', 'blaster'),
   },
   {
@@ -202,7 +202,7 @@ export const CERT_TABLE: CertEntry[] = [
     notCovered: 'The trade done at height. A level 3 rope access ticket is not a welding, NDT or blade-repair qualification — those are separate and must be held as well.',
     whoRequires: 'Any offshore or wind site running rope access; a level 3 on site is usually a condition of the permit.',
     validity: '3 years, with a revalidation assessment.',
-    verification: 'IRATA — held through the member company; not a fully public register.',
+    verification: "IRATA TechConnect — checked by hand: the tool puts a reCAPTCHA in front of every search.",
     trades: T('rope access'),
   },
   {
@@ -213,7 +213,7 @@ export const CERT_TABLE: CertEntry[] = [
     notCovered: 'Supervising a team, and the trade performed at height.',
     whoRequires: 'Rope access crews offshore and in wind.',
     validity: '3 years.',
-    verification: 'IRATA — through the member company.',
+    verification: "IRATA TechConnect — checked by hand (reCAPTCHA).",
     trades: T('rope access'),
   },
   {
@@ -224,7 +224,7 @@ export const CERT_TABLE: CertEntry[] = [
     notCovered: 'Rigging and rescue, supervision, and the trade performed at height.',
     whoRequires: 'Rope access crews, always alongside a level 3.',
     validity: '3 years.',
-    verification: 'IRATA — through the member company.',
+    verification: "IRATA TechConnect — checked by hand (reCAPTCHA).",
     trades: T('rope access'),
   },
 
@@ -264,7 +264,7 @@ export const CERT_TABLE: CertEntry[] = [
     notCovered: 'Supervision and scaffold inspection, which are separate CISRS cards.',
     whoRequires: 'UK sites, and increasingly named in offshore access contracts.',
     validity: '5 years.',
-    verification: 'CISRS card check by card number.',
+    verification: 'CSCS Smart Check by registration number and surname — checked by hand (captcha).',
     trades: T('scaffolder'),
   },
   {
@@ -275,7 +275,7 @@ export const CERT_TABLE: CertEntry[] = [
     notCovered: 'Advanced scaffolds, supervision and inspection — each a separate card.',
     whoRequires: 'UK construction and industrial sites.',
     validity: '5 years.',
-    verification: 'CISRS card check by card number.',
+    verification: 'CSCS Smart Check by registration number and surname — checked by hand (captcha).',
     trades: T('scaffolder'),
   },
   {

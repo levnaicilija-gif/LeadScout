@@ -1,67 +1,61 @@
 import type { Adapter, LookupInput, LookupResult } from './types';
 
 /**
- * Bodies with NO public register. Checked against the live sites on 2026-09-08.
+ * Bodies with NO register this app may search automatically. Checked against the live sites on 2026-09-08 and again on
+ * 2026-09-15 (item 23). The owner's rule: a register behind a captcha or a login stays manual — never automated around.
  *
- * These are real adapters, not placeholders: they exist so Verify tells the recruiter what
- * to do instead of "no adapter for winda". They never fetch and never return a verdict.
+ * These are real adapters, not placeholders: they exist so Verify tells the recruiter what to do instead of "no adapter
+ * for winda". They never fetch and never return a verdict.
  *
- *   winda  https://winda.globalwindsafety.org/  (the spec's winda.globalwindorganisation.org
- *          does not resolve — SSL name mismatch). Every path including /search/ redirects to
- *          /account?ReturnUrl=... with a login form (#Login, #Password, plus an #authCode
- *          2FA field). WINDA records are visible only to the technician and to organisations
- *          the technician has granted access, so a recruiter checks by asking the candidate
- *          to share their WINDA record, or by asking the training provider.
+ *   irata  https://techconnect.irata.org/verify/tech is public, but every search is sent with a reCAPTCHA v3 token
+ *          (`window.sendWithRecaptcha` → grecaptcha.execute(site key 6LclgYoo…) → "g-recaptcha-response"). Until
+ *          2026-09-15 this adapter drove a hosted browser through it; that is automating past an access control, so it
+ *          was retired. A person checks by hand and saves IRATA's Verified Certification Report.
  *
- *   ampp   https://www.ampp.org/resources/impact/certification-search sits behind
- *          HigherLogic OAUTH sign-in; there is no anonymous certification search.
+ *   winda  https://winda.globalwindsafety.org/ is a login (with a 2FA field). GWO: only organisations with a WINDA
+ *          profile see a technician's training records, using the WINDA ID the technician gives them.
  *
- *   cisrs  cisrs.org.uk has no card checker of its own (every /card-check path is a 404).
- *          CISRS cards are checked through CSCS Smart Check, which does list CISRS among
- *          its 40 schemes — but cardchecker.cscsonline.uk.com gates every lookup behind
- *          reCAPTCHA ("v3 score below threshold, please complete v2 captcha"). That is a
- *          deliberate access control, so this adapter does not automate it; the recruiter
- *          checks the card by hand or in the CSCS Smart Check app.
+ *   cisrs  cisrs.org.uk has no card checker. CSCS Smart Check (cscssmartcheck.co.uk, a JavaScript app) answers
+ *          CAPTCHA_REQUIRED and keeps its API for approved IT partners; NOCN's Online Card Checker
+ *          (cardchecker.nocn.org), the other checker naming CISRS, loads Google reCAPTCHA.
  *
  *   electrical_dk
- *          Denmark does not certify individual electricians. Sikkerhedsstyrelsen issues a
- *          company authorisation (virksomhedsautorisation) and approves a named "fagligt
- *          ansvarlig" for that company, so there is no personal register a candidate's
- *          credential can be looked up in. Note the authority's live host is www.sik.dk —
- *          both sikkerhedsstyrelsen.dk names currently serve invalid certificates
- *          (www.sikkerhedsstyrelsen.dk presents a self-signed cert for the internal name
- *          "em-sik-pweb02"), so the URL in the build spec cannot be fetched at all.
+ *          Denmark authorises the company, not the electrician. Erhvervsstyrelsen's autorisationsregister
+ *          (https://www.sik.dk/registre/autorisationsregister, CSV at /registries/export/csv/autorisationsregister — 10,250
+ *          rows, 4,721 electrical, columns navn, adresse1–3, landkode, postnr, postdst, cvr, autnr, forretningsomr,
+ *          binavn) is public and lists companies only, so it can confirm an employer's authorisation and never a
+ *          candidate's own.
  */
 type Closed = { body: string; name: string; issuerUrl: string; why: string; instead: string };
 
 const CLOSED: Closed[] = [
   {
+    body: 'irata',
+    name: 'IRATA — Technician Verification (techconnect.irata.org)',
+    issuerUrl: 'https://techconnect.irata.org/verify/tech',
+    why: "IRATA's verification tool sends a reCAPTCHA token with every search, so it is not searched automatically",
+    instead: 'open techconnect.irata.org/verify/tech, enter the IRATA number and surname, and save the Verified Certification Report it offers',
+  },
+  {
     body: 'winda',
     name: 'WINDA — Global Wind Organisation (winda.globalwindsafety.org)',
     issuerUrl: 'https://winda.globalwindsafety.org/',
-    why: 'WINDA has no public search — every page redirects to a login, and records are visible only to the technician and organisations they grant access to',
-    instead: 'ask the candidate to share their WINDA record (or their WINDA ID and a screenshot from their own login), or confirm with the training provider that issued the course',
-  },
-  {
-    body: 'ampp',
-    name: 'AMPP — Association for Materials Protection and Performance (ampp.org)',
-    issuerUrl: 'https://www.ampp.org/resources/impact/certification-search',
-    why: 'the AMPP certification search requires an AMPP account sign-in; there is no anonymous lookup',
-    instead: 'check with an AMPP member login, or email AMPP certification support with the certificate number and holder',
+    why: 'WINDA has no public search — records are visible only to organisations with a WINDA profile, using the WINDA ID the technician gives them',
+    instead: 'ask the candidate for their WINDA ID and to share their record, or confirm with the training provider that issued the course',
   },
   {
     body: 'cisrs',
     name: 'CISRS scaffolding — checked via CSCS Smart Check',
     issuerUrl: 'https://www.cscssmartcheck.co.uk/',
-    why: 'CISRS has no card checker on its own site, and CSCS Smart Check — which does cover CISRS — puts a reCAPTCHA in front of every lookup, so it cannot be checked automatically',
-    instead: 'check the card at cscssmartcheck.co.uk (scheme "CISRS", registration number + last name) or in the CSCS Smart Check app, and save the screenshot',
+    why: 'CISRS has no card checker of its own, and both checkers that cover it (CSCS Smart Check and NOCN\'s Online Card Checker) put a captcha in front of every lookup',
+    instead: 'check the card in CSCS Smart Check (scheme "CISRS", registration number + surname) and save the screenshot',
   },
   {
     body: 'electrical_dk',
-    name: 'Danish electrical authorisation — Sikkerhedsstyrelsen (sik.dk)',
-    issuerUrl: 'https://www.sik.dk/erhverv/elinstallationer-og-elanlaeg/autorisation',
-    why: 'Denmark authorises the company (virksomhedsautorisation) and approves a named responsible person for it, so an individual electrician has no personal certificate in a public register',
-    instead: "check the employing company's authorisation with Sikkerhedsstyrelsen, and treat the electrician's own qualification as a trade certificate to confirm with the issuing school or employer",
+    name: 'Danish electrical authorisation — Erhvervsstyrelsen autorisationsregister (sik.dk)',
+    issuerUrl: 'https://www.sik.dk/registre/autorisationsregister',
+    why: "Denmark authorises the company, not the electrician: the public autorisationsregister lists authorised companies and no individual, so a person's authorisation cannot be looked up",
+    instead: "confirm the employer's authorisation in the autorisationsregister by company name, CVR or authorisation number, and the electrician's own qualification with the school or employer that issued it",
   },
 ];
 
@@ -81,7 +75,7 @@ const make = (c: Closed): Adapter => ({
 });
 
 const byBody = Object.fromEntries(CLOSED.map((c) => [c.body, make(c)]));
+export const irata = byBody.irata;
 export const winda = byBody.winda;
-export const ampp = byBody.ampp;
 export const cisrs = byBody.cisrs;
 export const electricalDk = byBody.electrical_dk;

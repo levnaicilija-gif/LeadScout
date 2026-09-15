@@ -1,16 +1,17 @@
 import { frosio } from './frosio';
 import { pcn } from './pcn';
 import { cswip } from './cswip';
-import { irata } from './irata';
-import { winda, ampp, cisrs, electricalDk } from './closed';
+import { ampp } from './ampp';
+import { irata, winda, cisrs, electricalDk } from './closed';
 import type { Adapter, LookupInput, LookupResult } from './types';
 
 /**
- * One adapter per certifying body. `frosio`, `winda` and `ampp` have no public register and
- * say so instead of guessing, as do `cisrs` (CSCS Smart Check is behind a captcha) and
- * `electrical_dk` (Denmark authorises companies, not people). The rest search a real one.
+ * One adapter per certifying body. Searched automatically: `pcn` (BINDT's register), `cswip` (TWI, by number and date of
+ * birth), `ampp` (the public registry of current, opted-in holders) and `frosio` (the credential link printed on the
+ * certificate). `irata` and `cisrs` sit behind a captcha, `winda` behind a login, and `electrical_dk` has no personal
+ * register (Denmark authorises companies) — each says so and never fetches. Checked live 2026-09-15 (item 23).
  */
-export const ADAPTERS: Record<string, Adapter> = { frosio, pcn, cswip, irata, winda, ampp, cisrs, electrical_dk: electricalDk };
+export const ADAPTERS: Record<string, Adapter> = { frosio, pcn, cswip, ampp, irata, winda, cisrs, electrical_dk: electricalDk };
 
 /** Welder ISO 9606 (DNV/BV/TÜV/LRQA): no public register → issuer email + test-report consistency (see verify route). */
 export const ISSUER_EMAIL_BODIES = new Set(['iso9606']);

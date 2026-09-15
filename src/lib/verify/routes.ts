@@ -64,11 +64,18 @@ export async function loadCertBody(db: SupabaseClient, workspaceId: string, body
   return (data as CertBody) ?? null;
 }
 
-/** The state an adapter result lands in, given the body's route. */
+/**
+ * The state an adapter result lands in, given the body's route.
+ *
+ * `not_supported` means the register could not give an answer — it did not respond, needs a date of birth we do not have,
+ * or, like AMPP's registry, lists only some holders. Until item 23 it was passed in as null and a register route turned it
+ * into 'checked_not_found' ("not on the issuer register", red) — a verdict nobody had reached. It now goes to the issuer.
+ */
 export function stateFor(route: CertRoute, adapterResult: string | null): CertState {
   if (adapterResult === 'valid' || adapterResult === 'invalid') {
     return route === 'credential_link' ? 'verified_credential' : 'verified_register';
   }
+  if (adapterResult === 'not_supported' && route === 'register') return 'pending_issuer';
   if (adapterResult === 'consistent_with_test_report') return 'consistent_with_test_report';
   switch (route) {
     case 'issuer_email': return 'pending_issuer';

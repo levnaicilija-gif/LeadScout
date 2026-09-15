@@ -94,7 +94,8 @@ export async function POST(req: Request) {
       method: ext.method ?? ext.process, level: ext.level, credentialUrl: ext.credential_url, dob,
     });
 
-    const state = stateFor(cb.route, r.result === 'not_found' || r.result === 'not_supported' ? null : r.result);
+    // The raw result: stateFor tells a register that could not answer from one that does not hold the certificate.
+    const state = stateFor(cb.route, r.result);
 
     let shot: string | null = null;
     if (r.screenshot) {
