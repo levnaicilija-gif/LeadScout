@@ -8,6 +8,7 @@ import { CertCard } from '@/components/CertCard';
 import { CandidateTableStage } from '@/components/CandidateTableStage';
 import { CandidateEditForm } from '@/components/CandidateEditForm';
 import { CvSentLog } from '@/components/CvSentLog';
+import { AnonymizeAction } from '@/components/AnonymizeAction';
 import { CandidateDocDrop } from '@/components/CandidateDocDrop';
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +48,7 @@ export default async function CandidatePage({ params }: { params: { id: string }
   const certificates = docs.filter((d) => d.type === 'certificate');
   const cvs = docs.filter((d) => d.type === 'cv').sort((a, b) => String(b.uploaded_at).localeCompare(String(a.uploaded_at)));
   const otherDocs = docs.filter((d) => d.type !== 'certificate' && d.type !== 'cv');
+  const latestAnon: any = [...(c.anonymized_cvs ?? [])].sort((a: any, b: any) => String(b.generated_at).localeCompare(String(a.generated_at)))[0];
   const profile: any = c.profile ?? {};
   const placements = [...(c.candidate_placements ?? [])].sort((a: any, b: any) => String(b.placed_on).localeCompare(String(a.placed_on)));
   const current = placements.find((p: any) => !p.ended_on);
@@ -119,6 +121,10 @@ export default async function CandidatePage({ params }: { params: { id: string }
               </div>
             </div>
           )}
+        </Card>
+
+        <Card title="Client version" hook="client-version">
+          <AnonymizeAction candidateId={c.id} hasCv={cvs.length > 0} senior={me?.role === 'senior'} latest={latestAnon ? { generatedAt: latestAnon.generated_at, piiPassed: !!latestAnon.pii_check_passed, hasPdf: !!latestAnon.storage_path } : null} />
         </Card>
 
         <Card title={`Certificates · ${certificates.length}`} hook="certificates">
