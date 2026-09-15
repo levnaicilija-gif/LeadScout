@@ -1,6 +1,6 @@
 'use client';
 import { usePathname } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cvDrop, useCvDrop } from '@/lib/cv-drop-store';
 import { DROP_OVER, DROP_OVER_RAIL } from '@/lib/tool-colour';
 
@@ -22,6 +22,9 @@ export function CvDropZone({ variant }: { variant: 'rail' | 'home' }) {
   const { busy, dragging } = useCvDrop();
   const [over, setOver] = useState(false);
   const depth = useRef(0);
+  // The zone counts its own enters and leaves, which can go out of step the same way the page's did. When the page says no
+  // file is being dragged any more, the highlight goes too.
+  useEffect(() => { if (!dragging) { depth.current = 0; setOver(false); } }, [dragging]);
   if (pathname.startsWith('/app/verify')) return null;
 
   const withFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files');

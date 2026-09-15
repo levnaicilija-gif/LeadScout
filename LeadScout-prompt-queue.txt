@@ -883,3 +883,6 @@ ignored; an initial or a middle name allowed; a shared surname alone is not enou
 screen asks "This certificate is for X — this candidate is Y. Attach anyway, or open a record for X instead?". Checked
 in the attach route itself, so it covers a drop on a candidate's page and Verify's Unattached panel alike — which had no
 equivalent protection before: its "Attach to someone else…" attached anything to anyone.
+Step 3 built: the drop overlay ends when the drag does — the cursor leaving the window, a dragleave the browser never
+sent, a drag cancelled with Escape — because it also ends a second after dragover stops arriving; it stays up only while
+a file is really being dragged over the page.

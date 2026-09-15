@@ -23,6 +23,9 @@ import { cvDrop } from '@/lib/cv-drop-store';
  * stands aside there, and on onboarding.
  */
 const TIMEOUT_MS = 150_000;
+// How long after the last dragover a drag counts as over. A browser fires dragover every 350 ms or more often while a file is
+// held still over the page (HTML drag-and-drop processing model), so a pause this long means the file has gone.
+const IDLE_MS = 1000;
 
 export function CandidateDrop() {
   const pathname = usePathname() ?? '';
@@ -80,14 +83,25 @@ export function CandidateDrop() {
       const zone = document.querySelector<HTMLElement>('[data-cv-drop-zone="rail"]');
       return zone && zone.offsetParent ? Math.round(zone.closest('nav')?.getBoundingClientRect().right ?? 0) : 0;
     };
-    const stop = () => { depth.current = 0; setDragging(false); cvDrop.set({ dragging: false }); };
+    // The overlay is up only while a file is really being dragged over the page. Counting dragenter against dragleave is
+    // not enough on its own: a browser does not always send the dragleave that balances an enter — an element re-rendered
+    // or removed under the cursor never gets one, and a drag cancelled with Escape or let go outside the window may send
+    // none — and a count left above zero kept "Drop CVs to add candidates" on screen with nothing being dragged (owner's
+    // report, 2026-09-15). So the drag also ends when dragover stops arriving: while a file is held over the page the
+    // browser fires it continually, and IDLE_MS after the last one the file is no longer there.
+    let idle: ReturnType<typeof setTimeout> | undefined;
+    const stop = () => { clearTimeout(idle); depth.current = 0; setDragging(false); cvDrop.set({ dragging: false }); };
+    const alive = () => { clearTimeout(idle); idle = setTimeout(stop, IDLE_MS); };
     const enter = (e: DragEvent) => {
       if (!withFiles(e)) return;
       e.preventDefault();
       if (depth.current++ === 0) setOverlayLeft(railRight());
       setDragging(true); cvDrop.set({ dragging: true });
+      alive();
     };
-    const over = (e: DragEvent) => { if (!withFiles(e)) return; e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; };
+    // Captured, so a zone that stops the event (a certificate zone on a candidate's page) still keeps the drag alive.
+    const over = (e: DragEvent) => { if (!withFiles(e)) return; alive(); };
+    const allowDrop = (e: DragEvent) => { if (!withFiles(e)) return; e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; };
     const leave = (e: DragEvent) => { if (!withFiles(e)) return; depth.current = Math.max(0, depth.current - 1); if (depth.current === 0) stop(); };
     // Captured, so every drop ends the drag — including one a zone handles and stops, like a certificate on a candidate's page.
     const ended = (e: DragEvent) => { if (withFiles(e)) stop(); };
@@ -98,13 +112,15 @@ export function CandidateDrop() {
       runRef.current(Array.from(e.dataTransfer?.files ?? []));
     };
     window.addEventListener('dragenter', enter);
-    window.addEventListener('dragover', over);
+    window.addEventListener('dragover', over, true);
+    window.addEventListener('dragover', allowDrop);
     window.addEventListener('dragleave', leave);
     window.addEventListener('drop', ended, true);
     window.addEventListener('drop', drop);
     return () => {
       window.removeEventListener('dragenter', enter);
-      window.removeEventListener('dragover', over);
+      window.removeEventListener('dragover', over, true);
+      window.removeEventListener('dragover', allowDrop);
       window.removeEventListener('dragleave', leave);
       window.removeEventListener('drop', ended, true);
       window.removeEventListener('drop', drop);
