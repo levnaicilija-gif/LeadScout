@@ -35,20 +35,31 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SU
 let failures = 0;
 const check = (ok: boolean, what: string, detail = '') => { if (!ok) failures++; console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${what}${detail ? ` — ${detail}` : ''}`); };
 
-/** meaning: the decoded layer's own words for this scheme, from the certificate library — never printed on the document. */
-type Spec = { body: 'cswip' | 'ampp' | 'irata'; file: string; lines: string[]; meaning: RegExp; reason: RegExp };
+/**
+ * meaning — the decoded layer's own words for this scheme, from the certificate library, never printed on the document.
+ * After 0034 (applied 2026-09-15): instructions — the body's corrected instructions; stale — 0008's, which must be gone
+ * (case-sensitive: IRATA's own note says "not searched automatically", which is right); library — the corrected "How it
+ * is checked" line; emailTo — where the drafted email goes.
+ */
+type Spec = { body: 'cswip' | 'ampp' | 'irata'; file: string; lines: string[]; meaning: RegExp; reason: RegExp; instructions: RegExp; stale: RegExp; library: RegExp; emailTo: RegExp };
 const SPECIMEN = 'SPECIMEN — SOFTWARE TEST DOCUMENT — NOT A REAL QUALIFICATION';
 const SPECS: Spec[] = [
   {
     body: 'cswip', file: 'cswip-specimen.pdf', meaning: /TWI certification\. The standard weld inspection grade/i, reason: /date of birth/i,
+    instructions: /When TWI cannot answer, we draft an email to verification@twi\.co\.uk/, stale: /CSWIP verifies on certificate number AND date of birth, so the passport must be on file first/,
+    library: /How it is checked\s*TWI's CSWIP register — by number and date of birth/i, emailTo: /To verification@twi\.co\.uk/,
     lines: ['TWI Certification Ltd', 'CSWIP', 'Certificate of Competence', 'CSWIP 3.1 Welding Inspector', 'Holder: Probe Fixturesson', 'Certificate number: 000000', 'Date of issue: 01/01/2024', 'Expiry date: 01/01/2029'],
   },
   {
     body: 'ampp', file: 'ampp-specimen.pdf', meaning: /AMPP Coating Inspector Program level 2/i, reason: /not a verdict/i,
+    instructions: /Searched automatically in AMPP's public credential registry by certification number and surname/, stale: /needs an AMPP account/,
+    library: /How it is checked\s*AMPP's public credential registry — lists current holders who opted in/i, emailTo: /To customersupport@ampp\.org/,
     lines: ['AMPP — Association for Materials Protection and Performance', 'Certified Coating Inspector — Level 2', 'Holder: Probe Fixturesson', 'Certification number: 000000', 'Issued: 2024-01-01', 'Expires: 2027-01-01'],
   },
   {
     body: 'irata', file: 'irata-specimen.pdf', meaning: /IRATA certification\. Level 2/i, reason: /reCAPTCHA/i,
+    instructions: /IRATA's verification tool puts a reCAPTCHA in front of every search, so it is checked by hand/, stale: /Searched automatically on IRATA TechConnect/,
+    library: /How it is checked\s*IRATA TechConnect — checked by hand \(reCAPTCHA\)/i, emailTo: /No address on file for this body/,
     lines: ['IRATA International', 'Industrial Rope Access Trade Association', 'Rope Access Technician — Level 2', 'Holder: Probe Fixturesson', 'IRATA No: 2/00000', 'Issued: 01/01/2024', 'Valid until: 01/01/2027'],
   },
 ];
@@ -125,6 +136,9 @@ async function dropAndRead(page: PwPage, dir: string, width: number) {
     check(/pending issuer — email drafted/.test(card), `at ${width}px the ${s.body.toUpperCase()} card lands on "pending issuer — email drafted", not a verdict`, (card.match(/Status (.{0,60})/) ?? [])[1] ?? '');
     check(s.reason.test(card), `at ${width}px the ${s.body.toUpperCase()} card says why no register confirmed it`, (card.match(/Notes (.{0,200})/) ?? [])[1] ?? card.slice(-200));
     check(!/verified on register|not on the issuer register/.test(card), `at ${width}px the ${s.body.toUpperCase()} card claims no register verdict`);
+    check(s.instructions.test(card) && !s.stale.test(card), `at ${width}px the ${s.body.toUpperCase()} card shows 0034's instructions, not the old wording`, (card.match(/pending issuer — email drafted (.{0,170})/) ?? [])[1] ?? '');
+    check(s.library.test(card), `at ${width}px the ${s.body.toUpperCase()} card's "How it is checked" line is 0034's`, (card.match(/How it is checkeds*(.{0,110})/i) ?? [])[1] ?? '');
+    check(s.emailTo.test(card), `at ${width}px the ${s.body.toUpperCase()} card's drafted email goes where 0034 says`, (card.match(/send the emails*(.{0,60})/i) ?? [])[1] ?? '');
   }
   check(!sideways, `Verify at ${width}px does not scroll sideways`);
   return lookups;

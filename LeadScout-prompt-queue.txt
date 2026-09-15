@@ -708,3 +708,5 @@ register that could not answer showed "not on the issuer register"; it now shows
 "pending issuer — email drafted". Migration 0034 (data only) corrects the stored
 routes and instructions and waits to be applied by hand. Model cost per verification,
 measured on those six certificates: 6 document-read attempts, €0.0340 — €0.0057 a verification — and no model call in any lookup.
+
+0034 applied by the owner 2026-09-15: 6 cert_bodies and 11 cert_library rows confirmed.
