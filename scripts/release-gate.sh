@@ -39,6 +39,7 @@ step users-policy npx tsx --env-file=.env.local scripts/users-policy-probe.ts
 step workspace-scope npx tsx --env-file=.env.local scripts/workspace-scope-check.ts
 step compound-signals npx tsx scripts/compound-signals-check.ts
 step phone-on npx tsx scripts/phone-on-check.ts
+step winner-address npx tsx scripts/winner-address-check.ts
 
 if [[ " ${FAILED[*]-} " == *" build "* ]]; then
   echo "=== the build failed, so nothing was served or tested against it" | tee -a "$LOG"

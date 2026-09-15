@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
-import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { crawlWorkspace } from '@/lib/crawl-workspace';
-import { claude, MODEL_CLASSIFY } from '@/lib/ai/claude';
-import { Budget, logCost, logModelCall, modelCostEur, spentEur } from '@/lib/cost';
+import { lookupDomain } from '@/lib/domain-lookup';
+import { Budget, spentEur } from '@/lib/cost';
 export const maxDuration = 300;
 
 /**
@@ -29,30 +28,7 @@ export const POST = (req: Request) => run(req);
 const RELEVANT = ['offshore_wind', 'shipyard', 'oil_gas', 'epc', 'industrial', 'marine_contractor', 'om_service'];
 const COUNTRIES = ['DK', 'NL', 'NO', 'DE', 'GB', 'BE', 'SE', 'IE', 'FI'];
 
-/**
- * Anthropic bills web search per search on top of tokens. This rate is an assumption to be
- * confirmed against the first invoice; it is logged separately from token cost so the two can
- * be told apart.
- */
-const SEARCH_EUR = Number(process.env.WEB_SEARCH_EUR_PER_CALL ?? 0.0092); // ~$10/1000 at 0.92
-
-const Answer = z.object({
-  domain: z.string().nullish().transform((v) => v ?? null),
-  confirmed_by: z.string().nullish().transform((v) => v ?? null),
-  source_url: z.string().nullish().transform((v) => v ?? null),
-});
-
-const SYSTEM = `You find the official website of a named company, for a recruitment agency building a list of employers.
-
-Search the web, then answer with JSON only:
-{"domain": "example.com", "confirmed_by": "the page text that names the company", "source_url": "the page you read"}
-
-Rules:
-- Return the company's OWN website, not a directory, aggregator, LinkedIn, Bloomberg, Wikipedia, a news article or a jobs board.
-- Only answer with a domain when a page you actually read names that company as itself — its title, header or footer. Quote that text in confirmed_by.
-- THE COUNTRY MUST MATCH. Company names repeat across countries: "AXYS" in Belgium is not AXYS Technologies in British Columbia. If the site you find is a different company in a different country, that is a miss — answer null. Only accept a site whose own pages place the company in the country given, or that is plainly the same group operating there.
-- If the company is not clearly identifiable, or you only find it mentioned on someone else's page, answer {"domain": null, "confirmed_by": null, "source_url": null}. A wrong website is far worse than none.
-- domain is the bare hostname without scheme or "www.".`;
+// The lookup itself — prompt, model, search, cost logging — is src/lib/domain-lookup.ts, shared with the sample script.
 
 async function run(req: Request) {
   if (!authorised(req)) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
@@ -100,35 +76,10 @@ async function run(req: Request) {
     if (spent >= capEur || !budget.canAfford(0.1)) break;
     stats.looked++;
     try {
-      let msgs: any[] = [{ role: 'user', content: `Company: ${c.name}\nCountry: ${c.country}\nSector: ${c.sector}` }];
-      let text = '';
-      let searches = 0;
-      // Two hops, one search, Haiku. Sonnet 5 with the filtering search tool took 214 s and
-      // cost €0.28 for one company — ten hours and €50 for the whole set.
-      for (let hop = 0; hop < 2; hop++) {
-        const r: any = await claude.messages.create({
-          model: MODEL_CLASSIFY, max_tokens: 400, system: SYSTEM,
-          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 1 }] as any,
-          messages: msgs,
-        } as any);
-        const tokensEur = await logModelCall(db, workspace, MODEL_CLASSIFY, `resolve ${c.name}`, r.usage);
-        spent += tokensEur;
-        budget.add(tokensEur);
-        searches += (r.content ?? []).filter((b: any) => b.type === 'server_tool_use' || b.type === 'web_search_tool_result').length;
-        text = (r.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
-        if (r.stop_reason !== 'pause_turn') break;
-        msgs = [...msgs, { role: 'assistant', content: r.content }];
-      }
-      if (searches > 0) {
-        const eur = SEARCH_EUR * Math.min(searches, 1);
-        await logCost(db, workspace, 'search', `web search · ${c.name}`, Math.min(searches, 1), eur);
-        spent += eur;
-        budget.add(eur);
-      }
-
-      const m = text.match(/\{[\s\S]*\}/);
-      const ans = Answer.parse(JSON.parse(m ? m[0] : '{}'));
-      const domain = (ans.domain ?? '').trim().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '').toLowerCase();
+      const r = await lookupDomain({ name: c.name, country: c.country, sector: c.sector }, { db, workspaceId: workspace, budget });
+      spent += r.eur;
+      const domain = r.domain;
+      const ans = { confirmed_by: r.confirmedBy, source_url: r.sourceUrl };
 
       if (domain && ans.confirmed_by) {
         await db.from('companies').update({
