@@ -15,6 +15,9 @@ const BASE = process.argv.includes('--local')
 const force = process.argv.includes('--force');
 const scopeAt = process.argv.indexOf('--scope');
 const scope = scopeAt > 0 ? process.argv[scopeAt + 1] : 'all';
+/** --ids a,b,c: read exactly these companies, whether or not a posting or lead stands on them. */
+const idsAt = process.argv.indexOf('--ids');
+const ids = idsAt > 0 ? process.argv[idsAt + 1].split(',').map((s) => s.trim()).filter(Boolean) : undefined;
 
 type Pass = {
   checked: number; done: boolean; remaining: number; tookMs?: number; skippedNoSite?: number;
@@ -31,7 +34,7 @@ type Pass = {
     const res = await fetch(`${BASE}/api/jobs/hiring-contacts`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-cron-secret': process.env.CRON_SECRET ?? '' },
-      body: JSON.stringify({ force, scope }),
+      body: JSON.stringify({ force, scope, ids }),
     });
     const j = (await res.json().catch(() => ({}))) as Pass;
 

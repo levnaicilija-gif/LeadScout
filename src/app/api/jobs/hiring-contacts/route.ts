@@ -89,7 +89,10 @@ export async function POST(req: Request) {
     }
   }
 
-  const companyIds = [...new Set([...hiringIds, ...leadsBy.keys()])];
+  // `ids`: named companies, read whether or not a posting or lead stands on them — the Spanish companies from Industry
+  // Contacts resolved on 2026-09-15 had neither, so nothing else would ever have read their sites.
+  const named = Array.isArray(body.ids) ? (body.ids as unknown[]).map(String).filter((s) => /^[0-9a-f-]{36}$/i.test(s)) : [];
+  const companyIds = named.length ? [...new Set(named)] : [...new Set([...hiringIds, ...leadsBy.keys()])];
   if (!companyIds.length) return NextResponse.json({ done: true, reason: 'no open postings or won-work leads' });
 
   // Every pending company, not a fixed batch: how many get done is decided by the clock.

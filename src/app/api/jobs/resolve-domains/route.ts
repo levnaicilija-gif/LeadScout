@@ -28,7 +28,8 @@ export const GET = (req: Request) => run(req);
 export const POST = (req: Request) => run(req);
 
 const RELEVANT = ['offshore_wind', 'shipyard', 'oil_gas', 'epc', 'industrial', 'marine_contractor', 'om_service'];
-const COUNTRIES = ['DK', 'NL', 'NO', 'DE', 'GB', 'BE', 'SE', 'IE', 'FI'];
+// Spain added 2026-09-15: 353 Spanish companies from Industry Contacts had no domain because it was not on this list.
+const COUNTRIES = ['DK', 'NL', 'NO', 'DE', 'GB', 'BE', 'SE', 'IE', 'FI', 'ES'];
 
 // The lookup itself — prompt, model, search, cost logging — is src/lib/domain-lookup.ts, shared with the sample script.
 
@@ -69,7 +70,8 @@ async function run(req: Request) {
   const provenance = await hasDomainProvenance(db);
   let poolQuery = db.from('companies')
     .select(`id, name, country, sector${provenance ? ', domain_lookups' : ''}`)
-    .eq('workspace_id', workspace).in('country', COUNTRIES).in('sector', RELEVANT)
+    // ?country=ES looks up one listed country only — the owner approved Spain's 38 first, not every country's remainder.
+    .eq('workspace_id', workspace).in('country', p.get('country') && COUNTRIES.includes(p.get('country')!.toUpperCase()) ? [p.get('country')!.toUpperCase()] : COUNTRIES).in('sector', RELEVANT)
     .is('domain', null).is('careers_checked_at', null)
     .or('careers_status.is.null,careers_status.neq.no_domain_found');
   if (provenance) poolQuery = poolQuery.lt('domain_lookups', 2);
