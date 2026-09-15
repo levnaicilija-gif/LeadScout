@@ -24,5 +24,12 @@ check(siteScope({ companyName: 'France Travaux Maritimes', domain: 'ftm-travaux.
 s = siteScope({ companyName: 'Nordic Cranes AS', domain: 'nordic-group.com', winnerCountry: 'NO', sharedWith: ['Nordic Offshore AS'] });
 check(s.scope === 'group' && /also on file for Nordic Offshore AS/.test(s.reason ?? ''), 'a domain already on file for a differently named company is not the winner\'s alone', s);
 
+// The backfill of 2026-09-15 flagged the same company stored twice as a group site. It is not.
+check(siteScope({ companyName: 'Winergy', domain: 'winergy-group.com', sharedWith: ['Winergy / Flender'] }).scope === 'own', 'the same company under two names shares its site with itself (Winergy / "Winergy / Flender")');
+check(siteScope({ companyName: 'NIDEC SSB Wind Systems', domain: 'ssbwindsystems.de', sharedWith: ['Nidec SSB Windsystems'] }).scope === 'own', 'a spacing variant of the same name is the same company (NIDEC SSB Wind Systems / Nidec SSB Windsystems)');
+check(siteScope({ companyName: 'Siemens Gamesa Renewable Energy', domain: 'siemensgamesa.com', sharedWith: ['Siemens Gamesa'] }).scope === 'own', 'a longer form of the same name is the same company (Siemens Gamesa Renewable Energy / Siemens Gamesa)');
+s = siteScope({ companyName: 'GAC Denmark', domain: 'gac.com', winnerCountry: 'DK', sharedWith: ['GAC Norway'] });
+check(s.scope === 'group', 'two country entities on one site are a group (GAC Denmark / GAC Norway on gac.com)', s);
+
 console.log(failed ? `\n${failed} failed` : '\nsite scope: all checks passed');
 process.exitCode = failed ? 1 : 0;

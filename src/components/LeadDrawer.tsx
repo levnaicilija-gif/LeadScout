@@ -115,13 +115,18 @@ export function LeadDrawer({ lead }: { lead: any }) {
         </div>
       );
       if (c) return null;
+      // A site that gave no contacts still says whether it is confirmed and whether it is the group's: "nothing printed on
+      // its own site" read as COLAS FRANCE's own site when colas.com is the group's (found on production, 2026-09-15).
       return (
-        <div data-prepared-searches className="mt-3 text-[13px]">
+        <div data-prepared-searches data-site-confirmed={trust ? String(trust.confirmed) : 'unknown'} data-site-scope={trust?.scope ?? 'unknown'} className="mt-3 text-[13px]">
+          {trust?.lines.map((l, i) => (
+            <div key={i} data-site-trust={l.kind === 'scope' ? 'group' : trust.check ?? ''} className={`mb-2 text-[13px] rounded px-2.5 py-1.5 ${l.tone === 'ok' ? 'bg-oksoft text-ok' : l.tone === 'warn' ? 'bg-warnsoft text-warn' : 'bg-line2 text-ink2'}`}>{l.text}</div>
+          ))}
           <div className="text-ink3 mb-1.5">{!co.domain
             ? 'No website on file for this company, so its own pages have not been read. Searches to run — these are searches, not people we found:'
             : co.contacts_checked_at
-              ? `Nothing printed on its own site when we read it on ${String(co.contacts_checked_at).slice(0, 10)}. Searches to run — these are searches, not people we found:`
-              : 'Its own site has not been read yet. Searches to run meanwhile — these are searches, not people we found:'}</div>
+              ? `Nothing printed on ${co.domain} when we read it on ${String(co.contacts_checked_at).slice(0, 10)}. Searches to run — these are searches, not people we found:`
+              : `${co.domain} has not been read yet. Searches to run meanwhile — these are searches, not people we found:`}</div>
           <div className="grid gap-1">{(lead.searches ?? []).map((s: any) => <a key={s.url} className="text-accent" href={s.url} target="_blank" rel="noopener">{s.label}</a>)}</div>
         </div>
       );

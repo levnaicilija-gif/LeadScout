@@ -45,8 +45,14 @@ export function siteScope(input: { companyName: string; domain: string; winnerCo
   const tld = domain.toLowerCase().split('.').pop() ?? '';
   const onBrand = !!brand && (name.startsWith(brand) || name.split(' ')[0] === brand.split(' ')[0]);
 
-  if (input.sharedWith?.length) {
-    return { scope: 'group', reason: `${domain} is also on file for ${input.sharedWith.slice(0, 2).join(' and ')}, so it is not ${companyName}'s alone` };
+  // A domain on file for another company says "group" only when the two are different entities. The same company stored
+  // under two names — "Winergy" and "Winergy / Flender", "NIDEC SSB Wind Systems" and "Nidec SSB Windsystems" — shares its
+  // site with itself, and calling that a group site warned about six such pairs on 2026-09-15 (a duplicate-company
+  // problem, not a wrong-website one). GAC Denmark and GAC Norway on gac.com are two entities of one group.
+  const squash = (s: string) => words(s).replace(/\s+/g, '');
+  const others = (input.sharedWith ?? []).filter((o) => { const a = squash(o), b = squash(companyName); return !!a && !!b && !a.includes(b) && !b.includes(a); });
+  if (others.length) {
+    return { scope: 'group', reason: `${domain} is also on file for ${others.slice(0, 2).join(' and ')}, so it is not ${companyName}'s alone` };
   }
   const branchWord = companyName.match(BRANCH)?.[0];
   if (branchWord && onBrand) {
