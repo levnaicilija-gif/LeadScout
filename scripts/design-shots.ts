@@ -79,6 +79,20 @@ const SIGNED_IN = [
         if (overflow > 2) problems.push(`${tag} ${name}: page scrolls sideways by ${overflow}px`);
         await page.screenshot({ path: `${OUT}/${tag}-${name}.png`, fullPage: true });
         console.log(`${tag} ${name}${overflow > 2 ? `  ← ${overflow}px sideways` : ''}`);
+
+        // Item 24 follow-up: one way to add a CV at each width — the drop zone (the foot of the rail, or Home's card) at
+        // desktop, the floating "+ Add CV" button at 390px — on every screen but Verify, which keeps its own drop zone.
+        // Clicking it must open the file picker. No file is chosen: this runs in the real workspace, so nothing is read.
+        const shown = (sel: string) => page.locator(sel).evaluateAll((els) => els.filter((e) => (e as any).checkVisibility()).length);
+        const [zones, buttons] = [await shown('[data-cv-drop-zone]'), await shown('[data-candidate-drop-button]')];
+        const [wantZones, wantButtons] = name === 'verify' ? [0, 0] : tag === 'desktop' ? [1, 0] : [0, 1];
+        if (zones !== wantZones || buttons !== wantButtons) problems.push(`${tag} ${name}: ${zones} CV drop zone(s) and ${buttons} "+ Add CV" button(s) on screen, expected ${wantZones} and ${wantButtons}`);
+        if (wantZones || wantButtons) {
+          await page.waitForFunction(() => document.documentElement.dataset.hydrated === 'true', undefined, { timeout: 30000 }).catch(() => {});
+          const control = page.locator(wantZones ? '[data-cv-drop-zone]:visible' : '[data-candidate-drop-button]:visible').first();
+          const picker = await Promise.all([page.waitForEvent('filechooser', { timeout: 10000 }), control.click()]).then(() => true).catch(() => false);
+          if (!picker) problems.push(`${tag} ${name}: clicking the ${wantZones ? 'CV drop zone' : '"+ Add CV" button'} did not open the file picker`);
+        }
       }
       await ctx.close();
     }

@@ -5,17 +5,22 @@ import { useEffect, useRef, useState } from 'react';
 import { AttachChoice } from './AttachChoice';
 import { candidateLabel } from '@/lib/candidate-number';
 import { friendlyError } from '@/lib/friendly-error';
+import { cvDrop } from '@/lib/cv-drop-store';
 
 /**
- * Add a candidate from any screen (item 24): drag CV files anywhere onto the app, or press "Add CV".
+ * Add a candidate from any screen (item 24): drag CV files anywhere onto the app, drop them on the "Drop a CV here" zone,
+ * click that zone, or press "+ Add CV".
  *
  * It is Verify's intake, unchanged in what it reads — the same document recognition and CV parsing — and the same
  * duplicate rule: a name plus a second field. A new person becomes a record; someone who looks like a person already in
  * the pool is stored and asked about, never merged; anything that is not a candidate document is not saved. The
  * anonymised client version is not made here — that is an action on the candidate's page.
  *
- * Verify keeps its own drop zone (which also runs the client version and questions), so the overlay stands aside there,
- * and on onboarding. Touch screens cannot drag files, so the button is always shown.
+ * The ways in (item 24 follow-up, 2026-09-15 — dropping anywhere worked and nothing on screen said so): at lg and up,
+ * CvDropZone at the foot of the rail and on Home; below lg, where the rail lies down as a bar and a touch screen cannot
+ * drag files, the floating "+ Add CV" button — never both at one width. They all call this component through
+ * `cv-drop-store`. Verify keeps its own drop zone (which also runs the client version and questions), so everything here
+ * stands aside there, and on onboarding.
  */
 const TIMEOUT_MS = 150_000;
 
@@ -23,6 +28,7 @@ export function CandidateDrop() {
   const pathname = usePathname() ?? '';
   const standAside = pathname.startsWith('/app/verify') || pathname.startsWith('/app/onboarding');
   const [dragging, setDragging] = useState(false);
+  const [overlayLeft, setOverlayLeft] = useState(0);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const [result, setResult] = useState<any | null>(null);
@@ -34,6 +40,7 @@ export function CandidateDrop() {
   const run = async (files: File[]) => {
     if (!files.length || busyRef.current) return;
     busyRef.current = true;
+    cvDrop.set({ busy: true });
     setOpen(true); setErr(''); setResult(null);
     setBusy(`Reading ${files.length} file${files.length === 1 ? '' : 's'}…`);
     const ac = new AbortController();
@@ -52,31 +59,56 @@ export function CandidateDrop() {
     } finally {
       clearTimeout(timer);
       busyRef.current = false;
+      cvDrop.set({ busy: false });
       setBusy('');
     }
   };
+  const runRef = useRef(run);
+  runRef.current = run;
+
+  // The zones on the rail and on Home reach the reading through here. Clicking one while a file is being read opens the panel.
+  useEffect(() => cvDrop.register({
+    run: (files) => runRef.current(files),
+    browse: () => { if (busyRef.current) setOpen(true); else input.current?.click(); },
+  }), []);
 
   useEffect(() => {
     if (standAside) return;
     const withFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
-    const enter = (e: DragEvent) => { if (!withFiles(e)) return; e.preventDefault(); depth.current++; setDragging(true); };
-    const over = (e: DragEvent) => { if (!withFiles(e)) return; e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; };
-    const leave = (e: DragEvent) => { if (!withFiles(e)) return; depth.current = Math.max(0, depth.current - 1); if (depth.current === 0) setDragging(false); };
-    const drop = (e: DragEvent) => {
+    // Where the rail's zone is on screen, the overlay starts beside the rail, so the zone's highlight stays in view.
+    const railRight = () => {
+      const zone = document.querySelector<HTMLElement>('[data-cv-drop-zone="rail"]');
+      return zone && zone.offsetParent ? Math.round(zone.closest('nav')?.getBoundingClientRect().right ?? 0) : 0;
+    };
+    const stop = () => { depth.current = 0; setDragging(false); cvDrop.set({ dragging: false }); };
+    const enter = (e: DragEvent) => {
       if (!withFiles(e)) return;
       e.preventDefault();
-      depth.current = 0; setDragging(false);
-      run(Array.from(e.dataTransfer?.files ?? []));
+      if (depth.current++ === 0) setOverlayLeft(railRight());
+      setDragging(true); cvDrop.set({ dragging: true });
+    };
+    const over = (e: DragEvent) => { if (!withFiles(e)) return; e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; };
+    const leave = (e: DragEvent) => { if (!withFiles(e)) return; depth.current = Math.max(0, depth.current - 1); if (depth.current === 0) stop(); };
+    // Captured, so every drop ends the drag — including one a zone handles and stops, like a certificate on a candidate's page.
+    const ended = (e: DragEvent) => { if (withFiles(e)) stop(); };
+    const drop = (e: DragEvent) => {
+      // A drop the CV zone already took is marked handled; reading it here too would read the file twice.
+      if (!withFiles(e) || e.defaultPrevented) return;
+      e.preventDefault();
+      runRef.current(Array.from(e.dataTransfer?.files ?? []));
     };
     window.addEventListener('dragenter', enter);
     window.addEventListener('dragover', over);
     window.addEventListener('dragleave', leave);
+    window.addEventListener('drop', ended, true);
     window.addEventListener('drop', drop);
     return () => {
       window.removeEventListener('dragenter', enter);
       window.removeEventListener('dragover', over);
       window.removeEventListener('dragleave', leave);
+      window.removeEventListener('drop', ended, true);
       window.removeEventListener('drop', drop);
+      stop();
     };
   }, [standAside]);
 
@@ -91,14 +123,15 @@ export function CandidateDrop() {
       <input ref={input} data-candidate-drop-input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.docx,.txt" className="hidden"
         onChange={(e) => { const files = Array.from(e.target.files ?? []); e.target.value = ''; run(files); }} />
 
+      {/* Narrow widths only: at lg and up the zone on the rail or on Home is the way in, and a second control would repeat it. */}
       <button type="button" data-candidate-drop-button onClick={() => (result || err || busy ? setOpen(!open) : input.current?.click())}
-        className="fixed z-40 right-4 bottom-4 btn btn-primary shadow-lg flex items-center gap-2">
+        className="lg:hidden fixed z-40 right-4 bottom-4 btn btn-primary shadow-lg flex items-center gap-2">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden><path d="M12 5v14M5 12h14" /></svg>
         {busy ? 'Reading…' : result || err ? (open ? 'Hide' : 'Added') : 'Add CV'}
       </button>
 
       {dragging && (
-        <div data-candidate-drop-overlay className="fixed inset-0 z-50 bg-rail/70 grid place-items-center px-4 pointer-events-none">
+        <div data-candidate-drop-overlay style={{ left: overlayLeft }} className="fixed top-0 right-0 bottom-0 z-50 bg-rail/70 grid place-items-center px-4 pointer-events-none">
           <div className="w-full max-w-[520px] border-2 border-dashed border-white rounded-tile px-6 py-12 text-center text-white">
             <b className="block font-display text-[22px] font-bold">Drop CVs to add candidates</b>
             <div className="text-[13px] mt-1.5 text-railink">Read the same way Verify reads them · someone already in the pool is asked about, never merged</div>
@@ -108,7 +141,7 @@ export function CandidateDrop() {
 
       {open && (busy || err || result) && (
         <div data-candidate-drop-panel data-candidate-drop-busy={busy ? 'true' : 'false'}
-          className="fixed z-40 right-4 bottom-[72px] w-[min(440px,calc(100vw-32px))] max-h-[70vh] overflow-auto bg-panel border border-line rounded-card shadow-xl">
+          className="fixed z-40 right-4 bottom-[72px] lg:bottom-4 w-[min(440px,calc(100vw-32px))] max-h-[70vh] overflow-auto bg-panel border border-line rounded-card shadow-xl">
           <div className="flex items-center justify-between px-4 py-3 border-b border-line">
             <b className="font-semibold">Add candidates</b>
             <div className="flex gap-2">

@@ -3,6 +3,7 @@ import { requireUser, supabaseServer } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { SignOut } from '@/components/SignOut';
 import { Logo } from '@/components/Logo';
+import { CvDropZone } from '@/components/CvDropZone';
 import { DOT } from '@/lib/tool-colour';
 import { canSee, planFor, opensOn, type Screen } from '@/lib/onboarding';
 import { mustChooseIndustries } from '@/lib/industry-follow';
@@ -39,7 +40,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       {/* The logo always goes Home. */}
       <Link href="/app/home" className="px-2 shrink-0 lg:pb-5 lg:pt-1"><Logo light size="sm" /></Link>
       <Item href="/app/today" label="Today" screen="today" tool="today" /><Item href="/app/radar" label="Leads" count={leads ?? 0} screen="radar" tool="leads" /><Item href="/app/verify" label="Verify" count="drop" screen="verify" tool="verify" /><Item href="/app/pitch" label="Pitch" count="reverse" screen="pitch" tool="pitch" /><Item href="/app/candidates" label="Candidates" count={cands ?? 0} screen="candidates" tool="cand" /><Item href="/app/campaigns" label="Campaigns" count={camps ?? 0} screen="campaigns" tool="cand" />
-      <div className="hidden lg:block flex-1" />
+      {/* Item 24 follow-up: the CV drop zone at the foot of the rail — margin-top:auto keeps it there however many screens are
+          listed. The wrapper stays on Verify, where the zone stands aside, so the rail does not shift between screens. */}
+      <div className="hidden lg:flex lg:mt-auto lg:pt-4 lg:pb-2 flex-col shrink-0">{canSee('candidates', me) && <CvDropZone variant="rail" />}</div>
       {me.role === 'senior' && <Item href="/app/settings" label="Settings · Sources" count="senior" tool="set" />}
       <div className="text-[12px] text-raildim px-2.5 shrink-0 whitespace-nowrap lg:whitespace-normal lg:pt-3 lg:border-t lg:border-white/10"><b className="block text-railink font-medium">{me.name ?? me.email}</b>Day {me.onboarding_day} · {me.role}{me.role !== 'senior' && (me.onboarding_day ?? 99) <= 10 && <span className="hidden lg:block mt-1 text-railink">{plan.goal}</span>}<div className="mt-1.5 -mx-2.5 flex items-center"><Link href="/app/preferences" data-preferences-link className="px-2.5 py-1 rounded text-railink hover:bg-white/[.07] text-[12px]">Preferences</Link><SignOut /></div></div>
     </nav>

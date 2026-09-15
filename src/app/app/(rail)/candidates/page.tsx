@@ -53,7 +53,7 @@ export default async function Candidates({ searchParams }: { searchParams: Param
   return (<>
     <div className="flex items-baseline justify-between flex-wrap gap-x-3 gap-y-1 mb-3">
       <h1 className="font-display text-[26px] font-bold tracking-[-.4px]">Candidates<Help title="What Candidates is" intro="The pool. Full name, phone and documents stay here, internal only." rows={[
-        ['Adding someone', 'Drop a CV anywhere in the app, or press Add CV. Someone who looks like a person already here is asked about, never merged.'],
+        ['Adding someone', 'Drop a CV on "Drop a CV here" at the foot of the menu (or anywhere in the app), or click it to browse — on a phone, press + Add CV. Someone who looks like a person already here is asked about, never merged.'],
         ['Search', 'AND, OR, NOT, parentheses and "quoted phrases" — across number, name, trade, country, certificates, preference, notes, CVs sent and placements.'],
         ['Stages', 'New, Screening, Presented, Placed, Bench. Placed records the client and the date.'],
         ['Reveal', 'Releasing a full profile to a client is an explicit, logged action.'],
@@ -114,7 +114,7 @@ export default async function Candidates({ searchParams }: { searchParams: Param
                 <td>{r.availableFrom ?? '—'}</td>
               </tr>
             ))}
-            {!pool.error && found.rows.length === 0 && <tr><td colSpan={10} className="p-6 text-ink3">{pool.rows.length === 0 ? 'No candidates yet. Drop a CV anywhere in the app, or press Add CV.' : found.error ? 'Fix the search above to see results.' : 'Nobody matches this search and these filters.'}</td></tr>}
+            {!pool.error && found.rows.length === 0 && <tr><td colSpan={10} className="p-6 text-ink3">{pool.rows.length === 0 ? 'No candidates yet. Drop a CV on "Drop a CV here" at the foot of the menu, or click it to browse — on a phone, press + Add CV.' : found.error ? 'Fix the search above to see results.' : 'Nobody matches this search and these filters.'}</td></tr>}
           </tbody>
         </table>
       </div>

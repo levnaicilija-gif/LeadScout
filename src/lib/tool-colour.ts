@@ -36,3 +36,15 @@ export const DOT: Record<Tool, string> = {
   today: 'bg-tool-radar', leads: 'bg-tool-leads', verify: 'bg-tool-verify',
   pitch: 'bg-tool-pitch', cand: 'bg-tool-cand', set: 'bg-tool-set',
 };
+
+/** A drop zone with a file held over it, on a light panel. */
+export const DROP_OVER: Record<Tool, string> = {
+  today: 'border-tool-radar bg-soft-today', leads: 'border-tool-leads bg-soft-leads', verify: 'border-tool-verify bg-soft-verify',
+  pitch: 'border-tool-pitch bg-soft-pitch', cand: 'border-tool-cand bg-soft-cand', set: 'border-tool-set bg-soft-set',
+};
+
+/** The same on the dark rail. */
+export const DROP_OVER_RAIL: Record<Tool, string> = {
+  today: 'border-tool-radar bg-tool-radar/25', leads: 'border-tool-leads bg-tool-leads/25', verify: 'border-tool-verify bg-tool-verify/25',
+  pitch: 'border-tool-pitch bg-tool-pitch/25', cand: 'border-tool-cand bg-tool-cand/25', set: 'border-tool-set bg-tool-set/25',
+};

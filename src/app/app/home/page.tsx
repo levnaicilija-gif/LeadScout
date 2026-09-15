@@ -6,6 +6,8 @@ import { SignOut } from '@/components/SignOut';
 import { todayItems, whenLabel, HOW_THIS_LIST_IS_MADE } from '@/lib/today';
 import { HomeCards } from '@/components/HomeCards';
 import { Logo } from '@/components/Logo';
+import { CvDropZone } from '@/components/CvDropZone';
+import { canSee } from '@/lib/onboarding';
 import { DAILY_BUDGET_EUR, spentTodaySplit } from '@/lib/cost';
 import { hasHealthChecks } from '@/lib/schema-features';
 export const dynamic = 'force-dynamic';
@@ -138,6 +140,9 @@ export default async function Home() {
             <Pulse tone={sweepTone} hook="rls">Data access check <b className={sweepTone === 'bad' ? 'font-semibold' : 'text-ink font-semibold'}>{sweepText}</b></Pulse>
           </div>
         </div>
+
+        {/* Home has no rail, so the CV drop zone the rail carries is a card here (owner's decision, 2026-09-15). */}
+        {canSee('candidates', me) && <CvDropZone variant="home" />}
 
         <HomeCards
           cards={[
