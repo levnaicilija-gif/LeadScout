@@ -113,6 +113,10 @@ export default async function CandidatePage({ params }: { params: { id: string }
               <div><span className="text-ink3">Work history</span> · {(profile.projects ?? []).length} period{(profile.projects ?? []).length === 1 ? '' : 's'} on the CV</div>
               <div><span className="text-ink3">Certificates the CV claims</span> · {(profile.certificates_claimed ?? []).join(', ') || '—'}</div>
               <div className="text-ink3 text-[12px]">{cvs.length} CV file{cvs.length === 1 ? '' : 's'} on file · latest {new Date(cvs[0].uploaded_at).toLocaleDateString('en-GB')}</div>
+              <div className="flex flex-wrap gap-2 mt-1.5">
+                <Link href={`/app/candidates/${c.id}/cv`} className="btn btn-primary" data-read-cv>Read CV</Link>
+                <a href={`/api/candidates/document?id=${cvs[0].id}&download=1`} className="btn" data-download-cv>Download original</a>
+              </div>
             </div>
           )}
         </Card>

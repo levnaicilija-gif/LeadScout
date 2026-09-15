@@ -111,6 +111,34 @@ const docSettled = (p: Page) => p.waitForFunction(() => document.querySelector('
       const nameParts = String(cand.full_name ?? '').toLowerCase().split(/\s+/).filter((w) => w.length > 2);
       check(res.status() === 200 && (await res.body()).length > 1000, 'Download original returns the uploaded file', `HTTP ${res.status()} · ${(await res.body()).length} bytes`);
       check(new RegExp(`candidate-${candidateLabel(cand.reference_code).slice(1)}-cv\\.docx`).test(disposition) && !nameParts.some((w) => disposition.toLowerCase().includes(w)), 'the download is named by number and type, never by the person', disposition);
+
+      // SENSITIVE PERSONAL DATA: the file route hands out a storage link only to someone whose own session can read the
+      // document. Signed out gets nothing; a document in another workspace is "no such document" to this session.
+      const pageLink = await (async () => { await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }); return page.locator('[data-download-cv]').getAttribute('href').catch(() => null); })();
+      check(!!pageLink && /^\/api\/candidates\/document\?id=[0-9a-f-]{36}&download=1$/.test(pageLink), "the candidate page's Download original goes through the same checked route", String(pageLink));
+      const signedOut = await browser.newContext();
+      try {
+        const r = await signedOut.request.get(`${BASE}${href}`, { maxRedirects: 0 });
+        const where = r.headers()['location'] ?? '';
+        check([401, 403, 404].includes(r.status()) || (r.status() >= 300 && r.status() < 400 && /\/login/.test(where)), 'signed out, the file route gives no file and no storage link', `HTTP ${r.status()}${where ? ` → ${where.slice(0, 60)}` : ''}`);
+        check(!/supabase|storage|token=/i.test(where) && !/supabase|token=/i.test((await r.text()).slice(0, 2000)), 'signed out, no storage link appears in the answer');
+      } finally { await signedOut.close(); }
+      let otherUid: string | null = null; let otherWs: string | null = null;
+      try {
+        const { data: other, error: otherErr } = await admin.auth.admin.createUser({ email: `candidate-docs-other+${Date.now()}@rfbt-recruitment.com`, password: `probe-${Date.now()}-other-0123456789`, email_confirm: true, user_metadata: { name: 'Docs Probe Other', agency: 'Docs Probe Other' } });
+        if (otherErr) throw new Error(otherErr.message);
+        otherUid = other.user!.id;
+        otherWs = ((await admin.from('users').select('workspace_id').eq('id', otherUid).maybeSingle()).data?.workspace_id as string) ?? null;
+        await markWorkspaceTest(admin, otherWs!);
+        const { data: foreign, error: fErr } = await admin.from('documents').insert({ workspace_id: otherWs, type: 'cv', storage_path: `docs-probe/other-${Date.now()}.docx`, extracted: { doc_type: 'cv' }, is_test: true }).select('id').single();
+        if (fErr) throw new Error(fErr.message);
+        const r = await page.request.get(`${BASE}/api/candidates/document?id=${foreign!.id}&download=1`, { maxRedirects: 0 });
+        check(r.status() === 404 && !r.headers()['location'], "a document in another workspace is refused to this recruiter, with no storage link", `HTTP ${r.status()}`);
+      } catch (e: any) {
+        check(false, 'the other-workspace document check ran', e?.message ?? String(e));
+      } finally {
+        if (otherUid || otherWs) { const left = await removeProbe(admin, otherUid, otherWs, null, { clearContent: true }); if (left) check(false, 'the other workspace was removed', left); }
+      }
     }
 
     if (STEPS.has('6')) {
