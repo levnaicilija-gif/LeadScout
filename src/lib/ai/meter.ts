@@ -67,6 +67,26 @@ export function usageRow(input: { tool: string; model: string; usage?: { input_t
   return { workspace_id: input.workspaceId, kind: input.tool, detail, units: inT + outT, eur: modelCostEur(input.model, inT, outT) };
 }
 
+/**
+ * Insert one cost_log row, retried once a second later. On 2026-09-15 the release gate's pdf-check lost a €0.0026 PII review
+ * to a single "fetch failed" while the next insert went through. A retry after a reply lost in transit can log a row
+ * twice; spend read slightly high is the safe side of a cap, spend missing is not.
+ */
+async function insertRow(db: SupabaseClient, row: ReturnType<typeof usageRow>): Promise<string | null> {
+  let problem = '';
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const { error } = await db.from('cost_log').insert(row);
+      if (!error) return null;
+      problem = error.message;
+    } catch (e: any) {
+      problem = String(e?.message ?? e);
+    }
+    if (attempt === 1) await new Promise((r) => setTimeout(r, 1000));
+  }
+  return problem;
+}
+
 /** Log one attempt's usage under the current request and tool. Returns its EUR. Never throws. */
 export async function recordUsage(model: string, usage: { input_tokens?: number; output_tokens?: number } | undefined): Promise<number> {
   const req = requestScope.getStore();
@@ -75,8 +95,8 @@ export async function recordUsage(model: string, usage: { input_tokens?: number;
   try {
     const db = req?.db ?? serviceDb();
     const row = usageRow({ tool, model, usage, workspaceId: req?.workspaceId ?? null, userId: req?.userId ?? null, test: req ? await isTest(db, req.workspaceId) : false });
-    const { error } = await db.from('cost_log').insert(row);
-    if (error) console.error(`[meter] ${tool} €${row.eur.toFixed(4)} was not recorded: ${error.message}`);
+    const problem = await insertRow(db, row);
+    if (problem) console.error(`[meter] ${tool} €${row.eur.toFixed(4)} was not recorded after a retry: ${problem}`);
     return row.eur;
   } catch (e: any) {
     console.error(`[meter] ${tool} was not recorded: ${String(e?.message ?? e)}`);
@@ -93,7 +113,7 @@ export function jobMeter(db: SupabaseClient, workspaceId: string, budget: { add(
     const row = usageRow({ tool: kind, model, usage, workspaceId, userId: null, test: false });
     row.detail = `${what} · ${row.detail.replace(/^no signed-in request · /, '')}`;
     budget.add(row.eur);
-    const { error } = await db.from('cost_log').insert(row);
-    if (error) console.error(`[meter] ${kind} €${row.eur.toFixed(4)} was not recorded: ${error.message}`);
+    const problem = await insertRow(db, row);
+    if (problem) console.error(`[meter] ${kind} €${row.eur.toFixed(4)} was not recorded after a retry: ${problem}`);
   };
 }

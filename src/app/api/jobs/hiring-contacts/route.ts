@@ -7,7 +7,8 @@ import { askJson, MODEL_CLASSIFY } from '@/lib/ai/claude';
 import { contactFromPosting } from '@/lib/hiring-contacts';
 import { discoverAtCompany, type QuotedPerson } from '@/lib/company-contact-discovery';
 import { hasPostingContact } from '@/lib/schema-features';
-import { Budget, logCost } from '@/lib/cost';
+import { Budget } from '@/lib/cost';
+import { jobMeter } from '@/lib/ai/meter';
 export const maxDuration = 300;
 
 /**
@@ -143,9 +144,9 @@ export async function POST(req: Request) {
             `Job advert from ${co.name}:\n\n${page.text.slice(0, 6000)}`,
             MODEL_CLASSIFY,
             400,
+            // Item 16: the read's real tokens, every attempt, added to the budget — it logged a flat €0.01 before.
+            jobMeter(db, workspaceId, budget, 'hiring-contacts', `contact on a ${co.name} advert`),
           ).catch(() => null);
-          budget.add(0.01);
-          await logCost(db, workspaceId, 'hiring-contacts', `contact on a ${co.name} advert`, 1, 0.01);
           const found = contactFromPosting(page, read, co.domain);
           if (!found) continue;
           await db.from('job_posts').update({ contact_name: found.name, contact_title: found.title, contact_email: found.email, contact_phone: found.phone }).eq('id', p.id);

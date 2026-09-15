@@ -35,6 +35,9 @@ async function handle(req: Request, me: SignedIn) {
     const { data: cand } = await db.from('candidates').select('*').eq('id', candidateId).eq('workspace_id', me.workspace_id).maybeSingle();
     if (!cand) return NextResponse.json({ error: 'candidate not found in this workspace' }, { status: 404 });
 
+    // A candidate with no reference code has no client version to make: the slug, the PDF path and the public page are all
+    // built from it. Said plainly — it crashed on code.toLowerCase() (2026-09-15, see src/lib/reference-code.ts).
+    if (!cand.reference_code) return NextResponse.json({ error: 'This candidate has no reference code, so no client version can be made. Drop the CV again to issue one.' }, { status: 409 });
     const profile: any = cand.profile ?? {};
     const anon = anonymize(profile);
     const code = cand.reference_code as string;

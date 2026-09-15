@@ -146,7 +146,9 @@ type Answer = { status: number; body: any };
     const { data: candidate } = cv?.candidateId
       ? await admin.from('candidates').select('id, reference_code, workspace_id, created_via').eq('id', cv.candidateId).maybeSingle()
       : { data: null as any };
-    check(!!cv && !!candidate && candidate.workspace_id === workspace && candidate.reference_code === cv.reference,
+    // A real code, not merely equal: on 2026-09-15 intake made a candidate with no reference code, the screen showed none,
+    // and null === null passed this check while the client version crashed on it.
+    check(!!cv && !!candidate && candidate.workspace_id === workspace && /^RFBT-[A-Z]-\d{4,}$/.test(String(candidate.reference_code ?? '')) && candidate.reference_code === cv.reference,
       'the CV is recognised and creates a candidate in this workspace, with the reference code shown',
       JSON.stringify({ kinds, candidate: candidate && { reference: candidate.reference_code, via: candidate.created_via } }));
 

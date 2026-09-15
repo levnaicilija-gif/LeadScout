@@ -6,7 +6,8 @@ import { emailsOn, phoneOn, organisationLinks, contactsFromOrgPage, fromAttendee
 import { attendeesAt } from '@/lib/attendee-match';
 import { findPeopleOnSites, type PersonOnPage } from '@/lib/person-on-site';
 import { recordPersonContact, addToQuotedContact } from '@/lib/person-contact';
-import { logCost, type Budget } from '@/lib/cost';
+import type { Budget } from '@/lib/cost';
+import { jobMeter } from '@/lib/ai/meter';
 
 /**
  * Who to call at one company, read off the company's own sites. The one implementation: the Hiring now pass (item 13)
@@ -84,9 +85,9 @@ export async function discoverAtCompany(
         `Organisation page for ${co.name}:\n\n${page.text.slice(0, 8000)}`,
         MODEL_CLASSIFY,
         900,
+        // Item 16: the read's real tokens, every attempt, added to the budget — it logged a flat €0.01 before.
+        jobMeter(db, ctx.workspaceId, ctx.budget, 'hiring-contacts', `organisation page at ${co.name}`),
       ).catch(() => null);
-      ctx.budget.add(0.01);
-      await logCost(db, ctx.workspaceId, 'hiring-contacts', `organisation page at ${co.name}`, 1, 0.01);
 
       const found = contactsFromOrgPage(page, read?.people ?? [], co.name, co.domain);
       for (const c of found.slice(0, 4)) {

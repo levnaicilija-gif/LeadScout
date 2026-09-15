@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { parseCv, anonymize, transcribeCv } from '@/lib/ai/documents';
 import { meterRecruiter } from '@/lib/ai/meter';
+import { nextReferenceCode } from '@/lib/reference-code';
 import { fileToBase64 } from '@/lib/files';
 export const maxDuration = 120;
 
@@ -44,7 +45,7 @@ async function handle(req: Request, me: SignedIn) {
 
         const profile = await parseCv(text);
         const anon = anonymize(profile);
-        const code = (await db.rpc('next_reference_code', { tc: profile.trade_code })).data as string;
+        const code = await nextReferenceCode(db, profile.trade_code);
 
         const { data: cand, error: cErr } = await db.from('candidates').insert({
           workspace_id: me.workspace_id, reference_code: code, trade_code: profile.trade_code,

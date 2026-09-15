@@ -9,7 +9,7 @@ import { crawlWorkspace } from '@/lib/crawl-workspace';
 import { httpGet } from '@/lib/http';
 import { fetchPage } from '@/lib/fetch-page';
 import { claude, MODEL_CLASSIFY } from '@/lib/ai/claude';
-import { logModelCall } from '@/lib/cost';
+import { Budget, logModelCall } from '@/lib/cost';
 import { detectEmployerType } from '@/lib/agency-detector';
 import { tierFor, regionFor } from '@/lib/geo';
 export const maxDuration = 300;
@@ -79,6 +79,11 @@ async function run(req: Request) {
   if (!ws.id) return NextResponse.json({ error: ws.error }, { status: 500 });
   const workspace = ws.id as string;
 
+  // Item 16: an automated job stops at the daily cap like Radar. It logged its tokens but never checked the cap.
+  const budget = await Budget.open(db);
+  if (budget.exhausted) return NextResponse.json({ ok: false, reason: 'daily budget already spent', spentToday: Number(budget.totalToday.toFixed(4)) });
+  let stopped: string | null = null;
+
   const csvPath = path.join(process.cwd(), 'seeds', 'company_domains_from_v1.csv');
   if (!fs.existsSync(csvPath)) return NextResponse.json({ error: 'seeds/company_domains_from_v1.csv not found in the deployment' }, { status: 404 });
   const rows = parse(fs.readFileSync(csvPath), { columns: true, skip_empty_lines: true }) as any[];
@@ -110,6 +115,8 @@ async function run(req: Request) {
     if (!domain) continue;
     if (have.has(domain)) { stats.alreadyHad++; continue; }
     if (JOB_BOARD.test(domain)) { stats.rejected++; rejected.push({ domain, why: 'job board, not an employer' }); continue; }
+    // Before the page is fetched, so the cursor stops on the domain the day could not afford and the next run starts there.
+    if (!budget.canAfford(0.01)) { stopped = 'daily budget reached'; break; }
     stats.looked++;
 
     const url = `https://${domain}`;
@@ -144,7 +151,7 @@ async function run(req: Request) {
         model: MODEL_CLASSIFY, max_tokens: 300, system: SYSTEM,
         messages: [{ role: 'user', content: `Domain: ${domain}\n\n${evidence}` }],
       });
-      await logModelCall(db, workspace, MODEL_CLASSIFY, `seed-domain ${domain}`, ai.usage);
+      budget.add(await logModelCall(db, workspace, MODEL_CLASSIFY, `seed-domain ${domain}`, ai.usage));
       const text = ai.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
       site = Site.parse(JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? '{}'));
     } catch (e: any) {
@@ -190,5 +197,5 @@ async function run(req: Request) {
   }
 
   const nextCursor = index < rows.length ? index : null;
-  return NextResponse.json({ ok: true, dry, total: rows.length, cursor, nextCursor, stats, done, rejected });
+  return NextResponse.json({ ok: true, dry, total: rows.length, cursor, nextCursor, stopped, spentToday: Number(budget.totalToday.toFixed(4)), stats, done, rejected });
 }

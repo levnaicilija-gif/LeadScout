@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { extractDocument, parseCv, anonymize, transcribeCv } from '@/lib/ai/documents';
 import { meterRecruiter } from '@/lib/ai/meter';
+import { nextReferenceCode } from '@/lib/reference-code';
 import { fileToBase64 } from '@/lib/files';
 import { appearsIn } from '@/lib/ai/claude';
 import { isEea } from '@/lib/right-to-work';
@@ -97,7 +98,7 @@ async function handle(req: Request, me: SignedIn) {
           }
 
           if (!cand) {
-            const code = (await db.rpc('next_reference_code', { tc: profile.trade_code })).data as string;
+            const code = await nextReferenceCode(db, profile.trade_code);
             const { data: created, error } = await db.from('candidates').insert({
               workspace_id: me.workspace_id, reference_code: code, trade_code: profile.trade_code,
               full_name: profile.full_name, phone: profile.pii.phone, email: profile.pii.email,

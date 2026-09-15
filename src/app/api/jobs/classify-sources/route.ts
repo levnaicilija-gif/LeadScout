@@ -5,7 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 import { crawlWorkspace } from '@/lib/crawl-workspace';
 import { httpGet } from '@/lib/http';
 import { claude, MODEL_CLASSIFY } from '@/lib/ai/claude';
-import { logModelCall } from '@/lib/cost';
+import { Budget, logModelCall } from '@/lib/cost';
 export const maxDuration = 300;
 
 /**
@@ -57,7 +57,7 @@ If the page could not be read, judge from the name and URL alone and say so in t
 
 const tierOf = (r: number) => (r >= 70 ? 'priority' : r >= 40 ? 'standard' : 'off');
 
-async function classify(db: any, workspace: string, src: any) {
+async function classify(db: any, workspace: string, src: any, budget: Budget) {
   const res = await httpGet(src.url, {}, 15000);
   let sample = '(the front page could not be fetched)';
   if (res.ok && res.body) {
@@ -78,7 +78,7 @@ async function classify(db: any, workspace: string, src: any) {
     model: MODEL_CLASSIFY, max_tokens: 300, system: SYSTEM,
     messages: [{ role: 'user', content: `Source name: ${src.name ?? '(none)'}\nURL: ${src.url}\nType: ${src.type}\n\n${sample}` }],
   });
-  await logModelCall(db, workspace, MODEL_CLASSIFY, `classify-source ${src.url}`, ai.usage);
+  budget.add(await logModelCall(db, workspace, MODEL_CLASSIFY, `classify-source ${src.url}`, ai.usage));
   const text = ai.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('');
   const v = Verdict.parse(JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? '{}'));
   const tier = tierOf(v.relevance);
@@ -111,6 +111,12 @@ async function run(req: Request) {
   const ws = await crawlWorkspace(db).then((id) => ({ id, error: '' }), (e: Error) => ({ id: '', error: e.message }));
   if (!ws.id) return NextResponse.json({ error: ws.error }, { status: 500 });
 
+  // Item 16: an automated job stops at the daily cap like Radar. It logged its tokens but never checked the cap, so a
+  // re-tier of all 600 sources could spend past €2.00 while every other job had stopped.
+  const budget = await Budget.open(db);
+  if (budget.exhausted) return NextResponse.json({ ok: false, reason: 'daily budget already spent', spentToday: Number(budget.totalToday.toFixed(4)) });
+  let stopped: string | null = null;
+
   // The cursor is "not yet classified" rather than an offset, so a batch that fails is simply
   // picked up again by the next run instead of being skipped over.
   let q = db.from('sources').select('id, name, url, type').order('id').limit(batch);
@@ -121,8 +127,10 @@ async function run(req: Request) {
   const examples: any[] = [];
 
   await pool(sources ?? [], 8, async (src) => {
+    // Checked before each read; up to eight run at once, so a batch can pass the cap by at most eight Haiku reads.
+    if (!budget.canAfford(0.005)) { stopped = 'daily budget reached'; return; }
     try {
-      const patch = await classify(db, ws.id, src);
+      const patch = await classify(db, ws.id, src, budget);
       await db.from('sources').update(patch).eq('id', src.id);
       counts[patch.tier as 'priority' | 'standard' | 'off']++;
       examples.push({ url: src.url, tier: patch.tier, relevance: patch.relevance, why: patch.tier_reason });
@@ -136,7 +144,7 @@ async function run(req: Request) {
   const { count: remaining } = await db.from('sources').select('id', { count: 'exact', head: true }).is('classified_at', null);
 
   let chained = false;
-  if (chain && (remaining ?? 0) > 0 && batchesLeft > 1 && !recheck) {
+  if (chain && !stopped && (remaining ?? 0) > 0 && batchesLeft > 1 && !recheck) {
     const u = new URL(req.url);
     u.searchParams.set('batchesLeft', String(batchesLeft - 1));
     const ac = new AbortController();
@@ -146,5 +154,5 @@ async function run(req: Request) {
   }
 
   console.log(`[classify-sources] did=${(sources ?? []).length} priority=${counts.priority} standard=${counts.standard} off=${counts.off} failed=${counts.failed} remaining=${remaining}`);
-  return NextResponse.json({ ok: true, did: (sources ?? []).length, counts, remaining, chained, examples: examples.slice(0, 15) });
+  return NextResponse.json({ ok: true, did: (sources ?? []).length, counts, remaining, chained, stopped, spentToday: Number(budget.totalToday.toFixed(4)), examples: examples.slice(0, 15) });
 }

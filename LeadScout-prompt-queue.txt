@@ -229,6 +229,13 @@ and what the true daily total was against the €2.00 cap.
 
 Commit after each step, two lines per step.
 
+Owner's re-issue, 2026-09-15 (same item — no new number): the decision is taken
+and confirmed, do not re-ask — automated jobs hard-stop at the cap like Radar; a
+recruiter pressing a button is recorded but NOT blocked unless the owner says
+otherwise. Report the per-tool breakdown, not just a total — that is the useful
+part for deciding what is expensive. Full release gate before every commit, screen
+checks as a signed-in user at both widths.
+
 -------------------------------------------------------------------------------
 17. LEAD-AGE THRESHOLDS
 -------------------------------------------------------------------------------

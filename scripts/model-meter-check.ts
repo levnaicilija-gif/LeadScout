@@ -8,7 +8,8 @@
  *   - every askJson and createMessage in documents.ts sits inside asTool with a name from RECRUITER_TOOLS, and every name
  *     is used;
  *   - a raw claude.messages.create anywhere else in src is followed by logModelCall within ten lines;
- *   - an askJson outside documents.ts passes a meter (onUsage, or jobMeter).
+ *   - an askJson outside documents.ts passes a meter (onUsage, or jobMeter), no flat €0.01 stands in for a read's tokens,
+ *     and every automated job route that calls the model opens the daily Budget.
  * Behaviour — against a fake database:
  *   - a recruiter's call logs kind = tool, their workspace, "by <user>", the model, the tokens and the rate's EUR;
  *   - the innermost tool names the call, and two requests running at once never log under each other's workspace;
@@ -69,7 +70,17 @@ function callText(s: string, at: number): string {
       const after = s.split('\n').slice(line - 1, line + 10).join('\n');
       check(/logModelCall\(/.test(after), `${f}:${line} logs the raw call it makes`);
     }
+    if (f === 'src/lib/ai/documents.ts') continue;
+    for (const m of s.matchAll(/(?<![\w.])askJson\(/g)) {
+      const line = s.slice(0, m.index).split('\n').length;
+      if (/export async function askJson/.test(s.split('\n')[line - 1])) continue;
+      check(/onUsage|jobMeter\(/.test(callText(s, m.index!)), `${f}:${line} passes a meter to askJson`);
+    }
   }
+  const flat = files.filter(({ s }) => /logCost\([^;]*,\s*1,\s*0\.01\)/.test(s)).map(({ f }) => f);
+  check(!flat.length, 'no flat €0.01 is logged in place of a read\'s tokens', flat.join(', '));
+  const uncapped = files.filter(({ f, s }) => /^src\/app\/api\/jobs\/[^/]+\/route\.ts$/.test(f) && /claude\.messages\.create\(|askJson\(/.test(s) && !/Budget\.open\(/.test(s)).map(({ f }) => f);
+  check(!uncapped.length, 'every automated job that calls the model opens the daily Budget', uncapped.join(', '));
 
   console.log('\nBehaviour: what a metered call writes');
   const rows: any[] = [];
@@ -113,6 +124,12 @@ function callText(s: string, at: number): string {
   await jobMeter(fakeDb, 'ws-a', { add: (e) => { added += e; } }, 'hiring-contacts', 'organisation page at Aibel')(usage, 'claude-haiku-4-5');
   const j = rows[0];
   check(j?.kind === 'hiring-contacts' && j.detail === 'organisation page at Aibel · claude-haiku-4-5 · 1200+300 tok' && Math.abs(added - j.eur) < 1e-12 && j.eur === modelCostEur('claude-haiku-4-5', 1200, 300), "a job's meter logs real tokens under its kind and adds them to its budget", `${j?.detail} €${j?.eur}`);
+
+  rows.length = 0;
+  let refusals = 1;
+  const flaky: any = { from: () => ({ insert: async (row: any) => { if (refusals-- > 0) throw new TypeError('fetch failed'); rows.push(row); return { error: null }; } }) };
+  await jobMeter(flaky, 'ws-a', { add: () => {} }, 'hiring-contacts', 'retry')(usage, 'claude-haiku-4-5');
+  check(rows.length === 1, 'a recording that fails once in transit is retried and kept', `${rows.length} row(s)`);
 
   console.log(failures === 0 ? '\nmodel meter check: all checks passed' : `\nmodel meter check: ${failures} check(s) failed`);
   process.exitCode = failures === 0 ? 0 : 1;
