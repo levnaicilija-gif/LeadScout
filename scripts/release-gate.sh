@@ -52,7 +52,7 @@ else
   npx next start -p "$PORT" > ".cache/server-$PORT.log" 2>&1 &
   for _ in $(seq 1 60); do curl -s -o /dev/null "http://localhost:$PORT/api/health" && break; nap 2000; done
   BASE="http://localhost:$PORT"
-  step pdf-check npx tsx --env-file=.env.local scripts/pdf-check.ts
+  step pdf-check env LEADSCOUT_TEST_RUN=pdf-check npx tsx --env-file=.env.local scripts/pdf-check.ts
   step pdf-name-audit npx tsx --env-file=.env.local scripts/pdf-name-audit.ts
   step verify-e2e npx tsx --env-file=.env.local scripts/verify-e2e.ts "$BASE"
   step lead-drawer-e2e npx tsx --env-file=.env.local scripts/lead-drawer-e2e.ts "$BASE"

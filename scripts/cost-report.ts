@@ -14,7 +14,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { isRecruiterTool, RECRUITER_TOOLS, UNATTRIBUTED } from '../src/lib/ai/tools';
-import { DAILY_BUDGET_EUR } from '../src/lib/cost';
+import { DAILY_BUDGET_EUR, isTestSpend } from '../src/lib/cost';
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 const arg = (name: string) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : undefined; };
@@ -70,7 +70,8 @@ function toolOf(r: { kind: string; detail: string | null; units: number; eur: nu
   const wsIds = [...new Set(rows.map((r) => r.workspace_id).filter(Boolean))];
   const { data: wss } = wsIds.length ? await db.from('workspaces').select('id, is_test').in('id', wsIds) : { data: [] as any[] };
   const testWs = new Set((wss ?? []).filter((w: any) => w.is_test).map((w: any) => w.id));
-  const isTest = (r: any) => String(r.detail ?? '').startsWith('test workspace') || testWs.has(r.workspace_id);
+  // The cap's own rule, so the report's "counted" is exactly what the cap counted.
+  const isTest = (r: any) => isTestSpend(r, testWs);
   const used = rows.filter((r) => !realOnly || !isTest(r));
 
   const tools = new Map<string, { side: Side; n: number; eur: number; testEur: number; testN: number }>();
@@ -89,16 +90,17 @@ function toolOf(r: { kind: string; detail: string | null; units: number; eur: nu
     console.log(`${label.slice(0, 58).padEnd(58)} ${t.side.padEnd(12)} ${String(t.n).padStart(8)} ${t.eur.toFixed(4).padStart(9)} ${(t.eur / t.n).toFixed(5).padStart(11)}  ${t.testN ? `${t.testN} · €${t.testEur.toFixed(4)}` : '—'}`);
   }
 
-  const days = new Map<string, Record<Side | 'total' | 'test', number>>();
+  // "counted" is what the cap counts; test traffic is its own column and is not part of it (owner's decision 2026-09-15).
+  const days = new Map<string, Record<Side | 'counted' | 'test', number>>();
   for (const r of used) {
-    const d = days.get(r.day) ?? { total: 0, recruiter: 0, automated: 0, unattributed: 0, test: 0 };
+    const d = days.get(r.day) ?? { counted: 0, recruiter: 0, automated: 0, unattributed: 0, test: 0 };
     const eur = Number(r.eur ?? 0);
-    d.total += eur; d[toolOf(r).side] += eur;
     if (isTest(r)) d.test += eur;
+    else { d.counted += eur; d[toolOf(r).side] += eur; }
     days.set(r.day, d);
   }
-  console.log(`\n${'day'.padEnd(12)} ${'total'.padStart(8)} ${'of cap'.padStart(7)} ${'recruiter'.padStart(10)} ${'automated'.padStart(10)} ${'unattrib.'.padStart(10)} ${'test'.padStart(8)}`);
+  console.log(`\n${'day'.padEnd(12)} ${'counted'.padStart(8)} ${'of cap'.padStart(7)} ${'recruiter'.padStart(10)} ${'automated'.padStart(10)} ${'unattrib.'.padStart(10)} ${'test, not counted'.padStart(18)}`);
   for (const [day, d] of [...days.entries()].sort()) {
-    console.log(`${day.padEnd(12)} ${d.total.toFixed(4).padStart(8)} ${`${Math.round((d.total / DAILY_BUDGET_EUR) * 100)}%`.padStart(7)} ${d.recruiter.toFixed(4).padStart(10)} ${d.automated.toFixed(4).padStart(10)} ${d.unattributed.toFixed(4).padStart(10)} ${d.test.toFixed(4).padStart(8)}`);
+    console.log(`${day.padEnd(12)} ${d.counted.toFixed(4).padStart(8)} ${`${Math.round((d.counted / DAILY_BUDGET_EUR) * 100)}%`.padStart(7)} ${d.recruiter.toFixed(4).padStart(10)} ${d.automated.toFixed(4).padStart(10)} ${d.unattributed.toFixed(4).padStart(10)} ${d.test.toFixed(4).padStart(18)}`);
   }
 })();

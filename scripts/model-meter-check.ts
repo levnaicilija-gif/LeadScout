@@ -20,7 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { meterRecruiter, asTool, recordUsage, usageRow, jobMeter } from '../src/lib/ai/meter';
 import { RECRUITER_TOOLS, UNATTRIBUTED } from '../src/lib/ai/tools';
-import { modelCostEur } from '../src/lib/cost';
+import { modelCostEur, isTestSpend } from '../src/lib/cost';
 
 let failures = 0;
 const check = (ok: boolean, what: string, detail = '') => { if (!ok) failures++; console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${what}${detail ? ` — ${detail}` : ''}`); };
@@ -130,6 +130,16 @@ function callText(s: string, at: number): string {
   const flaky: any = { from: () => ({ insert: async (row: any) => { if (refusals-- > 0) throw new TypeError('fetch failed'); rows.push(row); return { error: null }; } }) };
   await jobMeter(flaky, 'ws-a', { add: () => {} }, 'hiring-contacts', 'retry')(usage, 'claude-haiku-4-5');
   check(rows.length === 1, 'a recording that fails once in transit is retried and kept', `${rows.length} row(s)`);
+
+  // Test traffic is logged but kept out of the cap (owner's decision 2026-09-15).
+  const scripted = usageRow({ tool: 'pii-review', model, usage, workspaceId: null, userId: null, test: false, testRun: 'pdf-check' });
+  check(scripted.detail === `test run (pdf-check) · no signed-in request · ${model} · 1200+300 tok`, "a gate script's call outside a request is marked a test run", scripted.detail);
+  const noTestWs = new Set<string>();
+  const testWs = new Set(['ws-test']);
+  check(isTestSpend({ detail: 'test workspace · by probe · x' }, noTestWs) && isTestSpend({ detail: scripted.detail }, noTestWs) && isTestSpend({ detail: 'by user-a · x', workspace_id: 'ws-test' }, testWs),
+    "test spend is told by the meter's mark or by a test workspace");
+  check(!isTestSpend({ detail: `by user-a · ${model} · 1+1 tok`, workspace_id: 'ws-a' }, testWs) && !isTestSpend({ detail: 'radar stage1 contest workspace', workspace_id: null }, testWs) && !isTestSpend({ detail: null, workspace_id: null }, testWs),
+    'production spend is never taken for test spend');
 
   console.log(failures === 0 ? '\nmodel meter check: all checks passed' : `\nmodel meter check: ${failures} check(s) failed`);
   process.exitCode = failures === 0 ? 0 : 1;

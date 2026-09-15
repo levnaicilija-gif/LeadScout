@@ -3,8 +3,8 @@
  *
  *   npx tsx --env-file=.env.local scripts/spend-screen-probe.ts https://leadscout-rfbt.vercel.app
  *
- * The pill must show the day's whole spend and, beside it, what recruiter tools spent — both read from cost_log across
- * every workspace (`spentTodaySplit`). Spend can land while the page loads, so the database is read before and after
+ * The pill must show the spend counted against the cap, what recruiter tools spent of it, and test traffic beside it as
+ * not counted — all read from cost_log across every workspace (`spentTodaySplit`). Spend can land while the page loads, so the database is read before and after
  * each page and the pill's figures must fall between the two. Passes when both widths show both figures, the recruiter
  * part is labelled as never stopped by the cap once the cap is reached, and the page never scrolls sideways.
  *
@@ -31,7 +31,7 @@ async function readPill(p: Page, width: number) {
   await p.waitForSelector('[data-pulse="spend"]', { timeout: 60000 }).catch(() => {});
   const pill = await p.evaluate(() => {
     const el = document.querySelector('[data-pulse="spend"]') as HTMLElement | null;
-    return el ? { text: el.innerText.replace(/\s+/g, ' '), total: el.dataset.spendTotal, recruiter: el.dataset.spendRecruiter, tone: el.dataset.tone, sideways: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 } : null;
+    return el ? { text: el.innerText.replace(/\s+/g, ' '), total: el.dataset.spendTotal, recruiter: el.dataset.spendRecruiter, test: el.dataset.spendTest, tone: el.dataset.tone, sideways: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 } : null;
   });
   const after = await spentTodaySplit(admin);
   if (!pill) { check(false, `Home at ${width}px has the spend pill`, p.url()); return; }
@@ -39,6 +39,10 @@ async function readPill(p: Page, width: number) {
   check(pill.total !== undefined && within(total, before.total, after.total), `at ${width}px the pill's total is the day's whole spend`, `pill €${pill.total}, database €${before.total.toFixed(4)}–€${after.total.toFixed(4)}`);
   check(pill.recruiter !== undefined && within(recruiter, before.recruiter, after.recruiter), `at ${width}px the pill's recruiter part is what recruiter tools spent`, `pill €${pill.recruiter}, database €${before.recruiter.toFixed(4)}–€${after.recruiter.toFixed(4)}`);
   check(pill.text.includes(`€${total.toFixed(2)}`) && pill.text.includes(`recruiter tools €${recruiter.toFixed(2)}`), `at ${width}px both figures are written on the pill`, pill.text);
+  // Test traffic is kept out of the total and shown beside it (owner's decision 2026-09-15).
+  const test = Number(pill.test);
+  check(pill.test !== undefined && within(test, before.test, after.test), `at ${width}px the pill's test figure is today's test spend, kept out of the total`, `pill €${pill.test}, database €${before.test.toFixed(4)}–€${after.test.toFixed(4)}`);
+  if (test >= 0.005) check(pill.text.includes(`test runs €${test.toFixed(2)}, not counted`), `at ${width}px test spend is written on the pill as not counted`, pill.text);
   if (total >= DAILY_BUDGET_EUR) check(/recruiter tools still run/.test(pill.text), `at ${width}px a spent cap says recruiter tools still run`, pill.text);
   check(!pill.sideways, `Home at ${width}px does not scroll sideways`);
   console.log(`  ...  ${width}px pill: "${pill.text}" (tone ${pill.tone})`);

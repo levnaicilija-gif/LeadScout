@@ -236,6 +236,13 @@ otherwise. Report the per-tool breakdown, not just a total — that is the usefu
 part for deciding what is expensive. Full release gate before every commit, screen
 checks as a signed-in user at both widths.
 
+Owner's decision, 2026-09-15 (after the first metered day): exclude test-workspace
+spend from the €2.00 cap total. The cap protects production usage (Radar, website
+lookups, hiring-contacts), not development overhead — that day €0.90 of gate and
+smoke test traffic took 45% of the budget and stopped automated jobs early for
+real users. Test spend is still logged and reported separately, so real dev cost
+stays visible, just not counted against production's budget.
+
 -------------------------------------------------------------------------------
 17. LEAD-AGE THRESHOLDS
 -------------------------------------------------------------------------------

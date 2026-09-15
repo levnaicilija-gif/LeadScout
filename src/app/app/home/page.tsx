@@ -55,7 +55,8 @@ export default async function Home() {
   const spentToday = spendRead?.total ?? 0;
   // The cap hard-stops automated crawls, so a spent cap shows up as a morning that read nothing —
   // which looks exactly like a quiet news day. Say it instead: amber from 80% of the cap, red at it.
-  // Item 16: recruiter tools count in the total and are never stopped, so the pill names their part.
+  // Item 16: recruiter tools count in the total and are never stopped, so the pill names their part. Test traffic (gates,
+  // smoke runs) is shown beside it and not counted — the owner's decision, so development cannot starve the crawl.
   const capShare = DAILY_BUDGET_EUR > 0 ? spentToday / DAILY_BUDGET_EUR : 0;
   const spendTone: 'ok' | 'warn' | 'bad' = !spendRead ? 'warn' : capShare >= 1 ? 'bad' : capShare >= 0.8 ? 'warn' : 'ok';
   const readToday = radar.data?.length ?? 0;
@@ -128,9 +129,9 @@ export default async function Home() {
           {/* Each pill is one query. A dot is amber only where something is actually waiting. */}
           <div className="flex gap-2.5 flex-wrap">
             <Pulse tone={readToday > 0 ? 'ok' : 'warn'}>Radar <b className="text-ink font-semibold">{readToday > 0 ? 'ran' : 'not run'}</b>{firstRead ? ` ${firstRead}` : ''}</Pulse>
-            <Pulse tone={spendTone} hook="spend" attrs={spendRead ? { 'data-spend-total': spendRead.total.toFixed(4), 'data-spend-recruiter': spendRead.recruiter.toFixed(4), title: 'Recruiter tools are recorded and counted in the day, and never stopped by the cap. Automated jobs stop at it.' } : undefined}>
+            <Pulse tone={spendTone} hook="spend" attrs={spendRead ? { 'data-spend-total': spendRead.total.toFixed(4), 'data-spend-recruiter': spendRead.recruiter.toFixed(4), 'data-spend-test': spendRead.test.toFixed(4), title: 'Counted against the cap: automated jobs and recruiter tools. Recruiter tools are never stopped by it; automated jobs stop at it. Test runs (release gates, smoke checks) are logged but not counted.' } : undefined}>
               {spendRead
-                ? <>Spent today <b className="text-ink font-semibold">€{spendRead.total.toFixed(2)}</b>{spendTone !== 'ok' && <> of the €{DAILY_BUDGET_EUR.toFixed(2)} cap{spendTone === 'bad' ? ' — automated crawls have stopped for today; recruiter tools still run' : ' — close to the cap'}</>} · recruiter tools €{spendRead.recruiter.toFixed(2)}</>
+                ? <>Spent today <b className="text-ink font-semibold">€{spendRead.total.toFixed(2)}</b>{spendTone !== 'ok' && <> of the €{DAILY_BUDGET_EUR.toFixed(2)} cap{spendTone === 'bad' ? ' — automated crawls have stopped for today; recruiter tools still run' : ' — close to the cap'}</>} · recruiter tools €{spendRead.recruiter.toFixed(2)}{spendRead.test >= 0.005 && <> · test runs €{spendRead.test.toFixed(2)}, not counted</>}</>
                 : <>Spent today <b className="text-ink font-semibold">could not be read</b> — {'error' in spend ? spend.error : ''}</>}
             </Pulse>
             <Pulse tone={waitingOnIssuers > 0 ? 'warn' : 'ok'}><b className="text-ink font-semibold">{waitingOnIssuers}</b> waiting on issuers</Pulse>

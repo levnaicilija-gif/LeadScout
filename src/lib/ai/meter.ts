@@ -55,11 +55,12 @@ function isTest(db: SupabaseClient, workspaceId: string): Promise<boolean> {
 }
 
 /** The cost_log row for one attempt. Pure, so model-meter-check can hold it to its shape. */
-export function usageRow(input: { tool: string; model: string; usage?: { input_tokens?: number; output_tokens?: number }; workspaceId: string | null; userId: string | null; test: boolean }) {
+export function usageRow(input: { tool: string; model: string; usage?: { input_tokens?: number; output_tokens?: number }; workspaceId: string | null; userId: string | null; test: boolean; testRun?: string | null }) {
   const inT = input.usage?.input_tokens ?? 0;
   const outT = input.usage?.output_tokens ?? 0;
+  // Either mark keeps the row out of the cap's total (cost.ts#isTestSpend); the spend is still logged and reported.
   const detail = [
-    input.test ? 'test workspace' : null,
+    input.test ? 'test workspace' : input.testRun ? `test run (${input.testRun})` : null,
     input.userId ? `by ${input.userId}` : 'no signed-in request',
     input.model,
     `${inT}+${outT} tok`,
@@ -94,7 +95,9 @@ export async function recordUsage(model: string, usage: { input_tokens?: number;
   if (!RATES[model]) console.error(`[meter] no rate for ${model}: ${tool} logs €0 — add it to RATES in src/lib/cost.ts`);
   try {
     const db = req?.db ?? serviceDb();
-    const row = usageRow({ tool, model, usage, workspaceId: req?.workspaceId ?? null, userId: req?.userId ?? null, test: req ? await isTest(db, req.workspaceId) : false });
+    // A gate script calling a tool outside any request (pdf-check's PII review) names itself in LEADSCOUT_TEST_RUN, set only
+    // by scripts/release-gate.sh; inside a request the workspace decides.
+    const row = usageRow({ tool, model, usage, workspaceId: req?.workspaceId ?? null, userId: req?.userId ?? null, test: req ? await isTest(db, req.workspaceId) : false, testRun: req ? null : process.env.LEADSCOUT_TEST_RUN || null });
     const problem = await insertRow(db, row);
     if (problem) console.error(`[meter] ${tool} €${row.eur.toFixed(4)} was not recorded after a retry: ${problem}`);
     return row.eur;
