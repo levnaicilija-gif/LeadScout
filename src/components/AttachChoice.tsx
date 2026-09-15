@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { candidateLabel } from '@/lib/candidate-number';
 
 /**
  * Whose document is this?
@@ -12,7 +13,14 @@ import { useEffect, useState } from 'react';
  * button rather than something intake does: a certificate says what a person can do, not that
  * we have them.
  */
-type Suggestion = { candidateId: string; reference: string; name?: string | null; kind: 'exact' | 'near'; why: string };
+/** exact / near: a name match (Verify's documents). likely / name_only: a dropped CV judged by name plus email, phone or date of birth (item 24). */
+type Suggestion = { candidateId: string; reference: string; name?: string | null; kind: 'exact' | 'near' | 'likely' | 'name_only'; why: string };
+const KIND: Record<Suggestion['kind'], { label: string; tone: string }> = {
+  exact: { label: 'name matches', tone: 'badge-ok' },
+  likely: { label: 'likely the same person', tone: 'badge-ok' },
+  near: { label: 'similar name', tone: 'badge-warn' },
+  name_only: { label: 'same name only', tone: 'badge-warn' },
+};
 
 export function AttachChoice({
   documentId, holder, suggest, onDone, compact,
@@ -64,7 +72,7 @@ export function AttachChoice({
   if (done) {
     return (
       <div className={`text-[13px] text-ok ${compact ? '' : 'mt-2'}`}>
-        ✓ {done.created ? 'Record opened' : 'Attached'} — {done.reference}
+        ✓ {done.created ? 'Record opened' : 'Attached'} — {candidateLabel(done.reference)}
       </div>
     );
   }
@@ -86,9 +94,9 @@ export function AttachChoice({
               onClick={() => post({ candidateId: s.candidateId, reason: `attached on the card — ${s.why}` }, s.reference)}
               className="text-left border border-line rounded px-3 py-2 bg-panel hover:border-accent disabled:opacity-60"
             >
-              <b className="font-semibold">Attach to {s.reference}</b>
+              <b className="font-semibold">Attach to {candidateLabel(s.reference)}</b>
               {s.name ? <span className="text-ink2"> · {s.name}</span> : null}
-              <span className={`badge ml-2 ${s.kind === 'exact' ? 'badge-ok' : 'badge-warn'}`}>{s.kind === 'exact' ? 'name matches' : 'similar name'}</span>
+              <span className={`badge ml-2 ${KIND[s.kind]?.tone ?? 'badge-warn'}`}>{KIND[s.kind]?.label ?? 'possible match'}</span>
               <div className="text-ink3 text-[12px] mt-0.5">{s.why}</div>
             </button>
           ))}

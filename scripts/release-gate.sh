@@ -44,6 +44,8 @@ step site-scope npx tsx scripts/site-scope-check.ts
 step site-trust npx tsx scripts/site-trust-check.ts
 step model-meter npx tsx scripts/model-meter-check.ts
 step verify-adapters npx tsx scripts/verify-adapters-check.ts
+step candidate-search npx tsx scripts/candidate-search-check.ts
+step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts
 
 if [[ " ${FAILED[*]-} " == *" build "* ]]; then
   echo "=== the build failed, so nothing was served or tested against it" | tee -a "$LOG"

@@ -90,3 +90,9 @@ export const hasIndustryFollow = (sb: SupabaseClient) => hasColumn(sb, 'users', 
 
 /** 0033: where a company's website came from, its address check against the award notice, group or own site, lookups tried. */
 export const hasDomainProvenance = (sb: SupabaseClient) => hasColumn(sb, 'companies', 'domain_lookups');
+
+/**
+ * Item 24's candidate CRM — stage, employment preference, owner, retention date, candidate_number, the sends client name
+ * and candidate_placements — arrives with migration 0035. SENSITIVE PERSONAL DATA: see the note on candidates in CLAUDE.md.
+ */
+export const hasCandidateCrm = (sb: SupabaseClient) => hasColumn(sb, 'candidates', 'stage');

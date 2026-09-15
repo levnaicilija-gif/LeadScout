@@ -710,3 +710,122 @@ routes and instructions and waits to be applied by hand. Model cost per verifica
 measured on those six certificates: 6 document-read attempts, €0.0340 — €0.0057 a verification — and no model call in any lookup.
 
 0034 applied by the owner 2026-09-15: 6 cert_bodies and 11 cert_library rows confirmed.
+
+-------------------------------------------------------------------------------
+24. CANDIDATES POOL — SIMPLE CRM
+-------------------------------------------------------------------------------
+A simple, deliberately uncluttered candidate database — RFBT uses Bullhorn but
+finds it has too many options for daily use. Model the philosophy on JobAdder
+(built around how a recruiter works, not the database), Recruiterflow's simple
+kanban pipeline, and Loxo's "one page, not five tabs" principle. Reuse existing
+extraction/decoding logic throughout — this is a new front door and proper home
+for data, not new AI capability.
+
+FIRST, before building: report the current candidate ID scheme actually in use
+(e.g. RFBT-P-0196 has appeared in prior reports) and confirm whether this build
+should keep that format or switch to a plain sequential number. Eli's
+preference is simple numbers — reconcile this against what's already live and
+report the decision before proceeding, don't silently pick one.
+
+1. A persistent drag-and-drop zone, visible from anywhere in the app. Dropping
+   a CV file: runs the same CV-parsing logic Verify already uses, creates a new
+   candidate record, or asks before creating a likely duplicate. Use the SAME
+   duplicate-detection approach already proven for the WindEurope attendee
+   imports (match on name + a second field, not name alone) — not a fresh,
+   untested approach, given the real risk of false merges/false new-records at
+   2,000+ record scale.
+
+2. A candidate list with two views on the same data — a plain table and a
+   simple kanban (New / Screening / Presented / Placed / Bench — confirm
+   RFBT's actual stage names before building). Every candidate shows their ID
+   (from the decision above) in both views.
+
+   BOOLEAN SEARCH — required, not optional, given the pool will grow to
+   thousands of records where plain substring search breaks down: support
+   AND / OR / NOT and parentheses, searching across ID, name, trade, country,
+   certificates, employment preference, notes, and client history (CV-sent
+   and placement records). Build/verify against a realistic test set of at
+   least a few hundred synthetic candidates before trusting it at real
+   2,000+ scale — report actual query performance at that volume.
+
+3. ONE candidate detail page — general info, CV, and certificates all visible
+   together, no secondary tabs. Editable fields: name, phone (stored and
+   format-validated only, no online lookup), email, trade, country,
+   availability, notes.
+
+   EMPLOYMENT PREFERENCE — Permanent / Contract / Either. Searchable/
+   filterable, shown in both table and kanban.
+
+   CV SENT TRACKING — an appendable log per candidate: which client, when.
+   Searchable by client name. Record who logged each entry and when
+   (sent_by, sent_at) — same audit pattern as hiring_confirmed_by/at
+   elsewhere in the app.
+
+   PLACEMENT TRACKING — when stage is set to "Placed" (table, kanban drag, or
+   detail page), require/prompt for which client and the date. Record who
+   made the entry and when (placed_by, placed_at). This must be queryable
+   (e.g. "who is currently placed at AIBEL"), not just a status label.
+
+4. A drag-and-drop zone on the candidate page for certificates — decodes via
+   Verify's existing logic, attaches to that candidate, shows the three-layer
+   rendering (raw designation / decoded table / fits-our-jobs). Connect
+   certificate expiry to item 8's existing expiry-alert design — do not build
+   a second, disconnected expiry system.
+
+5. CV PREVIEW: clicking a candidate's CV opens a standardized, parsed reading
+   view (name, trade, contact, certifications, work history) built from the
+   original file — not just a raw file viewer — so every candidate reads in
+   the same layout regardless of source formatting. Original file stays
+   downloadable alongside this view.
+
+6. CERTIFICATE PREVIEW: clicking "view original" on a decoded certificate
+   shows the original uploaded document (PDF/image) side by side with the
+   decoded reading.
+
+7. Link the existing CV anonymizer directly from the candidate page — a
+   "generate anonymized version" action — rather than a separate flow.
+
+8. Migrate/link existing candidate data: any candidate currently only
+   existing as a side effect of a CV upload or certificate attachment should
+   show up correctly here, not require re-uploading. Report how many were
+   linked vs. need manual review.
+
+SECURITY AND DATA HANDLING — non-negotiable, given this table holds more
+sensitive personal data than anything built so far this session:
+- Run scripts/rls-sweep.ts against every new candidates-related table BEFORE
+  this item is considered done, not after. Report the result explicitly.
+- Access model: confirm and report whether every recruiter sees the full pool
+  or whether a per-recruiter "my candidates" view is needed alongside "all" —
+  a real decision, not a silent default either way.
+- Add a data_retention_until field (even if the full deletion policy is
+  decided later), and flag this table explicitly in CLAUDE.md as holding
+  sensitive personal data warranting extra care in future changes.
+
+Commit after each step, two lines per step. Full release gate before every
+commit, screen checks as a signed-in user, both widths, including drag-and-drop
+interactions specifically. Report: the ID scheme decision, boolean search
+correctness and performance at scale, RLS sweep result, access-model decision,
+how many existing candidates were migrated, and a full walkthrough — drop a
+CV, drop a certificate, log a CV-sent, move someone to Placed and record the
+client — end to end on real data.
+
+Findings before building (2026-09-15): the live ID is RFBT-<trade letter>-<number>
+from one shared sequence (real candidates: RFBT-P-0004, RFBT-F-0009; probe runs
+have consumed numbers up to at least 0196). The code is public-facing: anonymised
+CV links are /v/<code> (2 exist) and client/internal PDF filenames use it. 2 real
+candidates; 7 certificates and 1 CV attached to no candidate. WindEurope dedupe
+matches name + company; Verify's candidate match is name-only today. No pipeline
+stage or placement record exists; `sends` (1 row) is the only CV-sent record.
+Item 8 built "certificates expiring within 60 days" on Today and the nightly
+recheck; the 60/30/7 alerts with a drafted renewal were never built.
+
+Owner's decisions (2026-09-15, asked before building):
+- ID: a plain number from the SAME sequence — RFBT-P-0004 is shown as #4 and
+  RFBT-F-0009 as #9. Nothing is renumbered; the stored RFBT code stays, so public
+  anonymised-CV links (/v/<code>) and PDF filenames keep working. New candidates
+  continue from the sequence, so numbers have gaps (test runs used numbers).
+- Stages: New / Screening / Presented / Placed / Bench, in that order. Placed
+  prompts for the client and the date.
+- Access: every recruiter in the workspace sees the full pool, with a "Mine"
+  filter (candidates they created or own). No per-recruiter restriction in the
+  database.

@@ -8,7 +8,8 @@ import { fileToBase64 } from '@/lib/files';
 import { appearsIn } from '@/lib/ai/claude';
 import { isEea } from '@/lib/right-to-work';
 import { countriesFromText, norm } from '@/lib/geo';
-import { hasRightToWork } from '@/lib/schema-features';
+import { hasRightToWork, hasCandidateCrm } from '@/lib/schema-features';
+import { judgeDuplicate } from '@/lib/candidate-dedupe';
 import { matchName, autoMatch, normName } from '@/lib/name-match';
 export const maxDuration = 300;
 
@@ -45,9 +46,10 @@ async function handle(req: Request, me: SignedIn) {
     // Right to work is stored by migration 0013; until it is applied the rest of intake still works.
     const rtwReady = await hasRightToWork(db);
 
-    // Candidates already in the workspace, for matching a document to a person by name.
-    const { data: existing } = await db.from('candidates').select('id, reference_code, full_name, profile, availability_from').eq('workspace_id', me.workspace_id);
-    const known = (existing ?? []).map((c) => ({ ...c, key: normName(c.full_name) }));
+    // Candidates already in the workspace, for matching a document to a person — by name, and for a CV by a second field
+    // too (email, phone, date of birth; item 24).
+    const { data: existing } = await db.from('candidates').select('id, reference_code, full_name, email, phone, profile, availability_from').eq('workspace_id', me.workspace_id);
+    const known: any[] = (existing ?? []).map((c: any) => ({ ...c, key: normName(c.full_name), dob: c.profile?.pii?.dob ?? null }));
     const touched = new Map<string, any>();
 
     for (const f of files) {
@@ -79,39 +81,37 @@ async function handle(req: Request, me: SignedIn) {
           const cvText = prepared.kind === 'text' ? prepared.text! : await transcribeCv(prepared.base64, prepared.mediaType);
           if (!cvText.trim()) { row.kind = 'unreadable'; row.why = 'no readable text in the file'; results.push(row); continue; }
           const profile = await parseCv(cvText);
-          let cand = autoMatch(known, profile.full_name);
-
-          // A near match is not acted on. "M. Marcu" on file and "Marian Marcu" on the CV are
-          // probably one man, and creating a second record is how the pool ended up with five
-          // Marians — but so is attaching them when they are two. The file is stored, the card
-          // asks, and nothing is created until someone answers.
-          const near = cand ? [] : matchName(known, profile.full_name).filter((m) => m.kind === 'near');
-          if (!cand && near.length) {
+          // Is this someone already in the pool? Item 24 uses the rule proven on the WindEurope imports — a name plus a
+          // second field (email, phone, date of birth), never the name alone (src/lib/candidate-dedupe.ts). Until
+          // 2026-09-15 an exact name was enough and the CV silently rewrote that candidate's profile, so two welders
+          // called Lars Nilsen would have become one. A likely or name-only match is stored and asked about — nothing is
+          // created or changed until a recruiter chooses; no match, or a namesake whose details all differ, is a new record.
+          const judged = judgeDuplicate(known, { full_name: profile.full_name, email: profile.pii.email, phone: profile.pii.phone, dob: profile.pii.dob });
+          if (judged.verdict === 'ask') {
             const doc = await store(db, me, bytes, f, 'cv', null, { text: cvText.slice(0, 5000), profile, holder: profile.full_name });
             row.documentId = doc?.id ?? null;
-            row.needsDecision = 'A candidate with a very similar name is already in the pool.';
-            row.suggest = near.slice(0, 4).map((m) => ({ candidateId: m.candidate.id, reference: m.candidate.reference_code, name: m.candidate.full_name, kind: m.kind, why: m.why }));
+            row.needsDecision = judged.matches[0].strength === 'likely'
+              ? 'This looks like someone already in the pool — nothing is created or changed until you choose.'
+              : 'Someone with this name is already in the pool, and nothing else on either record can be compared — nothing is created until you choose.';
+            row.suggest = judged.matches.slice(0, 4).map((m) => ({ candidateId: m.candidate.id, reference: m.candidate.reference_code, name: m.candidate.full_name, kind: m.strength, why: m.why }));
             row.profile = anonymize(profile);
             row.trade = profile.trade;
             results.push(row);
             continue;
           }
+          if (judged.namesakes.length) row.namesakeNote = judged.why;
 
-          if (!cand) {
-            const code = await nextReferenceCode(db, profile.trade_code);
-            const { data: created, error } = await db.from('candidates').insert({
-              workspace_id: me.workspace_id, reference_code: code, trade_code: profile.trade_code,
-              full_name: profile.full_name, phone: profile.pii.phone, email: profile.pii.email,
-              trade: profile.trade, languages: profile.languages, profile, created_via: 'verify', created_by: me.id,
-            }).select().single();
-            if (error) { row.kind = 'unreadable'; row.why = `could not create the candidate: ${error.message}`; results.push(row); continue; }
-            cand = { ...created, key: normName(created.full_name) };
-            known.push(cand!);
-          } else {
-            await db.from('candidates').update({ profile, trade: profile.trade, languages: profile.languages }).eq('id', cand.id);
-            cand.profile = profile;
-          }
-          const person = cand!;
+          const code = await nextReferenceCode(db, profile.trade_code);
+          const crm = await hasCandidateCrm(db);
+          const { data: created, error } = await db.from('candidates').insert({
+            workspace_id: me.workspace_id, reference_code: code, trade_code: profile.trade_code,
+            full_name: profile.full_name, phone: profile.pii.phone, email: profile.pii.email,
+            trade: profile.trade, languages: profile.languages, profile, created_via: 'verify', created_by: me.id,
+            ...(crm ? { owner_id: me.id } : {}),
+          }).select().single();
+          if (error) { row.kind = 'unreadable'; row.why = `could not create the candidate: ${error.message}`; results.push(row); continue; }
+          const person = { ...created, key: normName(created.full_name), dob: profile.pii.dob ?? null };
+          known.push(person);
 
           // What the CV says about right to work — recorded as "per CV" so a passport can
           // overwrite it later, and never allowed to overwrite a passport that already has.

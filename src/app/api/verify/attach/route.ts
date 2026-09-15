@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { matchName, normName } from '@/lib/name-match';
-import { hasAttachTrail, hasRightToWork } from '@/lib/schema-features';
+import { hasAttachTrail, hasRightToWork, hasCandidateCrm } from '@/lib/schema-features';
+import { nextReferenceCode } from '@/lib/reference-code';
 import { isEea } from '@/lib/right-to-work';
 export const maxDuration = 60;
 
@@ -87,7 +88,9 @@ export async function POST(req: Request) {
       // throw away everything the reading found.
       const cv = ext.profile && mine[0].type === 'cv' ? ext.profile : null;
       const tradeCode = cv?.trade_code ?? guess?.code ?? 'x';
-      const code = (await db.rpc('next_reference_code', { tc: tradeCode })).data as string;
+      // Read the call's error, as intake does: a failed call made a reference-less candidate on 2026-09-15.
+      const code = await nextReferenceCode(db, tradeCode);
+      const crm = await hasCandidateCrm(db);
       const { data: row, error } = await db.from('candidates').insert({
         workspace_id: me.workspace_id,
         reference_code: code,
@@ -100,6 +103,7 @@ export async function POST(req: Request) {
         created_via: 'verify',
         created_by: me.id,
         profile: cv ?? { full_name: holder, opened_from: { document: mine[0].id, body: mine[0].cert_body ?? mine[0].type } },
+        ...(crm ? { owner_id: me.id } : {}),
       }).select().single();
       if (error) return NextResponse.json({ error: `could not open the record: ${error.message}` }, { status: 500 });
       created = row;
@@ -110,6 +114,14 @@ export async function POST(req: Request) {
 
     const { data: cand } = await db.from('candidates').select('id, reference_code, full_name, workspace_id').eq('id', candidateId).maybeSingle();
     if (!cand || cand.workspace_id !== me.workspace_id) return NextResponse.json({ error: 'no such candidate' }, { status: 404 });
+
+    // A CV attached to someone already in the pool brings its reading with it. Intake used to do this by itself on an
+    // exact name; since item 24 it asks first, so the recruiter's choice is where the profile is refreshed.
+    const cvDoc = !b.create ? mine.find((d) => d.type === 'cv' && (d.extracted as any)?.profile) : undefined;
+    if (cvDoc) {
+      const p = (cvDoc.extracted as any).profile;
+      await db.from('candidates').update({ profile: p, ...(p.trade ? { trade: p.trade } : {}), ...(p.languages ? { languages: p.languages } : {}) }).eq('id', candidateId);
+    }
 
     // The reason is stored, not the fact alone. Six months from now the question is not whether
     // someone attached it but why they thought it was the same person.
