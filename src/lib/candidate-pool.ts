@@ -8,8 +8,9 @@ export { STAGES, STAGE_LABEL, PREFERENCES, PREFERENCE_LABEL, type Stage, type Pr
  * The candidate pool as the list and the kanban read it (item 24). SENSITIVE PERSONAL DATA — read with the signed-in
  * user's client, so row-level security decides what comes back.
  *
- * One read of what the screens show and search, paged 1,000 rows at a time (one unpaged read stops at 1,000 — cost_log
- * found that on 10 September), never the parsed profile, which is the heavy part of a candidate. Each row gets one
+ * Four reads of what the screens show and search — candidates, their certificates, CVs sent, placements — each paged
+ * 1,000 rows at a time (one unpaged read stops at 1,000) and joined in memory, never the parsed profile, which is the
+ * heavy part of a candidate. Each row gets one
  * folded text the boolean search runs over: number, reference code, name, trade, where they are based, nationality,
  * stage, employment preference, availability, notes, certificates (body, level, number), every client a CV was sent to
  * ("sent to …") and every placement ("placed at …", "currently placed at …" while it has no end date).
@@ -28,24 +29,49 @@ export type PoolRow = {
 
 const PAGE = 1000;
 
-export async function loadPool(sb: SupabaseClient, crm: boolean): Promise<{ rows: PoolRow[]; error: string | null; ms: number }> {
-  const t0 = Date.now();
-  const cols = [
-    'id, reference_code, full_name, trade, nationality, availability_from, created_by, created_at, internal_notes',
-    crm ? 'stage, employment_preference, country, owner_id' : '',
-    'documents!candidate_id(type, cert_body, level:extracted->>level, number:extracted->>number, verifications(valid_until, state, checked_at))',
-    `sends(sent_at, ${crm ? 'client_name, ' : ''}companies(name))`,
-    crm ? 'candidate_placements(client_name, placed_on, ended_on)' : '',
-  ].filter(Boolean).join(', ');
-  // Count first, then every page at once: read one after another, 2,500 candidates took 5.1–5.5 s signed in.
-  const { count, error: countError } = await sb.from('candidates').select('id', { count: 'exact', head: true });
-  if (countError) return { rows: [], error: countError.message, ms: Date.now() - t0 };
+type Narrow = (q: any) => any;
+
+/** Every row of one table the user may read, paged 1,000 at a time with every page requested at once, ordered by id. */
+async function pagedAll(sb: SupabaseClient, table: string, cols: string, narrow: Narrow = (q) => q): Promise<{ data: any[]; error: string | null }> {
+  const { count, error: countError } = await narrow(sb.from(table).select('id', { count: 'exact', head: true }));
+  if (countError) return { data: [], error: `${table}: ${countError.message}` };
   const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE));
   const results = await Promise.all(Array.from({ length: pages }, (_, i) =>
-    sb.from('candidates').select(cols as '*').order('created_at', { ascending: false }).order('id').range(i * PAGE, i * PAGE + PAGE - 1)));
-  const failed = results.find((r) => r.error);
-  if (failed?.error) return { rows: [], error: failed.error.message, ms: Date.now() - t0 };
-  const raw: any[] = results.flatMap((r) => r.data ?? []);
+    narrow(sb.from(table).select(cols)).order('id').range(i * PAGE, i * PAGE + PAGE - 1)));
+  const failed = results.find((r: any) => r.error);
+  if (failed) return { data: [], error: `${table}: ${failed.error.message}` };
+  return { data: results.flatMap((r: any) => r.data ?? []), error: null };
+}
+
+export async function loadPool(sb: SupabaseClient, crm: boolean): Promise<{ rows: PoolRow[]; error: string | null; ms: number }> {
+  const t0 = Date.now();
+  // Owner's decision 2026-09-15 (option 1): four flat reads joined here, not one read with the certificates, CVs sent and
+  // placements embedded under each candidate. At 2,500 candidates the embedded read took 4.8 s and this 1.7 s; a stored
+  // search column (about 0.3 s) was turned down because a trigger that misses a case leaves the list silently stale.
+  // Revisit only if the real pool nears 2,500. Each read is the signed-in user's, so row-level security still decides.
+  const [cands, docs, sends, placements] = await Promise.all([
+    pagedAll(sb, 'candidates', [
+      'id, reference_code, full_name, trade, nationality, availability_from, created_by, created_at, internal_notes',
+      crm ? 'stage, employment_preference, country, owner_id' : '',
+    ].filter(Boolean).join(', ')),
+    pagedAll(sb, 'documents', 'candidate_id, type, cert_body, level:extracted->>level, number:extracted->>number, verifications(valid_until, state, checked_at)',
+      (q) => q.eq('type', 'certificate').not('candidate_id', 'is', null)),
+    pagedAll(sb, 'sends', `candidate_id, sent_at, ${crm ? 'client_name, ' : ''}companies(name)`),
+    crm ? pagedAll(sb, 'candidate_placements', 'candidate_id, client_name, placed_on, ended_on') : Promise.resolve({ data: [], error: null }),
+  ]);
+  // A part that could not be read fails the whole list: a pool shown without its certificates or placements would search
+  // as if nobody held one.
+  const failed = [cands, docs, sends, placements].find((r) => r.error);
+  if (failed) return { rows: [], error: failed.error, ms: Date.now() - t0 };
+  const byCandidate = (rows: any[]) => {
+    const m = new Map<string, any[]>();
+    for (const r of rows) { const list = m.get(r.candidate_id); if (list) list.push(r); else m.set(r.candidate_id, [r]); }
+    return m;
+  };
+  const docsOf = byCandidate(docs.data), sendsOf = byCandidate(sends.data), placementsOf = byCandidate(placements.data);
+  const raw = [...cands.data]
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)) || String(a.id).localeCompare(String(b.id)))
+    .map((c) => ({ ...c, documents: docsOf.get(c.id) ?? [], sends: sendsOf.get(c.id) ?? [], candidate_placements: placementsOf.get(c.id) ?? [] }));
   return { rows: raw.map(toRow), error: null, ms: Date.now() - t0 };
 }
 

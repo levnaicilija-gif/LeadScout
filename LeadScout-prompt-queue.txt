@@ -840,3 +840,7 @@ on every table with rows; candidate_placements proven by candidate-rls-probe (8/
 0036 (candidate_number = the code's trailing number) waits to be applied by hand.
 Existing data (step 8, report only): 8 documents attached to nobody, 0 linkable,
 8 for manual review.
+
+Owner's decisions (2026-09-15, later): list read option 1 — four flat reads joined in memory (1912â1939 ms at 2,500
+candidates), not a trigger-maintained search column, to avoid silent staleness; revisit only if the real pool nears
+2,500. 0036 applied by the owner.
