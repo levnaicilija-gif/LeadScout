@@ -237,7 +237,8 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     await page.goto(`${BASE}/app/today`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForTimeout(1200);
     const today = await bodyOf(page);
-    check(!/Application error/.test(today) && today.length > 60, 'Today renders');
+    // The error page since 2026-09-15 says "Something went wrong — reload the page", not Next's "Application error".
+    check(!/Application error|Something went wrong — reload the page/.test(today) && today.length > 60, 'Today renders');
     // Item 17: fresh-first. The news lead's article is 100 days old and its fit is higher (75); the
     // award lead has no date (age unknown, fit 70). The award lead is named first, the other labelled.
     check(/Smoke Tender Winner AS first/.test(today) && /Smoke Offshore AS \(stale signal\)/.test(today),

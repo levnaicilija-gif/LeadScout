@@ -70,7 +70,10 @@ const SIGNED_IN = [
         await page.goto(`${BASE}${path}`, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
         await page.waitForTimeout(700);
         const text = await page.locator('body').innerText();
-        if (/Application error|Unhandled Runtime Error/i.test(text)) problems.push(`${tag} ${name}: the page rendered an error`);
+        // Since 2026-09-15 a failing screen shows src/app/error.tsx, not Next's text — matching only "Application error"
+        // would let every broken screen through.
+        const boundary = await page.locator('[data-error-boundary]').count();
+        if (boundary > 0 || /Application error|Unhandled Runtime Error|Something went wrong — reload the page/i.test(text)) problems.push(`${tag} ${name}: the page rendered an error`);
         // A page wider than its viewport is a restyle bug, not a long table: tables scroll inside.
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
         if (overflow > 2) problems.push(`${tag} ${name}: page scrolls sideways by ${overflow}px`);
