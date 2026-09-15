@@ -6,7 +6,7 @@ import { SignOut } from '@/components/SignOut';
 import { todayItems, whenLabel, HOW_THIS_LIST_IS_MADE } from '@/lib/today';
 import { HomeCards } from '@/components/HomeCards';
 import { Logo } from '@/components/Logo';
-import { DAILY_BUDGET_EUR, spentTodayEur } from '@/lib/cost';
+import { DAILY_BUDGET_EUR, spentTodaySplit } from '@/lib/cost';
 import { hasHealthChecks } from '@/lib/schema-features';
 export const dynamic = 'force-dynamic';
 
@@ -43,18 +43,21 @@ export default async function Home() {
     sb.from('candidates').select('id', { count: 'exact', head: true }).gt('availability_from', today).lte('availability_from', date(30)),
     sb.from('sources').select('id', { count: 'exact', head: true }).eq('tier', 'priority').eq('enabled', true),
     // The cap is system-wide, so the figure beside it is too; the signed-in client sees only its own workspace's rows.
-    spentTodayEur(supabaseAdmin()).catch(() => 0),
+    // A spend that cannot be read says so — it used to read €0.00, a quiet day's figure.
+    spentTodaySplit(supabaseAdmin()).catch((e: Error) => ({ error: e.message })),
     sb.from('articles').select('fetched_at').gte('fetched_at', `${today}T00:00:00Z`).order('fetched_at', { ascending: true }),
     healthOn
       ? sb.from('health_checks').select('ok, source, ran_at, detail').eq('kind', 'rls_sweep').order('ran_at', { ascending: false }).limit(1).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
   ]);
 
-  const spentToday = spend;
+  const spendRead = 'error' in spend ? null : spend;
+  const spentToday = spendRead?.total ?? 0;
   // The cap hard-stops automated crawls, so a spent cap shows up as a morning that read nothing —
   // which looks exactly like a quiet news day. Say it instead: amber from 80% of the cap, red at it.
+  // Item 16: recruiter tools count in the total and are never stopped, so the pill names their part.
   const capShare = DAILY_BUDGET_EUR > 0 ? spentToday / DAILY_BUDGET_EUR : 0;
-  const spendTone: 'ok' | 'warn' | 'bad' = capShare >= 1 ? 'bad' : capShare >= 0.8 ? 'warn' : 'ok';
+  const spendTone: 'ok' | 'warn' | 'bad' = !spendRead ? 'warn' : capShare >= 1 ? 'bad' : capShare >= 0.8 ? 'warn' : 'ok';
   const readToday = radar.data?.length ?? 0;
   const firstRead = radar.data?.[0]?.fetched_at
     ? new Date(radar.data[0].fetched_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
@@ -82,8 +85,8 @@ export default async function Home() {
   const newLeadsToRead = wonWork.count ?? 0;
   const freeBy = new Date(Date.now() + 30 * 86400000).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
 
-  const Pulse = ({ tone, children, hook }: { tone: 'ok' | 'warn' | 'bad'; children: React.ReactNode; hook?: string }) => (
-    <span data-pulse={hook} data-tone={tone} className={`border rounded-full px-3.5 py-1.5 text-[13px] inline-flex items-center gap-2 ${tone === 'bad' ? 'bg-badsoft border-bad text-bad' : tone === 'warn' ? 'bg-warnsoft border-warn text-ink2' : 'bg-panel border-line text-ink2'}`}>
+  const Pulse = ({ tone, children, hook, attrs }: { tone: 'ok' | 'warn' | 'bad'; children: React.ReactNode; hook?: string; attrs?: Record<string, string> }) => (
+    <span {...attrs} data-pulse={hook} data-tone={tone} className={`border rounded-full px-3.5 py-1.5 text-[13px] inline-flex items-center gap-2 ${tone === 'bad' ? 'bg-badsoft border-bad text-bad' : tone === 'warn' ? 'bg-warnsoft border-warn text-ink2' : 'bg-panel border-line text-ink2'}`}>
       <i className={`w-2 h-2 rounded-full ${tone === 'bad' ? 'bg-bad' : tone === 'warn' ? 'bg-warn' : 'bg-ok'}`} />{children}
     </span>
   );
@@ -125,7 +128,11 @@ export default async function Home() {
           {/* Each pill is one query. A dot is amber only where something is actually waiting. */}
           <div className="flex gap-2.5 flex-wrap">
             <Pulse tone={readToday > 0 ? 'ok' : 'warn'}>Radar <b className="text-ink font-semibold">{readToday > 0 ? 'ran' : 'not run'}</b>{firstRead ? ` ${firstRead}` : ''}</Pulse>
-            <Pulse tone={spendTone} hook="spend">Spent today <b className="text-ink font-semibold">€{spentToday.toFixed(2)}</b>{spendTone !== 'ok' && <> of the €{DAILY_BUDGET_EUR.toFixed(2)} cap{spendTone === 'bad' ? ' — automated crawls have stopped for today' : ' — close to the cap'}</>}</Pulse>
+            <Pulse tone={spendTone} hook="spend" attrs={spendRead ? { 'data-spend-total': spendRead.total.toFixed(4), 'data-spend-recruiter': spendRead.recruiter.toFixed(4), title: 'Recruiter tools are recorded and counted in the day, and never stopped by the cap. Automated jobs stop at it.' } : undefined}>
+              {spendRead
+                ? <>Spent today <b className="text-ink font-semibold">€{spendRead.total.toFixed(2)}</b>{spendTone !== 'ok' && <> of the €{DAILY_BUDGET_EUR.toFixed(2)} cap{spendTone === 'bad' ? ' — automated crawls have stopped for today; recruiter tools still run' : ' — close to the cap'}</>} · recruiter tools €{spendRead.recruiter.toFixed(2)}</>
+                : <>Spent today <b className="text-ink font-semibold">could not be read</b> — {'error' in spend ? spend.error : ''}</>}
+            </Pulse>
             <Pulse tone={waitingOnIssuers > 0 ? 'warn' : 'ok'}><b className="text-ink font-semibold">{waitingOnIssuers}</b> waiting on issuers</Pulse>
             <Pulse tone={sweepTone} hook="rls">Data access check <b className={sweepTone === 'bad' ? 'font-semibold' : 'text-ink font-semibold'}>{sweepText}</b></Pulse>
           </div>
@@ -195,7 +202,7 @@ export default async function Home() {
               get: 'What Radar reads, how certificates are checked, right-to-work rules by country, where your candidates come from, team and onboarding.',
               nums: [
                 { n: prioritySources.count ?? 0, label: 'priority sources' },
-                { n: `€${spentToday.toFixed(2)}`, label: 'Radar spent today' },
+                { n: spendRead ? `€${spendRead.total.toFixed(2)}` : '—', label: spendRead ? 'spent today, every tool' : 'spent today could not be read' },
               ],
               action: 'Open settings',
             }] : []),

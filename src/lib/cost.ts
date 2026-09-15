@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { isRecruiterTool } from './ai/tools';
 
 /**
  * What a run costs, recorded as it happens.
@@ -66,6 +67,25 @@ export async function spentEur(db: SupabaseClient, filter: { day?: string; kind?
 /** Spend so far today (UTC), in EUR, across every workspace. */
 export async function spentTodayEur(db: SupabaseClient): Promise<number> {
   return spentEur(db, { day: new Date().toISOString().slice(0, 10) });
+}
+
+/**
+ * Today's spend, system-wide, and the part recruiter tools made (item 16) — recorded and counted, never stopped by the cap.
+ * Paged like spentEur, and throws rather than report €0 when it cannot be read.
+ */
+export async function spentTodaySplit(db: SupabaseClient): Promise<{ total: number; recruiter: number; automated: number }> {
+  const day = new Date().toISOString().slice(0, 10);
+  const out = { total: 0, recruiter: 0, automated: 0 };
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db.from('cost_log').select('kind, eur').eq('day', day).order('id').range(from, from + 999);
+    if (error) throw new Error(`spend could not be read: ${error.message}`);
+    for (const r of data ?? []) {
+      const eur = Number(r.eur ?? 0);
+      out.total += eur;
+      if (isRecruiterTool(String(r.kind))) out.recruiter += eur; else out.automated += eur;
+    }
+    if (!data || data.length < 1000) return out;
+  }
 }
 
 /** A run-scoped budget: knows what was already spent today, system-wide, and refuses to go past the cap. */
