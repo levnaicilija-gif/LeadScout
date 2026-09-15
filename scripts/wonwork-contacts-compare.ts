@@ -25,5 +25,17 @@ for (const s of sets) {
   console.log(`${s}: ${rows.length} leads · had a contact ${rows.filter((r) => r.hasContact).length} · gained one ${gained.length} (${companies.size} companies) · lost one ${lost.length}${s === 'news_quoted' ? ` · quoted person gained an email or phone on ${quotedGained} lead(s)` : ''} · how: ${JSON.stringify(tally)}`);
   for (const r of gained.slice(0, 12)) console.log(`    ${r.company}`);
 }
-const all = before.filter((r) => !r.hasContact && after.get(r.id)?.hasContact).length;
-console.log(`total: ${all} of ${before.length} leads gained a contact they did not have`);
+const gainedAll = before.filter((r) => !r.hasContact && after.get(r.id)?.hasContact);
+console.log(`total: ${gainedAll.length} of ${before.length} leads gained a contact they did not have`);
+// Named person vs a company's front door. A lead counts as named when, after, someone with an email or phone is on it or
+// its company (census files from before 2026-09-15 08:30 lack the field, so it is recomputed where missing).
+const named = (x: any) => (x.namedReachable ?? ((x.quotedReachable ?? 0) > 0 ? 1 : 0)) > 0;
+const gainedNamed = gainedAll.filter((r) => named(after.get(r.id)));
+const gainedGeneric = gainedAll.filter((r) => !named(after.get(r.id)));
+console.log(`of those: a named person with an email or phone ${gainedNamed.length} · only a switchboard or general email ${gainedGeneric.length}`);
+for (const s of sets) {
+  const g = gainedAll.filter((r) => r.set === s);
+  if (g.length) console.log(`  ${s}: named ${g.filter((r) => named(after.get(r.id))).length} · generic only ${g.filter((r) => !named(after.get(r.id))).length}`);
+}
+const namedNow = [...after.values()].filter(named).length;
+console.log(`leads with a named, reachable person after: ${namedNow} of ${after.size} (before: ${before.filter(named).length})`);

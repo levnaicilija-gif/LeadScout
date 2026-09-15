@@ -42,6 +42,10 @@ const saveAt = process.argv.includes('--save') ? process.argv[process.argv.index
       domain: !!co.domain, checked: !!co.contacts_checked_at, switchboard: !!co.switchboard, general: !!co.general_email,
       companyPeople: people.length, quoted: quoted.length, quotedReachable: quoted.filter((c) => c.email || c.phone).length,
       hiringNow: hiringCos.has(l.company_id),
+      // Named: a person with an email or phone — the quoted person or someone off the company's own site. Generic: only the
+      // company's switchboard or general email. Reported apart, because a switchboard is not a decision-maker.
+      namedReachable: quoted.filter((c) => c.email || c.phone).length + people.filter((c) => c.email || c.phone).length,
+      genericOnly: !quoted.some((c) => c.email || c.phone) && !people.some((c) => c.email || c.phone) && (!!co.switchboard || !!co.general_email),
       // "A contact": a named person with an email or phone, or the company's switchboard or general email.
       hasContact: quoted.some((c) => c.email || c.phone) || people.some((c) => c.email || c.phone) || !!co.switchboard || !!co.general_email,
     };

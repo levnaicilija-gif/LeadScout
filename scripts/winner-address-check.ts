@@ -6,7 +6,7 @@ import { lookupPrompt } from '../src/lib/domain-lookup';
 let failed = 0;
 const check = (ok: boolean, what: string, got?: unknown) => { console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${what}${ok ? '' : ` — ${JSON.stringify(got)}`}`); if (!ok) failed++; };
 
-const xml = readFileSync('scripts/fixtures/ted-609867-2026.xml', 'utf8');
+const xml = readFileSync('scripts/testdata/ted-609867-2026.xml', 'utf8');
 check(organisationsIn(xml).length === 5, 'the notice lists five organisations', organisationsIn(xml).map((o) => o.name));
 check(JSON.stringify(tendererIds(xml)) === '["ORG-0005"]', 'the award section links one tenderer, ORG-0005', tendererIds(xml));
 const a = winnerAddress(xml, 'ALLEZ ENERGIES');
