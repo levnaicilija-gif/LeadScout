@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { WhyThisScore } from './WhyThisScore';
 
 /**
  * One scored candidate on the lead's score card, with the call attached.
@@ -65,6 +66,8 @@ export function ScoredCandidate({ x, jd, jobCountry, company }: {
         </span>
         <b className="text-accent">{x.score}</b>
       </div>
+
+      <WhyThisScore x={x} />
 
       <div className="mt-1.5">
         <button className="btn text-[12px]" disabled={busy} onClick={ask}>

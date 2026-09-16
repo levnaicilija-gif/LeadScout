@@ -6,6 +6,7 @@ import { AnonymizedPreview, DownloadPdf } from './CvCard';
 import { PreviewPdf } from './PreviewPdf';
 import { friendlyError } from '@/lib/friendly-error';
 import { AttachChoice } from './AttachChoice';
+import { WhyThisScore } from './WhyThisScore';
 
 /** Nothing may spin forever: every call is bounded and every failure is shown. */
 const STEP_TIMEOUT_MS = 90_000;
@@ -256,6 +257,8 @@ function FileCard({ f, candidate, senior, job, busy }: { f: any; candidate?: any
               <span className="text-ok">Fits</span> {f.score.fits.join(' · ') || '—'}<br />
               <span className="text-warn">Missing</span> {f.score.missing.join(' · ') || '—'}<br />
               <span className="text-bad">Blocker</span> {f.score.blockers.join(' · ') || 'none'}{job?.label ? <span className="text-ink3"> · vs {job.label}</span> : null}
+              {/* Item 11 part 2: the same requirement-by-requirement reading as the lead's card. */}
+              <WhyThisScore x={f.score} />
             </div>
           </div>}
 

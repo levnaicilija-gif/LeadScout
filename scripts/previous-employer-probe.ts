@@ -169,6 +169,34 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       check(/how did that end|take you back/i.test(employerQ ?? ''),
         'it asks how the employment ended and whether they would be taken back', employerQ?.slice(0, 130));
 
+      // ---- item 11 part 2: why this score, on the same card
+      const why = card.locator('[data-why-score]');
+      check(await why.count() > 0, 'the score card carries a "Why this score" panel');
+      const summary = why.locator('summary');
+      check(flat(await summary.innerText()) === 'Why this score', 'it is shut by default and says what it is',
+        `"${flat(await summary.innerText())}" · open=${await why.evaluate((el: any) => el.open)}`);
+      await summary.click();
+      check(await why.evaluate((el: any) => el.open), 'it opens when the recruiter asks for it');
+
+      const reasons = why.locator('[data-why-score-reasons] li');
+      const fallback = why.locator('[data-why-score-fallback]');
+      const nReasons = await reasons.count();
+      const usedFallback = await fallback.count() > 0;
+      check(nReasons > 0 || usedFallback, 'it shows either the job\'s requirements line by line, or the score\'s own three lists',
+        nReasons > 0 ? `${nReasons} requirement line(s)` : 'fallback: fits / missing / blockers');
+      if (nReasons > 0) {
+        const lines = (await reasons.allInnerTexts()).map(flat);
+        check(lines.every((l) => l.length > 0), 'every requirement line has text', lines.slice(0, 3).join(' | ').slice(0, 200));
+        console.log(`      requirement lines: ${lines.slice(0, 4).map((l) => l.slice(0, 70)).join(' | ')}`);
+      } else {
+        console.log(`      fallback shown: ${flat(await fallback.innerText()).slice(0, 160)}`);
+      }
+      const dropped = why.locator('[data-why-score-dropped]');
+      if (await dropped.count() > 0) {
+        const text = flat(await dropped.innerText());
+        check(/could not be traced to the CV/.test(text), 'a dropped line is reported as a count, never shown', text);
+      }
+
       const over = await sideways(p);
       check(over <= 1, `at ${width}px nothing scrolls sideways`, `${over}px`);
       await ctx.close();

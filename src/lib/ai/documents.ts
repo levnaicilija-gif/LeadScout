@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { askJson, createMessage, MODEL_EXTRACT } from './claude';
+import { askJson, createMessage, appearsIn, MODEL_EXTRACT } from './claude';
 import { asTool } from './meter';
 import { jsonFromReply } from './json-reply';
 import { checkRightToWork, type Rtw } from '../right-to-work';
@@ -562,7 +562,31 @@ const listOfText = z.preprocess(
   z.array(z.string()),
 );
 
-export const ScoreSchema = z.object({ score: z.number().min(0).max(100), fits: listOfText, missing: listOfText, blockers: listOfText });
+/**
+ * Item 11 part 2: one line per requirement the job states, and what in the CV met or missed it.
+ *
+ * Asked for in the SAME call that already reads the job and the CV, rather than by a second model
+ * explaining the first model's number — this codebase does not let one model vouch for another, and
+ * a per-candidate extra call would be metered 60 times over on a pool score. `evidence` must be a
+ * phrase from the candidate data as given; anything that cannot be found there is dropped and
+ * counted, exactly as an unsupported bullet is (buildBullets).
+ */
+const Reason = z.preprocess((v: any) => {
+  if (!v || typeof v !== 'object') return v;
+  return {
+    requirement: v.requirement ?? v.req ?? v.asked ?? v.needs ?? '',
+    met: typeof v.met === 'boolean' ? v.met : /^(yes|true|met)$/i.test(String(v.met ?? '')),
+    evidence: v.evidence ?? v.from_cv ?? v.quote ?? '',
+  };
+}, z.object({ requirement: z.string().min(1), met: z.boolean(), evidence: z.string() }));
+
+export const ScoreSchema = z.object({
+  score: z.number().min(0).max(100),
+  fits: listOfText,
+  missing: listOfText,
+  blockers: listOfText,
+  reasons: z.array(Reason).nullish().transform((v) => v ?? []),
+});
 /**
  * Score, with right to work applied as a gate afterwards rather than left to the model.
  *
@@ -581,8 +605,22 @@ export async function scoreWithRightToWork(anon: object, verified: object[], jd:
   };
 }
 
-export const scoreAgainstJob = (anon: object, verified: object[], jd: string) =>
-  asTool('candidate-score', () => askJson(ScoreSchema, 'Score how well this candidate matches the job (0–100). fits: evidence from the CV. missing: what is absent and what would close it (e.g. "ICATS card — FROSIO accepted by most UK yards, confirm"). blockers: hard requirements not met (passport, required cert level, language). Be strict and specific.', JSON.stringify({ candidate: anon, verified_certificates: verified, job: jd })));
+export const scoreAgainstJob = async (anon: object, verified: object[], jd: string) => {
+  const score = await asTool('candidate-score', () => askJson(
+    ScoreSchema,
+    `Score how well this candidate matches the job (0–100). fits: evidence from the CV. missing: what is absent and what would close it (e.g. "ICATS card — FROSIO accepted by most UK yards, confirm"). blockers: hard requirements not met (passport, required cert level, language). Be strict and specific.
+
+reasons: one entry per requirement the job actually states — the trade, each certificate, experience, language, location, rotation, right to work. requirement: the requirement in the job's own words. met: true only where the candidate data supports it. evidence: the exact phrase from the candidate data that settles it, copied verbatim, or "" where nothing in the data speaks to it. Never write evidence that is not in the data in front of you: an untraceable line is dropped, not shown.`,
+    JSON.stringify({ candidate: anon, verified_certificates: verified, job: jd }),
+  ));
+  // Traced in code against the same data the model was given — appearsIn, as every other claim
+  // about our own people is checked. A reason keeps its place when it quotes that data or when it
+  // quotes nothing at all (an honest "the job asks, the CV is silent"); one that cites something
+  // absent is dropped and counted, never shown marked-up (owner's decision, 2026-09-16).
+  const source = JSON.stringify({ candidate: anon, verified_certificates: verified });
+  const kept = score.reasons.filter((r) => !r.evidence || appearsIn(source, r.evidence));
+  return { ...score, reasons: kept, droppedReasons: score.reasons.length - kept.length };
+};
 
 export const JdSchema = z.object({ job_description: z.string(), assumptions: z.array(z.string()) });
 export const jdFromLead = (lead: object, articleText: string) =>
