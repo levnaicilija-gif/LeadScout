@@ -51,6 +51,23 @@ const sameCounts = (a: any, b: any) => {
   const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])];
   return keys.every((k) => Number(a[k]) === Number(b[k]));
 };
+/**
+ * Is this button readable? Its label must have text, and the text colour must differ from the colour behind it — a
+ * destructive confirm was blank on 2026-09-16 (white on white: globals.css defines .btn after Tailwind's utilities, so
+ * .btn's bg-panel beat bg-bad while text-white still applied).
+ */
+const readable = async (p: Page, selector: string) => p.evaluate((sel) => {
+  const el = document.querySelector(sel) as HTMLElement | null;
+  if (!el) return { found: false, text: '', colour: '', behind: '', legible: false };
+  const style = getComputedStyle(el);
+  const colour = style.color;
+  let behind = style.backgroundColor;
+  let up: HTMLElement | null = el;
+  while (up && (behind === 'rgba(0, 0, 0, 0)' || behind === 'transparent')) { up = up.parentElement; behind = up ? getComputedStyle(up).backgroundColor : 'rgb(255, 255, 255)'; }
+  const text = (el.textContent ?? '').trim();
+  return { found: true, text, colour, behind, legible: text.length > 0 && colour !== behind };
+}, selector);
+
 const flat = (s: string) => s.replace(/\s+/g, ' ').trim();
 const hydrated = (p: Page) => p.waitForFunction(() => document.documentElement.dataset.hydrated === 'true', undefined, { timeout: 60000 }).catch(() => {});
 const sideways = (p: Page) => p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -181,6 +198,8 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       const disabledWhenWrong = await confirm.isDisabled();
       await sp.locator('[data-cert-delete-input]').fill('delete');
       const enabledWhenTyped = !(await confirm.isDisabled());
+      const certLabel = await readable(sp, '[data-cert-delete-confirm]');
+      check(certLabel.legible, 'the certificate delete button reads clearly — never a blank button', `"${certLabel.text}" ${certLabel.colour} on ${certLabel.behind}`);
       check(/erased and cannot be recovered/i.test(deleteText) && /remove from this candidate instead/i.test(deleteText) && disabledAtFirst && disabledWhenWrong && enabledWhenTyped,
         '"Delete permanently" says it cannot be recovered, points at Remove instead, and stays disabled until "delete" is typed', `${JSON.stringify({ disabledAtFirst, disabledWhenWrong, enabledWhenTyped })} · ${deleteText.slice(0, 120)}`);
       await confirm.click();
@@ -202,6 +221,8 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       await open(m, T);
       await m.locator(`[data-cert-actions="${c3.id}"] [data-cert-delete]`).tap();
       const box = await m.locator('[data-cert-delete-box]').boundingBox();
+      const certLabelPhone = await readable(m, '[data-cert-delete-confirm]');
+      check(certLabelPhone.legible, 'at 390px the certificate delete button reads clearly', `"${certLabelPhone.text}" ${certLabelPhone.colour} on ${certLabelPhone.behind}`);
       check(!!box && box.x >= 0 && box.x + box.width <= 391 && await sideways(m) <= 1, 'at 390px the certificate actions and the delete box fit the screen', `${await sideways(m)}px`);
       await m.getByRole('button', { name: 'Cancel' }).first().tap();
       await phone.close();
@@ -239,10 +260,15 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       const boxText = flat(await sp.locator('[data-delete-candidate-box]').innerText().catch(() => ''));
       const go = sp.locator('[data-delete-candidate-confirm]');
       const offAtFirst = await go.isDisabled();
+      const labelDisabled = await readable(sp, '[data-delete-candidate-confirm]');
       await sp.locator('[data-delete-candidate-input]').fill('Probe Delete');
       const offWhenPartial = await go.isDisabled();
       await sp.locator('[data-delete-candidate-input]').fill('probe delete person');
       const onWhenNamed = !(await go.isDisabled());
+      const labelEnabled = await readable(sp, '[data-delete-candidate-confirm]');
+      check(labelDisabled.legible && labelEnabled.legible && labelDisabled.text === labelEnabled.text,
+        'the delete button reads clearly before and after the name is typed — never a blank button',
+        `disabled: "${labelDisabled.text}" ${labelDisabled.colour} on ${labelDisabled.behind} · enabled: "${labelEnabled.text}" ${labelEnabled.colour} on ${labelEnabled.behind}`);
       // Seeded: 2 CVs; 3 certificates, of which step 8 takes one off and deletes one; a CV sent and a pack; a placement; a client version.
       const certsLeft = STEPS.has('8') ? 1 : 3;
       const listsWhatGoes = /2 CVs/.test(boxText) && new RegExp(`${certsLeft} certificates?\\b`).test(boxText) && /2 CV-sent entries/.test(boxText)
@@ -266,7 +292,16 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       await sp.goto(`${BASE}/app/candidates`, { waitUntil: 'domcontentloaded', timeout: 60000 });
       const listText = await sp.locator('body').innerText().catch(() => '');
       check(!listText.includes(code('9112')) && listText.includes(code('9113')), 'the candidate list no longer shows them, and still shows the control candidate');
-      const candLog = (await log()).find((r) => r.subject_id === T);
+      // Read straight after the delete and again a moment later: a row that fills in between the two was read before the
+      // route finished writing it, which is a fault in this check rather than in the deletion.
+      let candLog = (await log()).find((r) => r.subject_id === T);
+      const firstRead = candLog ? { completed_at: candLog.completed_at, keys: Object.keys(candLog.removed ?? {}) } : null;
+      if (!candLog?.completed_at) {
+        await sp.waitForTimeout(2000);
+        candLog = (await log()).find((r) => r.subject_id === T);
+      }
+      const secondRead = candLog ? { completed_at: candLog.completed_at, keys: Object.keys(candLog.removed ?? {}) } : null;
+      console.log(`  ...  log row straight after the delete: ${JSON.stringify(firstRead)} · two seconds later: ${JSON.stringify(secondRead)}`);
       const logJson = JSON.stringify(candLog ?? {}).toLowerCase();
       check(!!candLog && candLog.kind === 'candidate' && candLog.deleted_by === senior.uid && !!candLog.completed_at && !candLog.error
         && sameCounts(candLog.removed?.before, before) && Object.values(candLog.removed?.after ?? { x: 1 }).every((n) => n === 0)
@@ -290,6 +325,8 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       await open(m, K);
       await m.locator('[data-delete-candidate-open]').tap();
       const box = await m.locator('[data-delete-candidate-box]').boundingBox();
+      const deleteLabelPhone = await readable(m, '[data-delete-candidate-confirm]');
+      check(deleteLabelPhone.legible, 'at 390px the delete button reads clearly before the name is typed', `"${deleteLabelPhone.text}" ${deleteLabelPhone.colour} on ${deleteLabelPhone.behind}`);
       check(!!box && box.x >= 0 && box.x + box.width <= 391 && await sideways(m) <= 1, 'at 390px the delete box fits the screen', `${await sideways(m)}px`);
       await m.locator('[data-delete-candidate-box]').getByRole('button', { name: 'Cancel' }).tap();
       const { data: kStill } = await admin.from('candidates').select('id').eq('id', K).maybeSingle();
@@ -303,7 +340,10 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     await browser.close();
     for (const f of files) await admin.storage.from(f.bucket).remove([f.path]);
     if (campaignId) await admin.from('campaigns').delete().eq('id', campaignId);
-    const problems = [await removeProbe(admin, recruiter.uid, recruiter.ownWorkspace, null), await removeProbe(admin, senior.uid, W, null, { clearContent: true })].filter(Boolean);
+    // The senior owns the workspace both accounts worked in, so it and everything in it goes first; the recruiter, who was
+    // moved into it, is removed afterwards. Taking the recruiter out first had their auth delete refused twice while the
+    // workspace was still being cleared, stranding the account both times (2026-09-16).
+    const problems = [await removeProbe(admin, senior.uid, W, null, { clearContent: true }), await removeProbe(admin, recruiter.uid, recruiter.ownWorkspace, null)].filter(Boolean);
     if (problems.length) { failures++; console.log(`\n  FAIL  cleanup — ${problems.join('; ')}`); } else console.log('\nboth probe accounts, the workspace and every seeded row and file removed');
   }
   console.log(failures === 0 ? 'candidate delete probe: all checks passed' : `candidate delete probe: ${failures} check(s) failed`);

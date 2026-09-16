@@ -12,6 +12,7 @@ import { CandidateFiles, type CandidateFile } from '@/components/CandidateFiles'
 import { sendKind } from '@/lib/cv-sent-entry';
 import { AnonymizeAction } from '@/components/AnonymizeAction';
 import { CandidateDocDrop } from '@/components/CandidateDocDrop';
+import { CertificateActions } from '@/components/CertificateActions';
 import { DeleteCandidate } from '@/components/DeleteCandidate';
 export const dynamic = 'force-dynamic';
 
@@ -158,7 +159,7 @@ export default async function CandidatePage({ params }: { params: { id: string }
             <div className="grid gap-4">
               {certificates.map((d: any) => {
                 const v = [...(d.verifications ?? [])].sort((a: any, b: any) => String(b.checked_at ?? '').localeCompare(String(a.checked_at ?? '')))[0];
-                return <div key={d.id} data-candidate-certificate={d.id} className="border-t border-line2 pt-3 first:border-t-0 first:pt-0"><CertCard res={{ extracted: { ...(d.extracted ?? {}), cert_body: d.cert_body }, verification: v, state: v?.state, documentId: d.id }} /><Link href={`/app/candidates/${c.id}/documents/${d.id}`} className="text-accent text-[13px] mt-2 inline-block" data-view-original={d.id}>View original</Link></div>;
+                return <div key={d.id} data-candidate-certificate={d.id} className="border-t border-line2 pt-3 first:border-t-0 first:pt-0"><CertCard res={{ extracted: { ...(d.extracted ?? {}), cert_body: d.cert_body }, verification: v, state: v?.state, documentId: d.id }} /><Link href={`/app/candidates/${c.id}/documents/${d.id}`} className="text-accent text-[13px] mt-2 inline-block" data-view-original={d.id}>View original</Link><CertificateActions candidateId={c.id} documentId={d.id} label={candidateLabel(c.reference_code)} senior={me?.role === 'senior'} ready={deleteReady} /></div>;
               })}
             </div>
           )}
