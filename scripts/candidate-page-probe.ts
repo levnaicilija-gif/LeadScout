@@ -8,8 +8,10 @@
  * verification. Then:
  *   1. 1500px: the list links to the page; Details, CV, Certificates, CVs sent and Placements are all on it, with no tabs;
  *      the certificate shows its three layers (what the document says, what it means, the confirmation).
- *   2. An invalid phone is refused with its reason and nothing is saved; valid edits (phone, email, trade, availability,
- *      notes) are saved to the database.
+ *   2. An invalid phone is refused with its reason and nothing is saved; valid edits (name, phone, email, trade,
+ *      availability, notes) are saved to the database. After a reload every field — the nine on the form with 0035 — shows
+ *      what was saved, the header carries the new name, and a field cleared and saved is stored empty (item 24 follow-up
+ *      3, step 6: confirm editing persists).
  *   3. With 0035: employment preference, based-in country and keep-until date save; logging a CV sent to Semco Maritime
  *      records client, sent_by and sent_at, and the list's search finds "sent to semco"; the page's stage picker records a
  *      placement at AIBEL, shown as current with who entered it.
@@ -106,6 +108,7 @@ async function saveForm(p: Page) {
     const problem = await page.locator('[data-edit-problem="phone"]').innerText().catch(() => '');
     const { data: before } = await admin.from('candidates').select('phone').eq('id', cand!.id).single();
     check(/not saved/i.test(refused) && /only digits/.test(problem) && before?.phone == null, 'an invalid phone is refused with its reason, and nothing is saved', `${refused} · ${problem}`);
+    await page.locator('[data-edit-field="full_name"] input').fill('Probe Marko Jovanović-Edited');
     await page.locator('[data-edit-field="phone"] input').fill('+47 912 34 567');
     await page.locator('[data-edit-field="email"] input').fill('probe.marko@example.com');
     await page.locator('[data-edit-field="trade"] input').fill('Painter / blaster');
@@ -117,8 +120,30 @@ async function saveForm(p: Page) {
       await page.locator('[data-edit-field="data_retention_until"] input').fill('2028-09-15');
     }
     const saved = await saveForm(page);
-    const { data: after } = await admin.from('candidates').select(`phone, email, trade, availability_from, internal_notes${crm ? ', employment_preference, country, data_retention_until' : ''}` as '*').eq('id', cand!.id).single() as { data: any };
-    check(saved === 'Saved' && after?.phone === '+47 912 34 567' && after.email === 'probe.marko@example.com' && after.trade === 'Painter / blaster' && after.availability_from === '2026-10-01' && after.internal_notes === 'Probe note: prefers 8:2 rotation.', 'valid edits are saved: phone, email, trade, availability, notes', JSON.stringify(after));
+    const { data: after } = await admin.from('candidates').select(`full_name, phone, email, trade, availability_from, internal_notes${crm ? ', employment_preference, country, data_retention_until' : ''}` as '*').eq('id', cand!.id).single() as { data: any };
+    check(saved === 'Saved' && after?.full_name === 'Probe Marko Jovanović-Edited' && after.phone === '+47 912 34 567' && after.email === 'probe.marko@example.com' && after.trade === 'Painter / blaster' && after.availability_from === '2026-10-01' && after.internal_notes === 'Probe note: prefers 8:2 rotation.', 'valid edits are saved: name, phone, email, trade, availability, notes', JSON.stringify(after));
+
+    // Step 6: what the form shows after a reload is what the database holds — every field, not only the ones checked above.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await hydrated(page);
+    const shown = await page.evaluate(() => Object.fromEntries(Array.from(document.querySelectorAll('[data-edit-field]')).map((f) => [f.getAttribute('data-edit-field'), (f.querySelector('input, textarea, select') as HTMLInputElement | null)?.value ?? null])));
+    const want: Record<string, string> = {
+      full_name: 'Probe Marko Jovanović-Edited', phone: '+47 912 34 567', email: 'probe.marko@example.com', trade: 'Painter / blaster',
+      availability_from: '2026-10-01', notes: 'Probe note: prefers 8:2 rotation.',
+      ...(crm ? { employment_preference: 'contract', country: 'Norway', data_retention_until: '2028-09-15' } : {}),
+    };
+    const wrong = Object.entries(want).filter(([k, v]) => shown[k] !== v);
+    check(wrong.length === 0 && Object.keys(shown).length === Object.keys(want).length, `after a reload all ${Object.keys(want).length} fields on the form show what was saved`, wrong.length ? JSON.stringify(Object.fromEntries(wrong.map(([k]) => [k, shown[k]]))) : Object.keys(shown).join(', '));
+    check(/Probe Marko Jovanović-Edited/.test(await page.locator('[data-candidate-header]').innerText().catch(() => '')), 'the page header carries the edited name');
+    await page.locator('[data-edit-field="trade"] input').fill('');
+    await page.locator('[data-edit-save]').click();
+    let clearedTrade: unknown = 'not read';
+    for (let i = 0; i < 30; i++) {                       // waits for the stored value, not for a fixed time
+      clearedTrade = (await admin.from('candidates').select('trade').eq('id', cand!.id).single()).data?.trade;
+      if (clearedTrade === null) break;
+      await page.waitForTimeout(500);
+    }
+    check(clearedTrade === null, 'a field cleared and saved is stored empty, not left as it was', JSON.stringify({ trade: clearedTrade }));
 
     // ---- 3. with 0035: preference, CV sent, placement
     if (!crm) {

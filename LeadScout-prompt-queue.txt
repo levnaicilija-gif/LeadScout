@@ -891,3 +891,5 @@ drop result collapses into one "Added" line; a card stays only where something s
 Step 5 built: a Files card on the candidate page lists every CV (the newest marked current, older ones kept as history),
 every certificate and every other document, with the name a download gets, the type, the date and who added it. The name
 the file arrived with is not stored — the storage path holds a digest, by the rule that keeps names out of paths.
+Step 6 confirmed: all nine editable fields persist. The page probe now edits the name too, reads every field back from the
+form after a reload, checks the header carries the new name, and clears a field to confirm it is stored empty.
