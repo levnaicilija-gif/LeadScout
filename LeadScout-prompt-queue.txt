@@ -893,3 +893,9 @@ every certificate and every other document, with the name a download gets, the t
 the file arrived with is not stored — the storage path holds a digest, by the rule that keeps names out of paths.
 Step 6 confirmed: all nine editable fields persist. The page probe now edits the name too, reads every field back from the
 form after a reload, checks the header carries the new name, and clears a field to confirm it is stored empty.
+Step 7 built: Delete candidate — seniors only, the name typed to confirm. The log row is written before anything is
+removed, then their files, then their rows in one transaction, then every table is counted again; anything left behind
+fails the call and is named in the log. A certificate already taken off them is not touched.
+Step 9 reported and fixed: every CV was already kept, and Read CV and Download used the newest — but the profile the
+client version reads followed whichever CV was attached last, so an older CV attached later could replace a newer
+reading. The profile now follows the newest CV by upload date; older CVs stay as history, listed in the Files card.

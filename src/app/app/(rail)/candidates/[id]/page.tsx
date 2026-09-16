@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { supabaseServer, currentUser } from '@/lib/supabase/server';
-import { hasCandidateCrm } from '@/lib/schema-features';
+import { hasCandidateCrm, hasTable } from '@/lib/schema-features';
 import { candidateLabel } from '@/lib/candidate-number';
 import { STAGES, type Stage, type Preference } from '@/lib/candidate-stages';
 import { CertCard } from '@/components/CertCard';
@@ -12,6 +12,7 @@ import { CandidateFiles, type CandidateFile } from '@/components/CandidateFiles'
 import { sendKind } from '@/lib/cv-sent-entry';
 import { AnonymizeAction } from '@/components/AnonymizeAction';
 import { CandidateDocDrop } from '@/components/CandidateDocDrop';
+import { DeleteCandidate } from '@/components/DeleteCandidate';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -26,6 +27,8 @@ export default async function CandidatePage({ params }: { params: { id: string }
   const me = await currentUser();
   const sb = supabaseServer();
   const crm = await hasCandidateCrm(sb);
+  // 0037: the deletion log. Deleting permanently waits for it; the route also checks its delete function.
+  const deleteReady = await hasTable(sb, 'deletion_log');
 
   const cols = [
     'id, reference_code, full_name, phone, email, trade, languages, availability_from, internal_notes, nationality, created_via, created_by, created_at, profile',
@@ -116,6 +119,11 @@ export default async function CandidatePage({ params }: { params: { id: string }
                   </li>
                 ))}
               </ul>}
+        </Card>
+
+        <Card title="Delete candidate" hook="delete">
+          <DeleteCandidate candidateId={c.id} label={candidateLabel(c.reference_code)} name={c.full_name ?? null} senior={me?.role === 'senior'} ready={deleteReady}
+            goes={{ cvs: cvs.length, certificates: certificates.length, otherDocuments: otherDocs.length, sends: sends.length, placements: placements.length, clientVersions: (c.anonymized_cvs ?? []).length }} />
         </Card>
       </div>
 

@@ -124,6 +124,10 @@ export async function clearTestWorkspace(db: SupabaseClient, workspaceId: string
     const { error } = await db.from(table).delete().eq('workspace_id', workspaceId);
     if (error) problems.push(`${table} in workspace ${workspaceId} were not deleted: ${error.message}`);
   }
+  // 0037's deletion log references the workspace with no cascade, so a probe that deleted something leaves a row that
+  // would stop the workspace being removed. Before 0037 there is no such table, and nothing to clear.
+  const { error: logError } = await db.from('deletion_log').delete().eq('workspace_id', workspaceId);
+  if (logError && !/deletion_log|schema cache|does not exist/i.test(logError.message)) problems.push(`the deletion log of workspace ${workspaceId} was not cleared: ${logError.message}`);
   return problems.length ? problems.join('; ') : null;
 }
 
