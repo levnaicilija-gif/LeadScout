@@ -61,7 +61,7 @@ export function DeleteCandidate({ candidateId, label, name, goes, senior, ready 
         <input data-delete-candidate-input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" className="border border-line rounded px-3 py-2 bg-panel min-w-0" />
       </label>
       <div className="flex flex-wrap gap-2">
-        <button type="button" data-delete-candidate-confirm disabled={!confirmed || busy} onClick={remove} className="btn bg-bad text-white border-bad disabled:opacity-50">{busy ? 'Deleting…' : 'Delete permanently'}</button>
+        <button type="button" data-delete-candidate-confirm disabled={!confirmed || busy} onClick={remove} className="btn btn-danger disabled:opacity-50">{busy ? 'Deleting…' : 'Delete permanently'}</button>
         <button type="button" className="btn" disabled={busy} onClick={() => { setOpen(false); setTyped(''); setErr(''); }}>Cancel</button>
       </div>
       {err && <div className="text-bad text-[12px]" data-delete-candidate-error>{err}</div>}

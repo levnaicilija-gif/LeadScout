@@ -896,6 +896,10 @@ form after a reload, checks the header carries the new name, and clears a field 
 Step 7 built: Delete candidate — seniors only, the name typed to confirm. The log row is written before anything is
 removed, then their files, then their rows in one transaction, then every table is counted again; anything left behind
 fails the call and is named in the log. A certificate already taken off them is not touched.
+Step 8 built: two separate actions on a certificate. "Remove from this candidate" keeps everything and hands the document
+back to Verify's unattached list — any recruiter. "Delete permanently" erases the file, its reading and its issuer check
+— a senior's, confirmed by typing "delete", logged first, and refused for the document that settles right to work. The
+two confirmation boxes are worded so that removing the wrong person's certificate can never end in deleting a document.
 Step 9 reported and fixed: every CV was already kept, and Read CV and Download used the newest — but the profile the
 client version reads followed whichever CV was attached last, so an older CV attached later could replace a newer
 reading. The profile now follows the newest CV by upload date; older CVs stay as history, listed in the Files card.

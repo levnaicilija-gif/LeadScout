@@ -18,6 +18,8 @@ h1,h2,h3{font-family:"Plus Jakarta Sans","IBM Plex Sans",system-ui,sans-serif;le
 .btn{@apply inline-block border border-line bg-panel px-3.5 py-2.5 rounded font-semibold whitespace-nowrap}
 .btn-primary{@apply bg-rail border-rail text-white}
 .btn-go{@apply bg-ok border-ok text-white}
+/* Destructive, and it must read as such: white on red, never the panel background .btn would otherwise give it. */
+.btn-danger{@apply bg-bad border-bad text-white}
 .chip{@apply border border-line bg-panel rounded-full px-3 py-1 text-[13px] text-ink2}
 
 /* A badge states one fact and its standing. The colour is the status, never the screen. */

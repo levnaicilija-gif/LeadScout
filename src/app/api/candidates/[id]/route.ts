@@ -112,7 +112,12 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     workspace_id: me.workspace_id, kind: 'candidate', subject_id: cand.id, subject_ref: `${label} · ${cand.reference_code}`, deleted_by: me.id, removed: { before },
   }).select('id').single();
   if (logError || !log) return NextResponse.json({ error: `The deletion could not be recorded, so nothing was deleted: ${logError?.message ?? 'no log row'}` }, { status: 500 });
-  const finish = (patch: Record<string, unknown>) => db.from('deletion_log').update(patch).eq('id', log.id);
+  // The closing write IS the audit record. Its result is read: a deletion that happened and was not recorded is the one
+  // thing this log exists to prevent, so a lost write is reported rather than swallowed (the error column is untrimmed).
+  const finish = async (patch: Record<string, unknown>) => {
+    const { error } = await db.from('deletion_log').update(patch).eq('id', log.id);
+    return error?.message ?? null;
+  };
 
   const files = await removeFiles(db, candidateFiles(me.workspace_id, ids));
   if (files.error) {
@@ -129,11 +134,13 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
   try { after = await candidateRowCounts(db, cand.id, ids); }
   catch (e: any) { await finish({ error: `deleted, but could not be counted again: ${e?.message ?? e}`, removed: { before, rows, files: files.removed } }); return NextResponse.json({ error: `Deleted, but the check afterwards could not run: ${e?.message ?? e}` }, { status: 500 }); }
   const left = Object.entries(after).filter(([, n]) => n > 0);
-  await finish({
+  const notRecorded = await finish({
     completed_at: left.length ? null : new Date().toISOString(),
     removed: { before, rows, after, files: files.removed },
     error: left.length ? `left behind: ${left.map(([t, n]) => `${t} ${n}`).join(', ')}` : null,
   });
   if (left.length) return NextResponse.json({ error: `Rows were left behind: ${left.map(([t, n]) => `${t} ${n}`).join(', ')}`, before, after }, { status: 500 });
+  // Deleted, but the record of it was lost: said plainly, because the rows and files are already gone.
+  if (notRecorded) return NextResponse.json({ error: `They were deleted, but the deletion could not be recorded: ${notRecorded}`, before, after, files: files.removed }, { status: 500 });
   return NextResponse.json({ ok: true, deleted: label, before, after, files: files.removed });
 }
