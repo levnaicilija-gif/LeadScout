@@ -62,7 +62,7 @@ export async function POST(req: Request) {
     const ids: string[] = b.documentIds ?? (b.documentId ? [b.documentId] : []);
     if (!ids.length) return NextResponse.json({ error: 'documentId is required' }, { status: 400 });
 
-    const { data: docs } = await db.from('documents').select('id, type, cert_body, extracted, candidate_id, workspace_id').in('id', ids);
+    const { data: docs } = await db.from('documents').select('id, type, cert_body, extracted, candidate_id, workspace_id, uploaded_at').in('id', ids);
     const mine = (docs ?? []).filter((d) => d.workspace_id === me.workspace_id);
     if (!mine.length) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
@@ -131,12 +131,21 @@ export async function POST(req: Request) {
       }
     }
 
-    // A CV attached to someone already in the pool brings its reading with it. Intake used to do this by itself on an
-    // exact name; since item 24 it asks first, so the recruiter's choice is where the profile is refreshed.
-    const cvDoc = !b.create ? mine.find((d) => d.type === 'cv' && (d.extracted as any)?.profile) : undefined;
+    // A CV attached to someone already in the pool brings its reading with it — when it is their newest CV. The profile
+    // (what the client version, the search and the page read) follows the current CV, the newest by upload date, as Read CV
+    // and Download original do; an older CV attached later is kept as history and changes nothing (owner's decision,
+    // 2026-09-15: older CVs stay as history). Until then whichever CV was attached last became the profile, so a CV held
+    // back for a decision could replace a newer reading. Intake asks before attaching since item 24, so this is where it lands.
+    const cvDoc = !b.create
+      ? mine.filter((d) => d.type === 'cv' && (d.extracted as any)?.profile).sort((x, y) => String(y.uploaded_at).localeCompare(String(x.uploaded_at)))[0]
+      : undefined;
     if (cvDoc) {
-      const p = (cvDoc.extracted as any).profile;
-      await db.from('candidates').update({ profile: p, ...(p.trade ? { trade: p.trade } : {}), ...(p.languages ? { languages: p.languages } : {}) }).eq('id', candidateId);
+      const { data: newer, error: newerError } = await db.from('documents').select('id').eq('candidate_id', candidateId).eq('type', 'cv').gt('uploaded_at', cvDoc.uploaded_at).limit(1);
+      if (newerError) return NextResponse.json({ error: `their CVs could not be compared, so nothing was attached: ${newerError.message}` }, { status: 500 });
+      if (!(newer ?? []).length) {
+        const p = (cvDoc.extracted as any).profile;
+        await db.from('candidates').update({ profile: p, ...(p.trade ? { trade: p.trade } : {}), ...(p.languages ? { languages: p.languages } : {}) }).eq('id', candidateId);
+      }
     }
 
     // The reason is stored, not the fact alone. Six months from now the question is not whether
