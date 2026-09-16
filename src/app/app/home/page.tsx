@@ -9,7 +9,8 @@ import { Logo } from '@/components/Logo';
 import { CvDropZone } from '@/components/CvDropZone';
 import { canSee } from '@/lib/onboarding';
 import { DAILY_BUDGET_EUR, spentTodaySplit } from '@/lib/cost';
-import { hasHealthChecks } from '@/lib/schema-features';
+import { hasHealthChecks, hasScorecards } from '@/lib/schema-features';
+import { Scorecard } from '@/components/Scorecard';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -29,6 +30,9 @@ export default async function Home() {
   const today = date(0);
   // 0026 keeps the RLS sweep's results. Asked first, so the query below only names the table once it exists.
   const healthOn = await hasHealthChecks(sb);
+  // 0039 keeps the scorecard. Until it is applied, Home carries nothing for it.
+  const scorecardReady = await hasScorecards(sb);
+  const yesterday = date(-1);
 
   const [
     items, wonWork, hiringNow, weekOk, weekBad, pool, expiring,
@@ -143,6 +147,10 @@ export default async function Home() {
 
         {/* Home has no rail, so the CV drop zone the rail carries is a card here (owner's decision, 2026-09-15). */}
         {canSee('candidates', me) && <CvDropZone variant="home" />}
+
+        {/* Item 11 part 3: yesterday's day, counted. Its own block rather than a HomeCards tile —
+            a card there carries a tool colour, a pill and an action, and this is none of those. */}
+        {scorecardReady && <div className="mb-5 max-w-[560px]"><Scorecard day={yesterday} compact /></div>}
 
         <HomeCards
           cards={[

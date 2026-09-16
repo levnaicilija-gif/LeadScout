@@ -96,3 +96,7 @@ export const hasDomainProvenance = (sb: SupabaseClient) => hasColumn(sb, 'compan
  * and candidate_placements — arrives with migration 0035. SENSITIVE PERSONAL DATA: see the note on candidates in CLAUDE.md.
  */
 export const hasCandidateCrm = (sb: SupabaseClient) => hasColumn(sb, 'candidates', 'stage');
+
+/** 0039: the daily scorecard's two tables, and the column that dates a prepared pack. */
+export const hasScorecards = (sb: SupabaseClient) => hasTable(sb, 'scorecards');
+export const hasSendsCreatedAt = (sb: SupabaseClient) => hasColumn(sb, 'sends', 'created_at');
