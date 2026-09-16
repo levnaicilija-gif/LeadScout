@@ -243,7 +243,7 @@ export function HiringDrawer({ g }: { g: Group }) {
           </button>
           {!out.jd && <div className="text-ink3 text-[12px] mt-1">Write the job description first — the score is against it.</div>}
           <Failure action="score_pool" />
-          {out.ranked?.map((c: any) => <ScoredCandidate key={c.id} x={c} jd={out.jd?.job_description} jobCountry={g.country} />)}
+          {out.ranked?.map((c: any) => <ScoredCandidate key={c.id} x={c} jd={out.jd?.job_description} jobCountry={g.country} company={{ name: g.company }} />)}
           {out.ranked?.length === 0 && <div className="text-ink3 text-[13px] mt-2">Nobody in the pool scored against this.</div>}
         </>)}
 

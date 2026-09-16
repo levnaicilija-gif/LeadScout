@@ -3,6 +3,7 @@ import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { anonymize, candidateScreening, scoreWithRightToWork } from '@/lib/ai/documents';
 import { meterRecruiter } from '@/lib/ai/meter';
 import { checkRightToWork } from '@/lib/right-to-work';
+import { previousEmployer } from '@/lib/previous-employer';
 export const maxDuration = 120;
 
 /**
@@ -24,7 +25,7 @@ type SignedIn = NonNullable<Awaited<ReturnType<typeof currentUser>>>;
 async function handle(req: Request, me: SignedIn) {
 
   try {
-    const { candidate_id: candidateId, job, job_country: jobCountry } = await req.json();
+    const { candidate_id: candidateId, job, job_country: jobCountry, company_name: companyName, company_domain: companyDomain } = await req.json();
     if (!candidateId) return NextResponse.json({ error: 'candidate_id required' }, { status: 400 });
 
     const db = supabaseAdmin();
@@ -54,8 +55,15 @@ async function handle(req: Request, me: SignedIn) {
       ? [{ q: rtw.question, good_answer: rtw.rule }, ...questions.filter((x: any) => !/passport|right to work|settled status|work visa/i.test(x.q))]
       : questions;
 
+    // Item 11: worked out here from the candidate's own stored CV, never taken from the caller —
+    // the browser posts the company being scored against, not the verdict about this person.
+    const prev = previousEmployer((cand.profile ?? {}) as any, { name: companyName, domain: companyDomain }, cand.current_employer);
+    const withPrev = prev
+      ? [...ordered, { q: prev.question, good_answer: prev.goodAnswer }]
+      : ordered;
+
     return NextResponse.json({
-      questions: ordered, score, rightToWork: rtw,
+      questions: withPrev, score, rightToWork: rtw, previousEmployer: prev,
       basedOn: job ? 'the job on the right and this candidate\'s score against it' : 'this candidate\'s trade and documents',
     });
   } catch (e: any) {

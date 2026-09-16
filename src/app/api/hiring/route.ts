@@ -8,6 +8,7 @@ import { hasRightToWork, hasCandidateCountries, hasHiringState, hasCompanyOutrea
 import { buildSheet, fromAttendeeList, type FoundContact } from '@/lib/hiring-contacts';
 import { attendeesAt } from '@/lib/attendee-match';
 import { sendCapability } from '@/lib/send-capability';
+import { previousEmployer } from '@/lib/previous-employer';
 export const maxDuration = 120;
 
 /**
@@ -158,13 +159,14 @@ async function handle(req: Request, me: SignedIn) {
 
     case 'score_pool': {
       if (!b.job_description) return NextResponse.json({ error: 'Write the job description first — the score is against it.' }, { status: 400 });
-      const cols = `id, reference_code, profile${(await hasRightToWork(sb)) ? ', nationality, eu_passport, uk_right_to_work, uk_right_to_work_basis' : ''}`;
+      const cols = `id, reference_code, profile, current_employer${(await hasRightToWork(sb)) ? ', nationality, eu_passport, uk_right_to_work, uk_right_to_work_basis' : ''}`;
       const { data: cands } = await sb.from('candidates').select(cols as '*')
         .eq('workspace_id', me.workspace_id).limit(60) as { data: any[] | null };
       const out = [];
       for (const c of cands ?? []) {
         const s = await scoreWithRightToWork(anonymize(c.profile as any), [], b.job_description, country, c as any);
-        out.push({ ...c, ...s });
+        // Item 11: computed from the raw profile, because the score prompt never sees an employer.
+        out.push({ ...c, ...s, previousEmployer: previousEmployer(c.profile as any, co, (c as any).current_employer) });
       }
       return NextResponse.json({
         ranked: out.sort((a, b2) => (a.blockers.length ? 1 : 0) - (b2.blockers.length ? 1 : 0) || b2.score - a.score).slice(0, 10),

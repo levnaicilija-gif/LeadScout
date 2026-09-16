@@ -7,6 +7,7 @@ import { chooseRecipient } from '@/lib/contact-choice';
 import { attendeesAt } from '@/lib/attendee-match';
 import { xrayCandidatesUrl, xrayLocalVariantUrl } from '@/lib/search-urls';
 import { hasRightToWork, hasCandidateCountries } from '@/lib/schema-features';
+import { previousEmployer } from '@/lib/previous-employer';
 export const maxDuration = 120;
 /** POST { lead_id, action: 'jd' | 'questions' | 'score_pool' | 'xray' | 'draft' | 'confirm' | 'status', ... } */
 export async function POST(req: Request) {
@@ -56,7 +57,7 @@ async function handle(req: Request, me: SignedIn) {
       if (!lead.job_description) return NextResponse.json({ error: 'Create the job description first' }, { status: 400 });
       // Migration 0013 may not be applied yet, and naming a column that does not exist fails the
       // whole query rather than omitting a field.
-      const cols = `id, reference_code, profile${(await hasRightToWork(sb)) ? ', nationality, eu_passport, uk_right_to_work, uk_right_to_work_basis' : ''}`;
+      const cols = `id, reference_code, profile, current_employer${(await hasRightToWork(sb)) ? ', nationality, eu_passport, uk_right_to_work, uk_right_to_work_basis' : ''}`;
       const { data: cands } = await sb.from('candidates').select(cols as '*')
         .eq('workspace_id', me.workspace_id).limit(60) as { data: any[] | null };
       const out = [];
@@ -65,7 +66,10 @@ async function handle(req: Request, me: SignedIn) {
         const s = await scoreWithRightToWork(anonymize(c.profile as any), [], lead.job_description, lead.country, c as any);
         const { rightToWork, ...row } = s;
         await sb.from('scores').insert({ candidate_id: c.id, lead_id: lead.id, jd_version: lead.jd_version, ...row });
-        out.push({ ...c, ...s });
+        // Item 11: worked out in code, never by the model — anonymize() strips every employer
+        // before the score prompt sees the CV, so the match has to be made from the raw profile.
+        // It is not stored: nothing reads the scores table back, and this is true on every read.
+        out.push({ ...c, ...s, previousEmployer: previousEmployer(c.profile as any, lead.companies, (c as any).current_employer) });
       }
       return NextResponse.json({ ranked: out.sort((a, b) => (a.blockers.length ? 1 : 0) - (b.blockers.length ? 1 : 0) || b.score - a.score).slice(0, 10) });
     }

@@ -8,10 +8,12 @@ import { useState } from 'react';
  * recruiter go to Verify, find the candidate and re-select the job to get the questions threw
  * that away and asked for it again. The questions come from the score that is already on screen.
  */
-export function ScoredCandidate({ x, jd, jobCountry }: {
+export function ScoredCandidate({ x, jd, jobCountry, company }: {
   x: any;
   jd?: string | null;
   jobCountry?: string | null;
+  /** The company being scored against, so the call can ask about a shared employer. */
+  company?: { name?: string | null; domain?: string | null } | null;
 }) {
   const [busy, setBusy] = useState(false);
   const [questions, setQuestions] = useState<any[] | null>(null);
@@ -25,7 +27,10 @@ export function ScoredCandidate({ x, jd, jobCountry }: {
     try {
       const res = await fetch('/api/candidate/questions', {
         method: 'POST', headers: { 'content-type': 'application/json' }, signal: ac.signal,
-        body: JSON.stringify({ candidate_id: x.id, job: jd || undefined, job_country: jobCountry || undefined }),
+        body: JSON.stringify({
+          candidate_id: x.id, job: jd || undefined, job_country: jobCountry || undefined,
+          company_name: company?.name || undefined, company_domain: company?.domain || undefined,
+        }),
       });
       const body = await res.text();
       let j: any = null;
@@ -39,10 +44,18 @@ export function ScoredCandidate({ x, jd, jobCountry }: {
   };
 
   return (
-    <div className="px-3 py-2 border-b border-line2 last:border-0">
+    <div data-scored-candidate={x.reference_code} className="px-3 py-2 border-b border-line2 last:border-0">
       <div className="grid grid-cols-[1fr_auto] gap-2">
         <span>
           <b className="font-medium">{x.reference_code}</b>
+          {/* Item 11: employer names only. It never claims the site — the CV stores no site. */}
+          {x.previousEmployer ? (
+            <span
+              data-previous-employer={x.previousEmployer.tone}
+              title={x.previousEmployer.headline.why}
+              className={`badge ml-1.5 align-middle ${x.previousEmployer.tone === 'warn' ? 'badge-warn' : 'badge-ok'}`}
+            >{x.previousEmployer.label}</span>
+          ) : null}
           <div className="text-[12px] text-ink3">
             {x.fits.slice(0, 2).join(' · ')}
             {x.missing.length ? ` · missing: ${x.missing[0]}` : ''}
