@@ -138,6 +138,20 @@ const docSettled = (p: Page) => p.waitForFunction(() => document.querySelector('
       page.off('response', noteRefresh);
       const cvAfterReload = await cvCount();
       check(Number(cvAfter) === Number(cvBefore) + 1 && cvLeft.overlay === 0 && cvLeft.busy === 'false' && cvLeft.question === 0, 'at 1500px their own CV dropped on their page is counted with no reload, and nothing is left on screen', `CV files ${cvBefore} → ${cvAfter} (after a reload: ${cvAfterReload}) · database: ${stored} · ${intakeSaid} · refresh requests: ${refreshes.length ? refreshes.join(', ') : 'none'} · added line: "${addedBeforeReload}" · ${JSON.stringify(cvLeft)}`);
+
+      // Step 5: every file on them in one list — each CV, the newest marked current, and the certificate.
+      await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await hydrated(page);
+      const listedFiles = await page.locator('[data-candidate-file]').evaluateAll((els) => els.map((e) => ({ type: e.getAttribute('data-candidate-file'), current: e.getAttribute('data-file-current') === 'true', text: (e.textContent ?? '').split('\n').join(' ').trim() })));
+      const { data: onFile } = await admin.from('documents').select('id, type, uploaded_at').eq('candidate_id', cand.id).order('uploaded_at', { ascending: false });
+      const cvRowsListed = listedFiles.filter((f) => f.type === 'cv');
+      const newestCvIsCurrent = cvRowsListed[0]?.current === true && cvRowsListed.slice(1).every((f) => !f.current);
+      const everyRowNamed = listedFiles.every((f) => f.text.includes('candidate-') && f.text.includes('added ') && f.text.includes(' by '));
+      check(listedFiles.length === (onFile ?? []).length && cvRowsListed.length === (onFile ?? []).filter((d: any) => d.type === 'cv').length && cvRowsListed.length >= 2 && newestCvIsCurrent && everyRowNamed,
+        'the Files list shows every file on them — each CV, the newest marked current, and the certificate — with its name, type, date and who added it', JSON.stringify(listedFiles.map((f) => `${f.current ? '[current] ' : ''}${f.text.slice(0, 80)}`)));
+      const firstFile = (onFile ?? [])[0]?.id;
+      const download = firstFile ? await page.request.get(`${BASE}/api/candidates/document?id=${firstFile}&download=1`, { maxRedirects: 0 }) : null;
+      check(!!download && download.status() === 302, 'a file in the list downloads through the checked route', download ? `HTTP ${download.status()}` : 'no file to download');
     }
 
     if (STEPS.has('5')) {

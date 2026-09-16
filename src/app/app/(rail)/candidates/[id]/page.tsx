@@ -8,6 +8,7 @@ import { CertCard } from '@/components/CertCard';
 import { CandidateTableStage } from '@/components/CandidateTableStage';
 import { CandidateEditForm } from '@/components/CandidateEditForm';
 import { CvSentLog } from '@/components/CvSentLog';
+import { CandidateFiles, type CandidateFile } from '@/components/CandidateFiles';
 import { sendKind } from '@/lib/cv-sent-entry';
 import { AnonymizeAction } from '@/components/AnonymizeAction';
 import { CandidateDocDrop } from '@/components/CandidateDocDrop';
@@ -29,7 +30,7 @@ export default async function CandidatePage({ params }: { params: { id: string }
   const cols = [
     'id, reference_code, full_name, phone, email, trade, languages, availability_from, internal_notes, nationality, created_via, created_by, created_at, profile',
     crm ? 'stage, employment_preference, country, owner_id, data_retention_until, stage_changed_at' : '',
-    'documents!candidate_id(id, type, cert_body, status, uploaded_at, extracted, verifications(result, state, valid_until, checked_where, checked_at, notes))',
+    'documents!candidate_id(id, type, cert_body, status, uploaded_at, uploaded_by, storage_path, extracted, verifications(result, state, valid_until, checked_where, checked_at, notes))',
     `sends(id, sent_at, sent_by, ${crm ? 'client_name, note, ' : ''}companies(name))`,
     crm ? 'candidate_placements(client_name, placed_on, ended_on, placed_by, placed_at)' : '',
     'anonymized_cvs(id, generated_at, pii_check_passed, storage_path)',
@@ -41,7 +42,7 @@ export default async function CandidatePage({ params }: { params: { id: string }
   if (!c) notFound();
 
   // Who logged what: names of the people behind sent_by, placed_by, owner and creator.
-  const people = [...new Set([c.owner_id, c.created_by, ...(c.sends ?? []).map((s: any) => s.sent_by), ...(c.candidate_placements ?? []).map((p: any) => p.placed_by)].filter(Boolean))];
+  const people = [...new Set([c.owner_id, c.created_by, ...(c.sends ?? []).map((s: any) => s.sent_by), ...(c.candidate_placements ?? []).map((p: any) => p.placed_by), ...(c.documents ?? []).map((d: any) => d.uploaded_by)].filter(Boolean))];
   const { data: users } = people.length ? await sb.from('users').select('id, name').in('id', people) : { data: [] as any[] };
   const nameOf = (id?: string | null) => (users ?? []).find((u: any) => u.id === id)?.name ?? (id ? 'a former user' : '—');
 
@@ -49,6 +50,12 @@ export default async function CandidatePage({ params }: { params: { id: string }
   const certificates = docs.filter((d) => d.type === 'certificate');
   const cvs = docs.filter((d) => d.type === 'cv').sort((a, b) => String(b.uploaded_at).localeCompare(String(a.uploaded_at)));
   const otherDocs = docs.filter((d) => d.type !== 'certificate' && d.type !== 'cv');
+  // Every file, newest first; the newest CV is the current one (owner's decision: older CVs stay as history).
+  const files: CandidateFile[] = [...docs].sort((a, b) => String(b.uploaded_at).localeCompare(String(a.uploaded_at))).map((d) => ({
+    id: d.id, type: d.type, certBody: d.cert_body ?? null, level: d.extracted?.level ?? null, uploadedAt: d.uploaded_at,
+    by: d.uploaded_by ? nameOf(d.uploaded_by) : 'not recorded', ext: (String(d.storage_path ?? '').match(/\.([a-z0-9]{2,5})$/i)?.[1] ?? 'bin').toLowerCase(),
+    current: d.type === 'cv' && d.id === cvs[0]?.id,
+  }));
   const latestAnon: any = [...(c.anonymized_cvs ?? [])].sort((a: any, b: any) => String(b.generated_at).localeCompare(String(a.generated_at)))[0];
   const profile: any = c.profile ?? {};
   const placements = [...(c.candidate_placements ?? [])].sort((a: any, b: any) => String(b.placed_on).localeCompare(String(a.placed_on)));
@@ -127,6 +134,10 @@ export default async function CandidatePage({ params }: { params: { id: string }
               </div>
             </div>
           )}
+        </Card>
+
+        <Card title={`Files · ${files.length}`} hook="files">
+          <CandidateFiles candidateId={c.id} reference={c.reference_code} files={files} />
         </Card>
 
         <Card title="Client version" hook="client-version">

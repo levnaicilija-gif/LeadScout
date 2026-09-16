@@ -877,7 +877,7 @@ Owner's decisions (asked 2026-09-15): older CVs are kept as history when a new C
 permanent deletes (a candidate, a certificate document) are seniors only; taking a certificate off the wrong candidate
 is open to every recruiter.
 Step 1 done: the certificate (FROSIO No. 10810) taken off #9 and kept, attached to nobody, with its verification; #9
-holds 0 certificates. Migration 0037 (deletion log; a candidate's rows deleted in one transaction) waits to be applied.
+holds 0 certificates. Migration 0037 (deletion log; a candidate's rows deleted in one transaction) applied by the owner 2026-09-16.
 Step 2 built: a document goes on a chosen candidate only when the name on it fits theirs (order, case and punctuation
 ignored; an initial or a middle name allowed; a shared surname alone is not enough). Otherwise nothing is attached and the
 screen asks "This certificate is for X — this candidate is Y. Attach anyway, or open a record for X instead?". Checked
@@ -888,3 +888,6 @@ sent, a drag cancelled with Escape — because it also ends a second after drago
 a file is really being dragged over the page.
 Step 4 built: after a drop the page re-reads itself — the new certificate in its list, the CV count up — and a settled
 drop result collapses into one "Added" line; a card stays only where something still needs answering.
+Step 5 built: a Files card on the candidate page lists every CV (the newest marked current, older ones kept as history),
+every certificate and every other document, with the name a download gets, the type, the date and who added it. The name
+the file arrived with is not stored — the storage path holds a digest, by the rule that keeps names out of paths.
