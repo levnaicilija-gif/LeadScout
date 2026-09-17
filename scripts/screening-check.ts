@@ -9,7 +9,7 @@
  *
  *   npx tsx scripts/screening-check.ts
  */
-import { rescoreReason, rescoreFor, takesVerdict, verdictAllowed, progress, type AnswerRow, type CallFlag } from '../src/lib/screening';
+import { rescoreReason, rescoreFor, takesVerdict, verdictAllowed, progress, STANDARD_QUESTIONS, withStandardQuestions, type AnswerRow, type CallFlag } from '../src/lib/screening';
 
 let failed = 0;
 const check = (ok: boolean, what: string, detail = '') => {
@@ -68,6 +68,69 @@ const both = rescoreReason([
 ]);
 check(!!both && /right to work was refused.*FROSIO III was confirmed/.test(both),
   'every verdict is named, in the order the questions were asked', String(both));
+
+/* ------------------------------------------------- the seven that are always asked, whatever the job */
+// Written in code, not by the model: their kind decides which verdict control appears on the call,
+// and a mislabel would remove one silently (owner's decision, 2026-09-17).
+check(STANDARD_QUESTIONS.length === 7, 'seven standard questions', `${STANDARD_QUESTIONS.length}`);
+check(STANDARD_QUESTIONS.every((s) => s.q.trim() && s.good_answer.trim()),
+  'each has a question and what a good answer sounds like');
+check(STANDARD_QUESTIONS.some((s) => s.kind === 'certificate'), 'one asks about certificates, and takes a confirm');
+check(STANDARD_QUESTIONS.some((s) => s.kind === 'availability'), 'one asks about starting');
+check(STANDARD_QUESTIONS.some((s) => s.kind === 'rate'), 'one asks about money');
+check(STANDARD_QUESTIONS.some((s) => /non.?compete|cannot work for/i.test(s.q)), 'one asks about conflicts — the mock had it, the prompt never did');
+check(!STANDARD_QUESTIONS.some((s) => s.kind === 'right_to_work'),
+  'right to work is NOT here — both routes inject it first, so a "no" is never the eighth question');
+check(STANDARD_QUESTIONS.every((s) => takesVerdict(s.kind) || s.kind === 'open' || s.kind === 'availability' || s.kind === 'rate'),
+  'every kind is one the call knows how to render');
+
+const modelWrote = [
+  { q: 'Which positions are on your ISO 9606, and what thickness have you welded to ISO 5817 level B?' },
+  { q: 'What rate are you expecting?' },                       // the model reached for a standard one
+  { q: 'Tell me about the gap between 2021 and 2022.' },
+];
+const merged = withStandardQuestions(modelWrote);
+check(merged.length === 2 + 7, "the model's own questions are kept and the seven appended", `${merged.length}`);
+check(!merged.some((m) => m.q === 'What rate are you expecting?'),
+  "a model-written duplicate of standard ground is dropped, not the fixed one — the fixed one's kind is certain");
+check(merged.some((m) => (m as any).kind === 'rate'), 'and the fixed rate question is the one that survived');
+check(merged.slice(-7).every((m) => STANDARD_QUESTIONS.includes(m as any)), 'the seven come last, after what the score raised');
+check(withStandardQuestions([]).length === 7, 'a model that returns nothing still leaves a full standard set');
+
+// The dedupe must not eat the questions step 3 exists to produce. The first cut keyed on subject
+// matter and swallowed every one of these (2026-09-17); they name a certificate or a rate because
+// they are asking for SPECIFICS, which is the opposite of the standard inventory question.
+const probes = [
+  'Which positions are on your ISO 9606, and what thickness have you welded to ISO 5817 level B?',
+  'Your CV claims FROSIO III — which inspections did you sign off, and to what acceptance criteria?',
+  'You list CSWIP 3.1 — was that on plate or pipe, and what was the scope?',
+  'What deposition rate did you hold on the 25 mm root runs?',
+  'The CV says offshore medical — which clinic, and what did it cover?',
+];
+for (const q of probes) {
+  const survived = withStandardQuestions([{ q }]).some((m) => m.q === q);
+  check(survived, `a doubtful-fit probe survives the dedupe: ${q.slice(0, 52)}…`);
+}
+// And the genuine duplicates still go — BOTH arms of every row, because a rule that only proves the
+// survive side can be narrowed until it catches nothing and still read as passing. Row three was
+// reshaped twice before this existed, and each round the check reported a number rather than a cause.
+const duplicates: [string, string][] = [
+  ['certificates', 'Which certificates do you hold, and when does each expire?'],
+  ['rotation', 'What rotation have you worked, and what would you take now?'],
+  ['medical and safety', 'Offshore medical and safety training — BOSIET, GWO, VCA: what is valid, and until when?'],
+  ['English on site', 'English on site — could you follow a toolbox talk and a permit to work?'],
+  ['starting', 'What is your earliest start, and what notice do you owe anyone?'],
+  ['rate', 'What rate are you expecting, all in?'],
+  ['conflicts', 'Is there any client you cannot work for — a non-compete, or somewhere you left badly?'],
+];
+for (const [row, q] of duplicates) {
+  const survived = withStandardQuestions([{ q }]).some((m, i, all) => m.q === q && all.indexOf(m) < all.length - 7);
+  check(!survived, `${row}: a model writing the standard question itself is dropped, and the fixed one kept`);
+}
+// Every row must catch something: a pattern narrowed until it matches nothing passes the survive
+// assertions and silently stops deduplicating at all.
+check(withStandardQuestions(duplicates.map(([, q]) => ({ q }))).length === 7,
+  'a model that writes all seven standard questions leaves exactly seven — one per row, none doubled', `${withStandardQuestions(duplicates.map(([, q]) => ({ q }))).length}`);
 
 /* ------------------------------- which call the score card may speak for (lead AND jd_version) */
 const call = (over: Partial<CallFlag>): CallFlag => ({

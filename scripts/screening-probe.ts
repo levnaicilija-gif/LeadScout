@@ -99,8 +99,33 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       check(await appears(p, '[data-scored-candidate]', 180000), 'the pool scores and the candidate has a card');
 
       const card = p.locator(`[data-scored-candidate="${code('7001')}"]`);
-      await card.getByRole('button', { name: /Questions for this candidate/i }).click();
-      check(await appears(p, 'ol li', 180000), 'the questions are generated');
+      // The card mounts when score_pool returns, long after data-hydrated is set on the layout, so
+      // waiting on that says nothing about THIS component being wired. Clicking a rendered but
+      // unattached button is silent: no error, no request, and a 180 s wait for a list that never
+      // comes (2026-09-17). Wait for the click to take effect, and retry once if it did not.
+      // Bound to a data hook, never to the label: it reads "Questions for this candidate", then
+      // "Writing…", then "Rewrite questions", so a name-based locator stops resolving the instant
+      // the button is pressed — which is how the retry below hung for 30 s (2026-09-17).
+      const askBtn = card.locator('[data-ask-questions]');
+      await askBtn.click();
+      // No retry. A retry can never be right here: if the first click landed, the button is
+      // disabled while busy and a second click waits 30 s for an "enabled" that will not come; if it
+      // did not land, nothing is pending and a second click is the first one. The 5-second window
+      // that triggered it was wrong anyway — this call measures 28 s against a thin profile
+      // (2026-09-17). Wait for the button to go busy, which is proof the handler ran, then wait for
+      // the questions on the budget the call actually needs.
+      const ran = await askBtn.evaluate((b: HTMLButtonElement) => b.disabled).catch(() => false)
+        || await p.waitForFunction((sel) => {
+          const b = document.querySelector(sel) as HTMLButtonElement | null;
+          return !!b && b.disabled;
+        }, '[data-ask-questions]', { timeout: 10000, polling: 100 }).then(() => true).catch(() => false);
+      check(ran, 'the click reaches the handler — the button goes busy');
+      const got = await appears(p, 'ol li', 180000);
+      // Never wait three minutes and throw away the reason: the card shows its own error. The ERROR
+      // is a div; the blocker on the score line is a span, and they share text-bad — matching both
+      // made four readings meaningless earlier tonight.
+      const cardErr = flat(await card.locator('div.text-bad').innerText().catch(() => ''));
+      check(got, 'the questions are generated', got ? '' : `card says: ${cardErr || '(nothing — the click may not have reached a handler)'}`);
 
       const startBtn = card.locator('[data-start-call]');
       check(await startBtn.count() === 1, 'the card offers "Start screening call"');
@@ -110,6 +135,23 @@ async function signIn(p: Page, a: { email: string; password: string }) {
 
       const questions = await p.locator('[data-question]').count();
       check(questions > 0, 'the questions asked are listed in order', `${questions} question(s)`);
+
+      // Item 5, the generation side: the seven fixed questions are appended in code, so they are on
+      // every call whatever the model wrote, and their kinds are certain rather than labelled.
+      const allText = flat(await p.locator('[data-screening-call]').innerText());
+      check(questions >= 8, 'the seven standard questions are there beside what the score raised', `${questions} question(s)`);
+      const standard: [string, RegExp][] = [
+        ['certificates and expiry', /certificates do you hold/i],
+        ['rotation', /what rotation have you worked/i],
+        ['medical and safety training', /bosiet|gwo|vca/i],
+        ['English on site', /english on site/i],
+        ['start and notice', /earliest start/i],
+        ['rate', /rate are you expecting/i],
+        ['conflicts', /client you cannot work for/i],
+      ];
+      for (const [label, re] of standard) {
+        check(re.test(allText), `every call asks about ${label}`);
+      }
       const firstText = flat(await p.locator('[data-question="0"]').innerText());
       check(firstText.length > 0, 'each carries the question as it was asked', firstText.slice(0, 90));
 

@@ -78,6 +78,98 @@ export function rescoreReason(answers: AnswerRow[]): string | null {
   return `${reasons.join('; ')} — score again against this job to take it into account.`;
 }
 
+/**
+ * The questions every screening call asks, whatever the job (item 5, owner's decision 2026-09-17).
+ *
+ * Written here rather than asked of the model, for one reason that matters more than tidiness: the
+ * `kind` decides which verdict control appears on the call, and right_to_work and certificate are
+ * the only two that can mark a re-score. A model labelling a FIXED, unchanging question set would
+ * occasionally mislabel one, and the control would silently disappear — no error, no warning, just a
+ * question a recruiter can no longer mark. Deterministic here, the label is a fact.
+ *
+ * It also frees the model's budget. It writes only what it alone can write — the questions that come
+ * out of this candidate's own score — and these seven cost it nothing.
+ *
+ * Right to work is NOT here: both routes already inject it first, because a "no" ends the call and
+ * it must never be the eighth question.
+ */
+export const STANDARD_QUESTIONS: { q: string; good_answer: string; kind: Kind; subject: string }[] = [
+  {
+    q: 'Which certificates do you hold for this work, and when does each expire?',
+    good_answer: 'Names them from memory with expiry dates, and can send the certificates today.',
+    kind: 'certificate', subject: '',
+  },
+  {
+    q: 'What rotation have you worked, and what would you take now?',
+    good_answer: 'Names real rotations worked — 2:2, 4:4 — and is straight about what they will not do.',
+    kind: 'open', subject: '',
+  },
+  {
+    q: 'Offshore medical and safety training — BOSIET, GWO, VCA: what is valid, and until when?',
+    good_answer: 'Dates given; where one has lapsed, willing to sit the course before mobilisation.',
+    kind: 'open', subject: '',
+  },
+  {
+    q: 'English on site — could you follow a toolbox talk and a permit to work?',
+    good_answer: 'Answers this question in English, without help.',
+    kind: 'open', subject: '',
+  },
+  {
+    q: 'What is your earliest start, and what notice do you owe anyone?',
+    good_answer: 'A date they can actually make, and a notice period they state plainly.',
+    kind: 'availability', subject: '',
+  },
+  {
+    q: 'What rate are you expecting, all in?',
+    good_answer: 'A figure that is realistic for the country, and they say whether it is all-in or margin-only.',
+    kind: 'rate', subject: '',
+  },
+  {
+    q: 'Is there any client you cannot work for — a non-compete, or somewhere you left badly?',
+    good_answer: 'A straight answer. Whatever it is, the recruiter hears it now rather than from the client.',
+    kind: 'open', subject: '',
+  },
+];
+
+/** The ground each standard question covers, so a model-written duplicate can be dropped. */
+/**
+ * Each pattern matches the SHAPE of its standard question, never its subject matter.
+ *
+ * The first cut keyed on subject — `certificat|expir|iso 9606|frosio|cswip` — and swallowed
+ * "Which positions are on your ISO 9606, and what thickness have you welded to ISO 5817 level B?",
+ * which is precisely the doubtful-fit probe the model is now asked to write (2026-09-17). A standard
+ * question takes inventory ("which certificates do you hold, when does each expire"); a fit probe
+ * names one standard and asks for specifics. Only the first is a duplicate, and a pattern that
+ * cannot tell them apart deletes the more useful question of the two — silently, since a dropped
+ * question leaves no trace on the call.
+ *
+ * When in doubt these must UNDER-match: a duplicate costs a recruiter thirty seconds, while a
+ * swallowed probe costs the thing that would have come out on the call.
+ */
+const COVERS: RegExp[] = [
+  /(which|what) certificates|certificates do you hold|when does each expire|certificates.*and.*expire/i,
+  /what rotation|which rotation|rotation have you worked|shift pattern/i,
+  // Shape, not subject: the standard question asks what is VALID and UNTIL WHEN. Keying on the
+  // ticket names ate "The CV says offshore medical — which clinic, and what did it cover?", which is
+  // a specifics probe (2026-09-17) — the same mistake as the certificate row, left in one place.
+  /what is valid,? and until when|which .*(are|is) valid|valid,? and until when|still valid/i,
+  /english on site|toolbox talk|permit to work|follow a toolbox/i,
+  /earliest start|when could you start|notice do you owe|notice period/i,
+  /what rate|rate are you expecting|day rate|hourly rate|all.?in rate/i,
+  /non.?compete|cannot work for|client you cannot|left badly/i,
+];
+
+/**
+ * The model's questions, then the seven — with any model-written duplicate of the same ground removed.
+ *
+ * The model is asked for score-derived questions only, but it sometimes reaches for a standard one
+ * anyway. Dropping its version rather than the fixed one keeps the certain `kind`.
+ */
+export function withStandardQuestions<T extends { q: string }>(fromModel: T[]): (T | typeof STANDARD_QUESTIONS[number])[] {
+  const kept = fromModel.filter((m) => !COVERS.some((re) => re.test(m.q)));
+  return [...kept, ...STANDARD_QUESTIONS];
+}
+
 /** A finished call, as the score card needs to know about it. */
 export type CallFlag = {
   candidate_id: string;

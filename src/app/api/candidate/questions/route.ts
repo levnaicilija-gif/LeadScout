@@ -4,6 +4,7 @@ import { anonymize, candidateScreening, scoreWithRightToWork } from '@/lib/ai/do
 import { meterRecruiter } from '@/lib/ai/meter';
 import { checkRightToWork } from '@/lib/right-to-work';
 import { previousEmployer } from '@/lib/previous-employer';
+import { withStandardQuestions } from '@/lib/screening';
 export const maxDuration = 120;
 
 /**
@@ -48,7 +49,11 @@ async function handle(req: Request, me: SignedIn) {
       await db.from('scores').insert({ candidate_id: candidateId, ...row });
     }
 
-    const { questions } = await candidateScreening(anon, verified ?? [], job ?? null, score);
+    const { questions: fromModel } = await candidateScreening(anon, verified ?? [], job ?? null, score);
+    // Item 5: the seven fixed questions are appended in code, so their kind — and therefore the
+    // verdict control on the call — is certain rather than a model's label (owner's decision).
+    // Only with a job attached: without one the prompt already covers the same ground itself.
+    const questions = job ? withStandardQuestions(fromModel) : fromModel;
     // Right to work goes first when it is not already settled: a "no" ends the call, so it must
     // never be the eighth question.
     // Item 5: this one is injected in code, so its kind is certain rather than a model's label —

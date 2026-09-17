@@ -106,7 +106,10 @@ export function ScoredCandidate({ x, jd, jobCountry, company, leadId, jdVersion 
       <WhyThisScore x={x} />
 
       <div className="mt-1.5">
-        <button className="btn text-[12px]" disabled={busy} onClick={ask}>
+        {/* A hook that does not change when the label does. The label is three different strings
+            depending on state, so a check bound to the words breaks the moment the button is
+            pressed — which is exactly how a probe's own retry hung for 30 s (2026-09-17). */}
+        <button data-ask-questions className="btn text-[12px]" disabled={busy} onClick={ask}>
           {busy ? 'Writing…' : questions ? 'Rewrite questions' : 'Questions for this candidate'}
         </button>
         {questions?.length ? (
