@@ -19,7 +19,7 @@ import { preparedSearches } from '@/lib/hiring-contacts';
 import { siteTrust } from '@/lib/site-trust';
 import { boostedFit } from '@/lib/compound-signals';
 export const dynamic = 'force-dynamic';
-export default async function Radar({ searchParams }: { searchParams: { tab?: string; lead?: string; agencies?: string; company?: string; country?: string; trade?: string; employer?: string; pressure?: string; source?: string; sort?: string; industries?: string; since?: string } }) {
+export default async function Radar({ searchParams }: { searchParams: { tab?: string; lead?: string; agencies?: string; company?: string; country?: string; trade?: string; employer?: string; pressure?: string; source?: string; sort?: string; industries?: string; since?: string; ids?: string; also?: string } }) {
   const sb = supabaseServer(); const tab = searchParams.tab === 'hiring' ? 'job_post' : 'won_work';
   const hiring = tab === 'job_post';
   // Item 18 part 3: Leads and Hiring now open on the industries this person follows. ?industries=all shows everything,
@@ -43,13 +43,32 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const coState = state0020 ? ", hiring_status, hiring_confirmed_at" : "";
   const jpContact = (await hasPostingContact(sb)) ? ", contact_name, contact_title, contact_email" : "";
 
+  // Today's queue item names a handful of companies, so its link shows exactly those (2026-09-17):
+  // `ids` is this tab's set — lead ids on Won work, company ids on Hiring now — and `also` is the
+  // other tab's, which is what lets the filtered view offer "+5 hiring now" without recomputing a
+  // ranking that has moved on. Both are read as uuids and capped: the value comes from a URL, so a
+  // hand-edited one must not be able to build an unbounded `.in()` or smuggle anything into a filter.
+  // Declared above the postings query because that query filters on it — const is not hoisted, and
+  // reading it from there before this line threw on the Hiring now tab (caught by typecheck).
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const readIds = (raw?: string) => (typeof raw === 'string' ? [...new Set(raw.split(',').map((s) => s.trim()).filter((s) => UUID.test(s)))].slice(0, 60) : []);
+  const ids = readIds(searchParams.ids);
+  const also = readIds(searchParams.also);
+
   // Hiring now reads job_posts directly: a posting on a company's own careers page has no lead
   // behind it, and inventing one to hang it off would be a lead nobody decided to create.
   const { data: postings } = hiring
-    ? await sb.from('job_posts')
-      .select(`id, company_id, title, role, location, country, trades, certs_required, rotation, contract_type, headcount, posted_at, first_seen_at, source_url, via${jpBoard}${jpContact}, companies!inner(name, employer_type, country, domain${coOverride}${coState}${industriesOn ? ', industries' : ''})`)
-      .eq('status', 'open').not('company_id', 'is', null)
-      .order('posted_at', { ascending: false, nullsFirst: false }).order('first_seen_at', { ascending: false }).limit(400)
+    ? await (() => {
+      const q = sb.from('job_posts')
+        .select(`id, company_id, title, role, location, country, trades, certs_required, rotation, contract_type, headcount, posted_at, first_seen_at, source_url, via${jpBoard}${jpContact}, companies!inner(name, employer_type, country, domain${coOverride}${coState}${industriesOn ? ', industries' : ''})`)
+        .eq('status', 'open').not('company_id', 'is', null);
+      // The named companies are filtered HERE rather than on the grouped rows, because this query keeps
+      // only the newest 400 postings: a company whose adverts fall outside that window would vanish from
+      // an array filter and the view would quietly show four of five with nothing saying so. With no ids
+      // the filter is not applied at all — chaining one unconditionally would empty the whole tab.
+      const named = ids.length ? q.in('company_id', ids) : q;
+      return named.order('posted_at', { ascending: false, nullsFirst: false }).order('first_seen_at', { ascending: false }).limit(400);
+    })()
     : { data: null };
   const { count: boards } = hiring
     ? await sb.from('companies').select('id', { count: 'exact', head: true }).eq('careers_status', 'found')
@@ -79,7 +98,8 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const sinceRaw = typeof searchParams.since === 'string' ? searchParams.since : null;
   const since = sinceRaw && !Number.isNaN(Date.parse(sinceRaw)) ? new Date(sinceRaw).toISOString() : null;
   const sinceQs = since ? `&since=${encodeURIComponent(since)}` : '';
-  const countryQs = (country ? `&country=${country}` : '') + viewQs + sinceQs;
+  const idsQs = ids.length ? `&ids=${ids.join(',')}${also.length ? `&also=${also.join(',')}` : ''}` : '';
+  const countryQs = (country ? `&country=${country}` : '') + viewQs + sinceQs + idsQs;
   // 0024 gives an award notice its own award date; before it, an award lead ages from the notice's publication.
   const awardCols = (await hasAwardDate(sb)) ? ', award_date, award_date_basis' : '';
   // Item 21: the quoted contact's address and where it came from (the embed never loaded email or quote, so the drawer
@@ -91,10 +111,14 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
     const q = sb.from('leads').select(cols, head ? { count: 'exact', head: true } : undefined).eq('kind', tab).not('status', 'in', '("stale","not_for_us")');
     const inCountry = country ? q.eq('country', country) : q;
     const inWindow = since ? inCountry.gte('created_at', since) : inCountry;
-    return industryFilter ? inWindow.or(`industries.ov.{${industryFilter.join(',')}},industries.eq.{}`) : inWindow;
+    // Named leads, in the closure every query and count goes through — the table, both source counts and
+    // the chip numbers narrow together. Filtering the rows after the fact would leave the banner counting
+    // one set and the table showing another.
+    const named = !hiring && ids.length ? inWindow.in('id', ids) : inWindow;
+    return industryFilter ? named.or(`industries.ov.{${industryFilter.join(',')}},industries.eq.{}`) : named;
   };
-  // What the same query says with no time filter, so the banner can offer the whole list by number.
-  const { count: everyOpen } = since
+  // What the same query says with no filter, so the banner can offer the whole list by number.
+  const { count: everyOpen } = since || ids.length
     ? await sb.from('leads').select('id', { count: 'exact', head: true }).eq('kind', tab).not('status', 'in', '("stale","not_for_us")')
     : { count: null as number | null };
   const NEWS_ONLY = 'source_url.is.null,source_url.not.ilike.https://ted.europa.eu/*';
@@ -237,6 +261,19 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const selected = leads?.find((l) => l.id === searchParams.lead) ?? null;
   const hiringCompaniesEvery = hiring && industryFilter ? new Set((showAgencies ? liveEvery : liveEvery.filter((p: any) => !isAgency(p))).map((p: any) => p.company_id)).size : null;
   const shownWon = (newsCount.count ?? 0) + (tenderCount.count ?? 0);
+  // What "see all" actually means on each tab. everyOpen counts leads of this kind, which is right for Won
+  // work and wrong for Hiring now — there `kind` is job_post, so it would count job-post LEADS rather than
+  // companies advertising, and the banner would offer a number that means nothing on the screen it is on.
+  // Counted only while a filter is on, and never for the ids case on Won work, where everyOpen already says it.
+  const everyHiringCompany = hiring && ids.length
+    ? await (async () => {
+      const { data } = await sb.from('job_posts').select('company_id').eq('status', 'open').not('company_id', 'is', null).limit(2000);
+      return new Set(((data ?? []) as any[]).map((p) => p.company_id)).size;
+    })()
+    : null;
+  const filtered = since || ids.length > 0;
+  const shownHere = hiring ? groupsAll.length : shownWon;
+  const everyHere = hiring ? (everyHiringCompany ?? groupsAll.length) : (everyOpen ?? shownWon);
   const followBanner = (showAll && followed !== 'all' && industriesOn)
     ? <div data-industry-view="all" className="text-[13px] mb-3">Showing all industries · <a className="text-accent font-semibold" href={`?tab=${hiring ? 'hiring' : 'won'}`}>back to yours ({followedNames.join(', ')})</a></div>
     : industryFilter
@@ -246,17 +283,28 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
     <div className="flex items-baseline justify-between flex-wrap gap-x-3 gap-y-1 mb-3"><h1 className="font-display text-[26px] font-bold tracking-[-.4px]">Leads{hiring ? <HiringHelp /> : <Help title="What Radar is" intro="Reads your sources every morning and tells you which companies will need people, and who to talk to." rows={[['Won work', 'Company won a contract; the person quoted by name; when the work starts.'], ['News / Tender award', 'News is a story Radar read. Tender award is a contract award notice from TED: the buyer, the winner, the value — and no quoted person. The same contract from both is one row, the second source linked.'], ['Hiring now', 'Open trade postings, certs asked for, who to contact — from the posting, company site or Industry Contacts.'], ['Verified', 'Source re-fetched each morning; Confirm records that you checked it. Outreach needs both.'], ['Age', 'A news lead is ageing at 45 days and a stale signal at 90, from the article\'s date; an award at 180 and 365, from the award date. Older leads sink and dim — never hidden, never re-statused. No date says "age unknown".'], ['Boosted', 'A company with two or more independent signals inside 60 days — a tender award, a news mention, an open advert (a re-advertised role is the same signal, stronger, never a second one) — has every lead\'s fit raised ×1.1 for each signal beyond the first, capped at 100 (25 outside Europe). The row names the signals and the fit before; the drawer gives each date. One signal changes nothing.'], ['Never', 'Invents a name, an email, a phone or a job opening.']]} />}</h1><span className="text-ink3">{last?.last_crawled_at ? `Last read ${new Date(last.last_crawled_at).toLocaleString()}` : 'Not read yet'}{tab === 'job_post' ? ` · careers pages ${lastJobs?.last_jobs_crawl_at ? new Date(lastJobs.last_jobs_crawl_at).toLocaleDateString() : 'not crawled yet'}` : ''}</span></div>
     {/* v4 segmented control: the tab you are on is the navy one, not an underline. */}
     <div className="flex gap-1 bg-panel border border-line rounded-[12px] p-1 w-max mb-3.5">{[['won', 'Won work'], ['hiring', 'Hiring now']].map(([t, l]) => <a key={t} href={`?tab=${t}`} className={`px-3.5 py-2 rounded-[9px] font-medium ${(t === 'hiring') === (tab === 'job_post') ? 'bg-rail text-white' : 'text-ink2 hover:bg-line2'}`}>{l}</a>)}</div>
-    {since && (
-      <div data-since-filter className="mb-3 rounded-card border border-accent bg-accentsoft px-4 py-3 flex items-baseline justify-between gap-3 flex-wrap">
+    {filtered && (
+      <div data-since-filter={since ? '' : undefined} data-ids-filter={ids.length ? ids.length : undefined} className="mb-3 rounded-card border border-accent bg-accentsoft px-4 py-3 flex items-baseline justify-between gap-3 flex-wrap">
         <div>
-          <b className="font-semibold text-accent">Showing {hiring ? `${groupsAll.length} compan${groupsAll.length === 1 ? 'y' : 'ies'}` : `${shownWon} of ${everyOpen ?? shownWon} open leads`}</b>
+          <b className="font-semibold text-accent">Showing {hiring ? `${shownHere} compan${shownHere === 1 ? 'y' : 'ies'}` : `${shownHere} of ${everyHere} open leads`}</b>
           <div className="text-[12px] text-ink2 mt-0.5">
-            Found since {new Date(since).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' })} — your last visit, not a fixed clock time
+            {since
+              ? <>Found since {new Date(since).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' })} — your last visit, not a fixed clock time</>
+              : <>The {hiring ? 'companies' : 'leads'} today&apos;s queue named — these {shownHere} and nothing else{also.length > 0 && <>, {hiring ? 'read beside' : 'and'} {also.length} on the other tab</>}</>}
           </div>
         </div>
-        <a data-clear-since className="text-[12.5px] font-semibold text-accent" href={`?tab=${hiring ? 'hiring' : 'won'}${source ? `&source=${source}` : ''}${sortQs}${country ? `&country=${country}` : ''}${viewQs}`}>
-          Clear filter — see all {everyOpen ?? shownWon} →
-        </a>
+        <span className="flex items-baseline gap-3 flex-wrap">
+          {/* The other half of the same queue item: six leads and five companies are different tables on
+              different tabs, so one filtered view cannot hold both — it links across instead. */}
+          {!since && also.length > 0 && (
+            <a data-also-link className="text-[12.5px] font-semibold text-accent" href={`/app/radar?tab=${hiring ? 'won' : 'hiring'}&ids=${also.join(',')}&also=${ids.join(',')}`}>
+              {hiring ? `← ${also.length} won work` : `+${also.length} hiring now →`}
+            </a>
+          )}
+          <a data-clear-since className="text-[12.5px] font-semibold text-accent" href={`?tab=${hiring ? 'hiring' : 'won'}${source ? `&source=${source}` : ''}${sortQs}${country ? `&country=${country}` : ''}${viewQs}`}>
+            Clear filter — see all {everyHere} →
+          </a>
+        </span>
       </div>
     )}
     {followBanner}

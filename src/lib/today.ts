@@ -92,12 +92,22 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
     // item worth reading now, and the only honest stamp for a row that stands for several leads.
     const newest = [...aged.map(({ l }) => l.created_at), ...hiring.map((h) => h.newest)]
       .filter(Boolean).map(String).sort().pop() ?? null;
+    // The item names these companies, so its link must show THESE and nothing else (2026-09-17). It used
+    // to open the whole unfiltered list — 165 leads — which turned a named eleven into a suggestion to go
+    // looking rather than somewhere to arrive. The two halves are different tables on different tabs: six
+    // won-work leads by lead id, five hiring-now companies by company id. Each tab carries its own `ids`
+    // and `also` names the other set, which is what lets the filtered view offer "+5 hiring now" without
+    // recomputing a ranking that would have moved on by the time the recruiter clicked.
+    const leadIds = aged.map(({ l }) => String(l.id)).filter(Boolean);
+    const companyIds = hiring.map((h) => String(h.id)).filter(Boolean);
     items.push({
       dot: '',
       when: newest,
       title: `Read ${n} new lead${n === 1 ? '' : 's'}${allNames[0] ? ` — ${allNames[0]} first` : ''}`,
       sub: allNames.join(', '),
-      href: '/app/radar',
+      href: leadIds.length
+        ? `/app/radar?tab=won&ids=${leadIds.join(',')}${companyIds.length ? `&also=${companyIds.join(',')}` : ''}`
+        : companyIds.length ? `/app/radar?tab=hiring&ids=${companyIds.join(',')}` : '/app/radar',
       why: hiring.length
         ? 'Contract awards are demand months before a job is posted; an open advert is demand today.'
         : 'Contract awards are demand months before a job is posted.',

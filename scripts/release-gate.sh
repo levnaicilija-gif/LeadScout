@@ -71,6 +71,9 @@ else
   step pdf-name-audit npx tsx --env-file=.env.local scripts/pdf-name-audit.ts
   step verify-e2e npx tsx --env-file=.env.local scripts/verify-e2e.ts "$BASE"
   step lead-drawer-e2e npx tsx --env-file=.env.local scripts/lead-drawer-e2e.ts "$BASE"
+  # Today's queue item opens the leads it names and nothing else: ?ids= on each tab, the cross-link between
+  # the two halves, "Clear filter" back to the whole list, and both tabs unchanged with no ids at all.
+  step queue-ids npx tsx --env-file=.env.local scripts/queue-ids-probe.ts "$BASE"
   # Item 18: the industry entitlement is enforced by the server — by the session, the routes and 0032's trigger —
   # tried with throwaway accounts. Exit 2 means 0032 is not applied: nothing to enforce yet, reported, not passed.
   echo "=== industry-follow" | tee -a "$LOG"

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { supabaseServer, currentUser } from '@/lib/supabase/server';
 import { followedIndustries } from '@/lib/industry-follow';
 import { Help } from '@/components/Help';
-import { todayItems, whenLabel } from '@/lib/today';
+import { todayItems, whenLabel, type TodayItem } from '@/lib/today';
 import { planFor, needsReview } from '@/lib/onboarding';
 import { hasScorecards, hasSendsCreatedAt, hasLastSeen, hasFollowupResolutions } from '@/lib/schema-features';
 import { ScorecardAfter } from '@/components/ScorecardAfter';
@@ -84,15 +84,22 @@ export default async function Today() {
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 18 ? 'Good afternoon' : 'Good evening';
   const sinceHref = visit.since ? `/app/radar?tab=won&since=${encodeURIComponent(visit.since.toISOString())}` : '/app/radar';
 
-  const Item = ({ it, n, live: isLive }: { it: any; n: string; live?: boolean }) => (
-    <div className="flex gap-3 border-b border-white/10 py-2.5 last:border-0">
+  // The row is a link, because it names work and the work is somewhere else (2026-09-17). Until now the
+  // queue rendered as plain text on Today and on Home: an item reading "Read 11 new leads — Peene-Werft
+  // first", naming eleven companies, did nothing at all when clicked. `it.href` existed the whole time
+  // and only Yesterday's page ever read it.
+  // `it: TodayItem`, not `any`: the row is a link now, so href must exist and be a string. Every branch of
+  // todayItems happens to set one today, but `any` meant a future branch could forget and nothing would say
+  // so until a queue row rendered with no destination. The type says it instead of the reader remembering.
+  const Item = ({ it, n, live: isLive }: { it: TodayItem; n: string; live?: boolean }) => (
+    <Link href={it.href} data-queue-item className="flex gap-3 border-b border-white/10 py-2.5 last:border-0 transition hover:bg-white/[.04]">
       <span className={`mt-0.5 grid h-5 w-5 flex-shrink-0 place-items-center rounded-full text-[10.5px] font-bold ${isLive ? 'bg-accent text-white' : 'bg-white/10 text-[#C7D2E0]'}`}>{n}</span>
       <span className="min-w-0">
         <b className="block text-[13px] font-semibold">{it.title}</b>
         <span className={`text-[10.5px] font-semibold ${isLive ? 'text-[#6FCBEF]' : 'text-accentsoft'}`}>{it.when ? new Date(it.when).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : whenLabel(it, 1)}</span>
         <span className="mt-0.5 block text-[11.5px] leading-normal text-[#AEBBCC]">{it.sub}</span>
       </span>
-    </div>
+    </Link>
   );
 
   const Tool = ({ href, tone, icon, badge, title, body, stats, action }: {
@@ -140,9 +147,16 @@ export default async function Today() {
     </div>
 
     <div className="mb-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-[1.1fr_0.85fr_1fr]">
-      {/* Today — the queue, split by when it happened. Opens the real Leads page, time-filtered. */}
-      <Link href={sinceHref} data-today-card className="block rounded-card bg-gradient-to-br from-rail to-rail2 p-5 text-white transition hover:-translate-y-0.5">
-        <h2 className="text-[17px] font-bold">Today</h2>
+      {/* Today — the queue, split by when it happened. Opens the real Leads page, time-filtered.
+          The card is a DIV and its heading is the link, because each queue row is a link of its own now:
+          an <a> inside an <a> is invalid, the browser's parser closes the outer one, and the DOM it builds
+          can no longer match what the server rendered — React #418, with the error boundary swallowing
+          Today whole at 390px. Yesterday's page has always had this shape (a div holding a Link) and has
+          never tripped it. */}
+      <div data-today-card className="rounded-card bg-gradient-to-br from-rail to-rail2 p-5 text-white transition hover:-translate-y-0.5">
+        <h2 className="text-[17px] font-bold">
+          <Link href={sinceHref} data-today-link className="hover:underline">Today</Link>
+        </h2>
         <div className="mb-4 text-[12px] text-[#AEBBCC]">In priority order. Nothing sent without you.</div>
 
         {lastSeenOn && visit.since && (
@@ -165,7 +179,7 @@ export default async function Today() {
           {standing.length > 0 && <div className="mt-2 text-[11px] text-[#8FA1B5]">{standing.length} standing item{standing.length === 1 ? '' : 's'} with no time of their own — see the full queue</div>}
           <div className="mt-2.5"><LiveRefresh minutes={5} /></div>
         </div>
-      </Link>
+      </div>
 
       {/* Yesterday — the counts as item 11 built them, plus what still needs chasing. */}
       <Link href="/app/today/yesterday" data-yesterday-card className="block rounded-card border border-line bg-panel p-5 transition hover:-translate-y-0.5">

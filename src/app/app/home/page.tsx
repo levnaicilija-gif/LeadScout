@@ -233,8 +233,10 @@ export default async function Home() {
                 <li key={i} className="grid grid-cols-[70px_10px_1fr] gap-2.5 py-2.5 border-t border-line2 first:border-t-0 text-[13.5px]">
                   <span className="text-ink3 text-[12px] whitespace-nowrap">{i + 1} · {whenLabel(it, i)}</span>
                   <span className={`w-2 h-2 rounded-full mt-1.5 ${it.dot === 'warn' ? 'bg-warn' : it.dot === 'bad' ? 'bg-bad' : 'bg-accent'}`} />
+                  {/* The title is a link for the same reason as Today's (2026-09-17): the item names work
+                      that lives on another screen, and reading it here was as far as a recruiter could get. */}
                   <div>
-                    <b className="block font-medium">{it.title}</b>
+                    <Link href={it.href} data-queue-item className="block font-medium hover:text-accent"><b>{it.title}</b></Link>
                     {it.sub && <span className="text-ink3 text-[12px]">{it.sub}</span>}
                   </div>
                 </li>

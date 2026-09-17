@@ -151,7 +151,11 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       check(await appears(p, '[data-yesterday-card]'), 'the Yesterday card is there');
       check(await appears(p, '[data-leads-card]'), 'the Leads card is there');
 
-      const todayHref = await p.locator('[data-today-card]').getAttribute('href');
+      // The card is a div and its heading carries the link (2026-09-17): each queue row inside it is a
+      // link of its own now, and an <a> inside an <a> is invalid — the parser closes the outer one and
+      // hydration fails. data-today-card still marks the card, so the text assertions below are unchanged;
+      // the href moved to the heading, which is what data-today-link marks.
+      const todayHref = await p.locator('[data-today-link]').getAttribute('href');
       check(!!todayHref && todayHref.startsWith('/app/radar'), 'the Today card opens the real Leads page', String(todayHref));
       if (applied) check(!!todayHref && todayHref.includes('since='), 'carrying ?since= — the recruiter\'s own last visit', String(todayHref));
       check(await p.locator('[data-yesterday-card]').getAttribute('href') === '/app/today/yesterday', 'the Yesterday card opens the detail page');
