@@ -113,6 +113,27 @@ async function signIn(p: Page, a: { email: string; password: string }) {
   const won = WON;
   const openPosts = POSTS;
   console.log(`seeded in the probe's own workspace: ${WON} won-work leads (${OLD} older than the window, ${RECENT} inside it), ${POSTS} open postings`);
+
+  // ---- the applied path, which the guarded run could not reach
+  //
+  // A last visit two days back, so "while you were out" has a real boundary and the two recent
+  // leads fall inside it. And one outreach sent five days ago with no reply, because the real
+  // workspace genuinely has no follow-ups — 0 unclear answers, 0 unanswered outreach — so Mark done
+  // cannot be exercised without seeding one.
+  const lastVisit = iso(2);
+  let seededOutreach: string | null = null;
+  if (applied) {
+    const { error: seenErr } = await admin.from('users').update({ last_seen_at: lastVisit }).eq('id', who.uid);
+    if (seenErr) throw new Error(`seeding the last visit failed: ${seenErr.message}`);
+    const { data: lead } = await admin.from('leads').select('id').eq('workspace_id', who.workspace).limit(1).single();
+    const { data: o, error: oErr } = await admin.from('outreach').insert({
+      lead_id: lead!.id, channel: 'email', subject: 'Probe outreach', body: 'Seeded so Mark done can be tested.',
+      sent_by: who.uid, sent_at: iso(5), status: 'sent',
+    }).select('id').single();
+    if (oErr) throw new Error(`seeding the outreach failed: ${oErr.message}`);
+    seededOutreach = o!.id;
+    console.log(`seeded the applied path: last visit ${lastVisit.slice(0, 16)}, one outreach sent 5 days ago with no reply`);
+  }
   const browser = await chromium.launch();
   try {
     for (const width of [1500, 390] as const) {
@@ -169,7 +190,17 @@ async function signIn(p: Page, a: { email: string; password: string }) {
         check(!/While you were out/i.test(pageText), 'with 0042 unapplied there is no "while you were out" split, and Today does not fail');
         check(/Nothing waiting on you|could not be read/i.test(pageText), 'and the follow-up section says so rather than showing nothing at all');
       } else {
-        check(/While you were out|Nothing new since/i.test(pageText), 'with 0042 applied the queue is split by the last visit');
+        // A real boundary was seeded two days back, so the header must be THERE — accepting
+        // "or nothing new since" would pass either way and prove nothing.
+        check(/While you were out/i.test(pageText), 'with 0042 applied the queue is split by the last visit');
+        check(/you were last here/i.test(pageText), 'and the page says when that was', flat(pageText).slice(0, 120));
+        // Case-insensitive on purpose: the window labels carry `uppercase tracking-wide`, so the
+        // rendered text is "WHILE YOU WERE OUT 1" and a case-sensitive pattern cannot match it
+        // (2026-09-17). Still requires the count and the clock — loosened for case, not for content.
+        const outCount = flat(await p.locator('[data-today-card]').innerText());
+        check(/while you were out\s+\d/i.test(outCount), 'the out window carries a count', outCount.slice(0, 90));
+        check(/since\s+\d\d:\d\d/i.test(outCount), 'and the live window counts from when they arrived', outCount.slice(0, 160));
+        check(await p.locator('[data-live-refresh]').count() === 1, 'the live window says it is checking while they are here');
       }
 
       const over = await sideways(p);
@@ -224,12 +255,72 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     check(!p.url().includes('since='), 'clearing the filter returns to the unfiltered list', p.url());
     check(await p.locator('[data-since-filter]').count() === 0, 'and the filter banner is gone');
     await ctx.close();
+
+    // ---- marking a follow-up done, and it staying on the record
+    if (applied && seededOutreach) {
+      console.log('\n--- the follow-up round trip ---');
+      const fc = await browser.newContext({ viewport: { width: 1500, height: 1000 } });
+      const fp = await fc.newPage();
+      await signIn(fp, who);
+      await fp.goto(`${BASE}/app/today/yesterday`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await hydrated(fp);
+
+      const key = `no_reply:${seededOutreach}`;
+      check(await appears(fp, `[data-followup="${key}"]`), 'the unanswered outreach is listed as a follow-up');
+      const before = flat(await fp.locator(`[data-followup="${key}"]`).innerText());
+      check(/no response, 5 days/.test(before), 'and says how long it has been waiting', before.slice(0, 120));
+
+      await fp.locator(`[data-followup-note="${key}"]`).fill('Rang them, calling back Thursday.');
+      // Wait for the POST to answer and then for the item to GO, rather than sleeping and counting:
+      // FollowupList calls router.refresh() after the write, and a flat wait passed once and raced
+      // the next run (2026-09-17). A check that turns on timing is worse than no check (CLAUDE.md).
+      const saved = fp.waitForResponse((r) => r.url().includes('/api/followup') && r.request().method() === 'POST', { timeout: 30000 });
+      await fp.locator(`[data-mark-done="${key}"]`).click();
+      const savedRes = await saved.catch(() => null);
+      check(!!savedRes && savedRes.status() === 200, 'the resolution is saved (POST /api/followup answers 200)',
+        savedRes ? String(savedRes.status()) : 'no response in 30 s');
+
+      const gone = await fp.locator(`[data-followup="${key}"]`).waitFor({ state: 'detached', timeout: 30000 }).then(() => true).catch(() => false);
+      check(gone, 'marking it done takes it out of the active list',
+        gone ? '' : `still on screen after the refresh — ${flat(await fp.locator('[data-followup-list]').innerText().catch(() => ''))}`.slice(0, 160));
+      check(await appears(fp, '[data-resolved-panel]'), 'and it appears under Resolved — never deleted, never hidden');
+      const resolved = flat(await fp.locator('[data-resolved-panel]').innerText());
+      check(/Rang them, calling back Thursday/.test(resolved), 'with what the recruiter said they did', resolved.slice(0, 160));
+      check(/never deleted/i.test(resolved), 'and the panel says it is kept');
+
+      const { data: row } = await admin.from('followup_resolutions')
+        .select('kind, source_id, note, resolved_by, resolved_at').eq('source_id', seededOutreach).maybeSingle();
+      check(row?.kind === 'no_reply' && row?.resolved_by === who.uid && !!row?.resolved_at,
+        'the database holds who resolved it and when — the audit shape, not a deletion', JSON.stringify(row));
+      check(row?.note === 'Rang them, calling back Thursday.', 'and the note they wrote');
+
+      // Resolving twice is the same act, not two (0042's unique key).
+      await fp.reload({ waitUntil: 'domcontentloaded' });
+      await hydrated(fp);
+      const { count: twice } = await admin.from('followup_resolutions')
+        .select('id', { count: 'exact', head: true }).eq('source_id', seededOutreach);
+      check(twice === 1, 'and exactly one resolution row exists for it', `${twice}`);
+      await fc.close();
+    }
   } finally {
     await browser.close();
     // In foreign-key order, and every table this probe seeds. clearTestWorkspace covers candidates
     // and documents — not leads, job_posts or companies — so a probe that seeds those and leaves
     // them strands its own workspace on leads_workspace_id_fkey (twice tonight, 2026-09-17).
     const mine: string[] = [];
+    // In foreign-key order, and every table this probe touches. outreach has NO workspace_id — it
+    // hangs off lead_id — so it is cleared by the seeded leads and must go BEFORE them, or the lead
+    // delete fails on its foreign key and strands the workspace (the fourth such omission tonight).
+    // followup_resolutions is created by Mark done, not by the seed, and clearTestWorkspace covers
+    // neither it nor outreach.
+    const { error: resErr } = await admin.from('followup_resolutions').delete().eq('workspace_id', who.workspace);
+    if (resErr && !/schema cache|does not exist/i.test(resErr.message)) mine.push(`followup_resolutions: ${resErr.message}`);
+    const { data: seededLeads } = await admin.from('leads').select('id').eq('workspace_id', who.workspace);
+    const leadIds = (seededLeads ?? []).map((l: any) => l.id);
+    if (leadIds.length) {
+      const { error } = await admin.from('outreach').delete().in('lead_id', leadIds);
+      if (error) mine.push(`outreach: ${error.message}`);
+    }
     for (const t of ['job_posts', 'leads', 'companies'] as const) {
       const { error } = await admin.from(t).delete().eq('workspace_id', who.workspace);
       if (error) mine.push(`${t}: ${error.message}`);
