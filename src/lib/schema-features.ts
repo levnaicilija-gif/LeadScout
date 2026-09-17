@@ -100,3 +100,6 @@ export const hasCandidateCrm = (sb: SupabaseClient) => hasColumn(sb, 'candidates
 /** 0039: the daily scorecard's two tables, and the column that dates a prepared pack. */
 export const hasScorecards = (sb: SupabaseClient) => hasTable(sb, 'scorecards');
 export const hasSendsCreatedAt = (sb: SupabaseClient) => hasColumn(sb, 'sends', 'created_at');
+
+/** 0040: the screening call — the questions as asked, and what the candidate said. */
+export const hasScreeningCalls = (sb: SupabaseClient) => hasTable(sb, 'screening_calls');

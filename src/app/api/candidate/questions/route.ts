@@ -51,8 +51,11 @@ async function handle(req: Request, me: SignedIn) {
     const { questions } = await candidateScreening(anon, verified ?? [], job ?? null, score);
     // Right to work goes first when it is not already settled: a "no" ends the call, so it must
     // never be the eighth question.
+    // Item 5: this one is injected in code, so its kind is certain rather than a model's label —
+    // and it is the question whose answer decides whether someone may start at all, so it must
+    // carry the yes/no/unclear control on the call.
     const ordered = rtw.question && rtw.verdict !== 'ok'
-      ? [{ q: rtw.question, good_answer: rtw.rule }, ...questions.filter((x: any) => !/passport|right to work|settled status|work visa/i.test(x.q))]
+      ? [{ q: rtw.question, good_answer: rtw.rule, kind: 'right_to_work', subject: '' }, ...questions.filter((x: any) => !/passport|right to work|settled status|work visa/i.test(x.q))]
       : questions;
 
     // Item 11: worked out here from the candidate's own stored CV, never taken from the caller —

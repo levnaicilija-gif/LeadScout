@@ -9,20 +9,29 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * (each document's storage_path), `screenshots` (an issuer check's `<workspace>/verify/<document id>.png`) and `pdfs`
  * (each client version's storage_path).
  */
-export const CANDIDATE_TABLES = ['candidates', 'documents', 'verifications', 'anonymized_cvs', 'sends', 'scores', 'candidate_placements', 'campaign_candidates', 'internal_downloads'] as const;
+export const CANDIDATE_TABLES = ['candidates', 'documents', 'verifications', 'anonymized_cvs', 'sends', 'scores', 'candidate_placements', 'campaign_candidates', 'internal_downloads', 'screening_calls', 'screening_answers'] as const;
 export type CandidateTable = (typeof CANDIDATE_TABLES)[number];
-export type CandidateIds = { documents: { id: string; storage_path: string | null }[]; anonymizedCvs: { id: string; storage_path: string | null }[]; scores: string[] };
+export type CandidateIds = { documents: { id: string; storage_path: string | null }[]; anonymizedCvs: { id: string; storage_path: string | null }[]; scores: string[]; screeningCalls: string[] };
 
 /** The ids a candidate's rows hang off — read before a deletion, so the count afterwards still knows where to look. */
 export async function candidateIds(db: SupabaseClient, candidateId: string): Promise<CandidateIds> {
-  const [docs, anon, scores] = await Promise.all([
+  const [docs, anon, scores, calls] = await Promise.all([
     db.from('documents').select('id, storage_path').eq('candidate_id', candidateId),
     db.from('anonymized_cvs').select('id, storage_path').eq('candidate_id', candidateId),
     db.from('scores').select('id').eq('candidate_id', candidateId),
+    // 0040 may not be applied yet; a missing table is not a missing candidate, so it reads as none.
+    db.from('screening_calls').select('id').eq('candidate_id', candidateId),
   ]);
   const failed = [docs, anon, scores].find((r) => r.error);
   if (failed) throw new Error(`the candidate's files could not be listed: ${failed.error!.message}`);
-  return { documents: docs.data ?? [], anonymizedCvs: anon.data ?? [], scores: (scores.data ?? []).map((s: any) => s.id) };
+  if (calls.error && !/schema cache|does not exist/i.test(calls.error.message)) {
+    throw new Error(`the candidate's screening calls could not be listed: ${calls.error.message}`);
+  }
+  return {
+    documents: docs.data ?? [], anonymizedCvs: anon.data ?? [],
+    scores: (scores.data ?? []).map((s: any) => s.id),
+    screeningCalls: (calls.data ?? []).map((c: any) => c.id),
+  };
 }
 
 /** Rows per table that belong to this candidate. A count that cannot be read throws: a deletion is never called clean on a guess. */
@@ -32,11 +41,20 @@ export async function candidateRowCounts(db: SupabaseClient, candidateId: string
     if (error) throw new Error(`${label} could not be counted: ${error.message}`);
     return count ?? 0;
   };
+  // A table 0040 has not created yet is not a candidate's row that went uncounted: it reads 0, and
+  // anything else still throws. A deletion is never called clean on a guess.
+  const soft = async (label: string, q: PromiseLike<{ count: number | null; error: any }>) => {
+    const { count, error } = await q;
+    if (error && /schema cache|does not exist/i.test(String(error.message))) return 0;
+    if (error) throw new Error(`${label} could not be counted: ${error.message}`);
+    return count ?? 0;
+  };
   const head = (table: string) => db.from(table).select('*', { count: 'exact', head: true });
   const docIds = ids.documents.map((d) => d.id);
   const anonIds = ids.anonymizedCvs.map((a) => a.id);
+  const callIds = ids.screeningCalls ?? [];
   const sendsFilter = [`candidate_id.eq.${candidateId}`, anonIds.length ? `anonymized_cv_id.in.(${anonIds.join(',')})` : '', ids.scores.length ? `score_id.in.(${ids.scores.join(',')})` : ''].filter(Boolean).join(',');
-  const [candidates, documents, verifications, anonymized_cvs, sends, scores, candidate_placements, campaign_candidates, internal_downloads] = await Promise.all([
+  const [candidates, documents, verifications, anonymized_cvs, sends, scores, candidate_placements, campaign_candidates, internal_downloads, screening_calls, screening_answers] = await Promise.all([
     n('candidates', head('candidates').eq('id', candidateId)),
     n('documents', head('documents').eq('candidate_id', candidateId)),
     docIds.length ? n('verifications', head('verifications').in('document_id', docIds)) : Promise.resolve(0),
@@ -46,8 +64,10 @@ export async function candidateRowCounts(db: SupabaseClient, candidateId: string
     n('candidate_placements', head('candidate_placements').eq('candidate_id', candidateId)),
     n('campaign_candidates', head('campaign_candidates').eq('candidate_id', candidateId)),
     n('internal_downloads', head('internal_downloads').eq('candidate_id', candidateId)),
+    soft('screening_calls', head('screening_calls').eq('candidate_id', candidateId)),
+    callIds.length ? soft('screening_answers', head('screening_answers').in('call_id', callIds)) : Promise.resolve(0),
   ]);
-  return { candidates, documents, verifications, anonymized_cvs, sends, scores, candidate_placements, campaign_candidates, internal_downloads };
+  return { candidates, documents, verifications, anonymized_cvs, sends, scores, candidate_placements, campaign_candidates, internal_downloads, screening_calls, screening_answers };
 }
 
 /** Stored files, bucket by bucket. A path that is already gone is not an error; a bucket that refuses is. */

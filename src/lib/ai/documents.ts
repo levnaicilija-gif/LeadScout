@@ -627,14 +627,26 @@ export const jdFromLead = (lead: object, articleText: string) =>
   asTool('job-description', () => askJson(JdSchema, 'Write a working job description for a trades staffing agency from this lead. Use only stated facts; where you must assume (typical certs for this company type, rotation), list each assumption separately so the recruiter can confirm on the call.', JSON.stringify({ lead, source_text: articleText.slice(0, 8000) })));
 
 /** The nested keys drift as readily as the top-level ones, and askJson can only name those. */
+const KINDS = ['right_to_work', 'certificate', 'availability', 'rate', 'open'] as const;
 const Question = z.preprocess((v: any) => {
-  if (typeof v === 'string') return { q: v, good_answer: '' };
+  if (typeof v === 'string') return { q: v, good_answer: '', kind: 'open', subject: '' };
   if (!v || typeof v !== 'object') return v;
+  // Item 5: the kind decides which control the call view offers — a yes/no, a confirm, or prose
+  // alone. The RECRUITER's click is the verdict; a mislabel here can only show or hide a control,
+  // never move a score. Anything unrecognised is 'open', which takes no verdict at all.
+  const kind = String(v.kind ?? v.type ?? '').toLowerCase().replace(/[\s-]+/g, '_');
   return {
     q: v.q ?? v.question ?? v.text ?? '',
     good_answer: v.good_answer ?? v.good ?? v.answer ?? v.good_answer_sounds_like ?? v.ideal_answer ?? '',
+    kind: (KINDS as readonly string[]).includes(kind) ? kind : 'open',
+    subject: String(v.subject ?? v.about ?? v.certificate ?? '').slice(0, 120),
   };
-}, z.object({ q: z.string().min(1), good_answer: z.string() }));
+}, z.object({
+  q: z.string().min(1),
+  good_answer: z.string(),
+  kind: z.enum(KINDS).default('open'),
+  subject: z.string().default(''),
+}));
 
 export const QuestionsSchema = z.object({ questions: z.array(Question).min(1).max(12) });
 export const screeningQuestions = (jd: string) =>
@@ -643,7 +655,9 @@ export const screeningQuestions = (jd: string) =>
 "today" is the current date. Any date in the job that is already past is history, not a plan: never ask a candidate whether they can start on a date that has gone. Ask for the earliest date they could mobilise, and about notice period, instead.
 
 Each entry in "questions" is an object with exactly these keys:
-{"q":"the question the recruiter asks","good_answer":"what a good answer sounds like"}`, JSON.stringify({ job: jd, today: new Date().toISOString().slice(0, 10) }), undefined, 4000));
+{"q":"the question the recruiter asks","good_answer":"what a good answer sounds like","kind":"one of right_to_work, certificate, availability, rate, open","subject":"the certificate or thing the question is about, or \\"\\""}
+
+"kind" only says which answer control the recruiter is offered on the call. Use "certificate" where the question is about a named certificate and put its name in "subject"; "right_to_work" for a passport, visa or A1 question; "availability" for start date or notice; "rate" for money; "open" for everything else. Judgement stays with the recruiter, so a question you are unsure about is "open".`, JSON.stringify({ job: jd, today: new Date().toISOString().slice(0, 10) }), undefined, 4000));
 
 /** email and linkedin came back as objects ({subject, body}) rather than the plain text asked for. */
 const flat = (v: any): string => {

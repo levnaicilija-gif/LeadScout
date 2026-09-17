@@ -30,8 +30,9 @@ async function handle(req: Request, me: SignedIn) {
       const q = await screeningQuestions(lead.job_description ?? `${lead.project_name} — ${lead.trades_inferred?.join(', ')}`);
       // Right to work is asked first, because a "no" ends the call and everything else is wasted.
       const rtw = checkRightToWork(lead.country, {});
+      // Injected in code, so its kind is certain (item 5): it takes the yes/no/unclear control.
       const questions = rtw.question
-        ? [{ q: rtw.question, good_answer: rtw.rule }, ...q.questions.filter((x: any) => !/passport|right to work|settled status|work visa/i.test(x.q))]
+        ? [{ q: rtw.question, good_answer: rtw.rule, kind: 'right_to_work', subject: '' }, ...q.questions.filter((x: any) => !/passport|right to work|settled status|work visa/i.test(x.q))]
         : q.questions;
       return NextResponse.json({ questions, rightToWorkRule: rtw.rule });
     }

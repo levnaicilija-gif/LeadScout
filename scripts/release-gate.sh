@@ -51,7 +51,9 @@ step holder-fits npx tsx scripts/holder-fits-check.ts
 step previous-employer npx tsx scripts/previous-employer-check.ts
 step why-score npx tsx scripts/why-score-check.ts
 step scorecard npx tsx scripts/scorecard-check.ts
+step screening npx tsx scripts/screening-check.ts
 step scorecard-rls npx tsx --env-file=.env.local scripts/scorecard-rls-probe.ts
+step screening-rls npx tsx --env-file=.env.local scripts/screening-rls-probe.ts
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts
 step candidate-phone npx tsx scripts/candidate-phone-check.ts
 

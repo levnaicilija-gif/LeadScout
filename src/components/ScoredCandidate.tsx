@@ -9,17 +9,45 @@ import { WhyThisScore } from './WhyThisScore';
  * recruiter go to Verify, find the candidate and re-select the job to get the questions threw
  * that away and asked for it again. The questions come from the score that is already on screen.
  */
-export function ScoredCandidate({ x, jd, jobCountry, company }: {
+export function ScoredCandidate({ x, jd, jobCountry, company, leadId, jdVersion }: {
   x: any;
   jd?: string | null;
   jobCountry?: string | null;
   /** The company being scored against, so the call can ask about a shared employer. */
   company?: { name?: string | null; domain?: string | null } | null;
+  /** Item 5: which job, and at which JD version, a screening call is about. */
+  leadId?: string | null;
+  jdVersion?: number | null;
 }) {
   const [busy, setBusy] = useState(false);
   const [questions, setQuestions] = useState<any[] | null>(null);
   const [basedOn, setBasedOn] = useState('');
   const [err, setErr] = useState('');
+  const [starting, setStarting] = useState(false);
+
+  /**
+   * Take these questions onto a call. They are copied into the call as asked — a later JD rewrite
+   * regenerates the questions, and yesterday's answers must keep pointing at what was really put to
+   * the candidate (item 5, migration 0040).
+   */
+  const startCall = async () => {
+    setStarting(true); setErr('');
+    try {
+      const res = await fetch('/api/screening', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'start', candidate_id: x.id, lead_id: leadId ?? undefined,
+          jd_version: typeof jdVersion === 'number' ? jdVersion : undefined,
+          questions,
+        }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.call?.id) { setErr(j?.error ?? 'The call could not be started.'); return; }
+      window.location.href = `/app/candidates/${x.id}/call/${j.call.id}`;
+    } catch {
+      setErr('Could not reach the server.');
+    } finally { setStarting(false); }
+  };
 
   const ask = async () => {
     setBusy(true); setErr('');
@@ -75,6 +103,12 @@ export function ScoredCandidate({ x, jd, jobCountry, company }: {
         </button>
         {questions?.length ? (
           <button className="btn text-[12px] ml-1.5" onClick={() => navigator.clipboard.writeText(questions.map((q, i) => `${i + 1}. ${q.q}\n   Good: ${q.good_answer}`).join('\n\n'))}>Copy</button>
+        ) : null}
+        {/* Item 5: the questions go with the recruiter onto the call, and what is said is kept. */}
+        {questions?.length ? (
+          <button className="btn btn-primary text-[12px] ml-1.5" data-start-call disabled={starting} onClick={startCall}>
+            {starting ? 'Starting…' : 'Start screening call'}
+          </button>
         ) : null}
       </div>
 

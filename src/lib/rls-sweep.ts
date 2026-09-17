@@ -69,6 +69,9 @@ const THROUGH_PARENT: Record<string, (a: SupabaseClient, ws: string) => Promise<
   sends: (a, ws) => counted(a.from('sends').select('id, candidates!inner(workspace_id)', { count: 'exact', head: true }).eq('candidates.workspace_id', ws)),
   anonymized_cvs: (a, ws) => counted(a.from('anonymized_cvs').select('id, candidates!inner(workspace_id)', { count: 'exact', head: true }).eq('candidates.workspace_id', ws)),
   campaign_candidates: (a, ws) => counted(a.from('campaign_candidates').select('campaign_id, campaigns!inner(workspace_id)', { count: 'exact', head: true }).eq('campaigns.workspace_id', ws)),
+  // 0040: an answer has no workspace of its own and is scoped through its call, the way a
+  // verification is scoped through its document. screening_calls carries workspace_id itself.
+  screening_answers: (a, ws) => counted(a.from('screening_answers').select('id, screening_calls!inner(workspace_id)', { count: 'exact', head: true }).eq('screening_calls.workspace_id', ws)),
 };
 
 export async function runRlsSweep(opts: { workspaceName?: string } = {}): Promise<SweepResult> {
