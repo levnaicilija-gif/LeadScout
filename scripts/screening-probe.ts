@@ -152,6 +152,32 @@ async function signIn(p: Page, a: { email: string; password: string }) {
 
       const over = await sideways(p);
       check(over <= 1, `at ${width}px nothing scrolls sideways`, `${over}px`);
+
+      // ---- item 5 part 3 on the card: the number beside it is now the old one, and says so.
+      await p.goto(`${BASE}/app/radar?tab=won&lead=${lead}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await hydrated(p);
+      await p.getByRole('button', { name: /^2 · Score the pool$/ }).click();
+      await p.getByRole('button', { name: /^Score the pool$/ }).click();
+      check(await appears(p, '[data-scored-candidate]', 180000), 'the pool scores again after the call');
+      check(await appears(p, '[data-rescore-asked]', 30000), 'the card says the score was made before the call');
+      const asked = flat(await p.locator('[data-rescore-asked]').first().innerText());
+      check(/made before the call/.test(asked) && /right to work was refused/.test(asked),
+        'and names what was said on it', asked.slice(0, 140));
+      const flagged = await p.locator('[data-rescore-asked]').count();
+      check(flagged === 1, 'only the candidate who was called is flagged', `${flagged} flag(s)`);
+
+      // ---- and it stops speaking the moment the JD is rewritten (owner's caveat, 2026-09-17)
+      await admin.from('leads').update({ jd_version: 3 }).eq('id', lead);
+      await p.goto(`${BASE}/app/radar?tab=won&lead=${lead}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await hydrated(p);
+      await p.getByRole('button', { name: /^2 · Score the pool$/ }).click();
+      await p.getByRole('button', { name: /^Score the pool$/ }).click();
+      check(await appears(p, '[data-scored-candidate]', 180000), 'the pool scores against the rewritten JD');
+      await p.waitForTimeout(1500);
+      const afterRewrite = await p.locator('[data-rescore-asked]').count();
+      check(afterRewrite === 0, 'a call answered against version 2 says nothing about version 3 — the flag does not survive a rewrite', `${afterRewrite} flag(s)`);
+      await admin.from('leads').update({ jd_version: 2 }).eq('id', lead);
+
       await ctx.close();
     }
 

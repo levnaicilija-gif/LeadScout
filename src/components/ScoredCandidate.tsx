@@ -95,6 +95,14 @@ export function ScoredCandidate({ x, jd, jobCountry, company, leadId, jdVersion 
         <b className="text-accent">{x.score}</b>
       </div>
 
+      {/* Item 5: a finished call against THIS lead at THIS JD version asked for a re-score. The
+          number beside it is the old one — say so rather than letting it read as current. */}
+      {x.rescoreAsked ? (
+        <div data-rescore-asked className="mt-1.5 text-[12px] text-warn border border-warn bg-warnsoft rounded px-2 py-1.5">
+          This score was made before the call: {x.rescoreAsked}
+        </div>
+      ) : null}
+
       <WhyThisScore x={x} />
 
       <div className="mt-1.5">

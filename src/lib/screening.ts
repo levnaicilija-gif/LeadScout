@@ -78,6 +78,42 @@ export function rescoreReason(answers: AnswerRow[]): string | null {
   return `${reasons.join('; ')} — score again against this job to take it into account.`;
 }
 
+/** A finished call, as the score card needs to know about it. */
+export type CallFlag = {
+  candidate_id: string;
+  lead_id: string | null;
+  jd_version: number | null;
+  needs_rescore: boolean | null;
+  rescore_reason: string | null;
+  finished_at: string | null;
+};
+
+/**
+ * Does a call ask for this candidate to be scored again against THIS job at THIS version?
+ *
+ * Matched on lead_id AND jd_version together, never the lead alone (owner's decision, 2026-09-17).
+ * A JD rewrite bumps jd_version and regenerates the questions, so a call answered against version 2
+ * says nothing about version 3 — the questions put to the candidate were different ones. A flag that
+ * survived the rewrite would be stale and still displaying, which is precisely what keying answers
+ * to a version exists to prevent.
+ *
+ * Only a FINISHED call counts: needs_rescore is worked out when the call is closed, so one still in
+ * progress has settled nothing.
+ */
+export function rescoreFor(
+  calls: CallFlag[],
+  candidateId: string,
+  leadId: string,
+  jdVersion: number | null,
+): string | null {
+  const mine = calls
+    .filter((c) => c.candidate_id === candidateId && c.lead_id === leadId && c.finished_at && c.needs_rescore)
+    // A null version matches only a null version: "no JD version" is not a wildcard.
+    .filter((c) => (c.jd_version ?? null) === (jdVersion ?? null))
+    .sort((a, b) => String(b.finished_at).localeCompare(String(a.finished_at)));
+  return mine[0]?.rescore_reason ?? null;
+}
+
 /** How far through the call the recruiter is. Counts an answer as given when prose OR a verdict is there. */
 export const progress = (answers: AnswerRow[]) => {
   const done = answers.filter((a) => (a.answer ?? '').trim() || a.verdict).length;

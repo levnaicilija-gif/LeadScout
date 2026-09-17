@@ -8,6 +8,8 @@ import { attendeesAt } from '@/lib/attendee-match';
 import { xrayCandidatesUrl, xrayLocalVariantUrl } from '@/lib/search-urls';
 import { hasRightToWork, hasCandidateCountries } from '@/lib/schema-features';
 import { previousEmployer } from '@/lib/previous-employer';
+import { rescoreFor, type CallFlag } from '@/lib/screening';
+import { hasScreeningCalls } from '@/lib/schema-features';
 export const maxDuration = 120;
 /** POST { lead_id, action: 'jd' | 'questions' | 'score_pool' | 'xray' | 'draft' | 'confirm' | 'status', ... } */
 export async function POST(req: Request) {
@@ -61,6 +63,17 @@ async function handle(req: Request, me: SignedIn) {
       const cols = `id, reference_code, profile, current_employer${(await hasRightToWork(sb)) ? ', nationality, eu_passport, uk_right_to_work, uk_right_to_work_basis' : ''}`;
       const { data: cands } = await sb.from('candidates').select(cols as '*')
         .eq('workspace_id', me.workspace_id).limit(60) as { data: any[] | null };
+      // Item 5: which of these people has a finished screening call asking to be scored again.
+      // One query for the whole pool, no model, nothing per card. Narrowed to this lead here; the
+      // jd_version match is rescoreFor's, so the rule that a call stops speaking once the JD is
+      // rewritten lives in one tested place rather than in a .eq() nobody can check.
+      const ids = (cands ?? []).map((c: any) => c.id);
+      const calls: CallFlag[] = ids.length && (await hasScreeningCalls(sb))
+        ? (((await sb.from('screening_calls')
+            .select('candidate_id, lead_id, jd_version, needs_rescore, rescore_reason, finished_at')
+            .in('candidate_id', ids).eq('lead_id', lead.id).eq('needs_rescore', true)).data ?? []) as CallFlag[])
+        : [];
+
       const out = [];
       for (const c of cands ?? []) {
         // The blocker is keyed on the LEAD's country: where the work is, not where the person is.
@@ -70,7 +83,11 @@ async function handle(req: Request, me: SignedIn) {
         // Item 11: worked out in code, never by the model — anonymize() strips every employer
         // before the score prompt sees the CV, so the match has to be made from the raw profile.
         // It is not stored: nothing reads the scores table back, and this is true on every read.
-        out.push({ ...c, ...s, previousEmployer: previousEmployer(c.profile as any, lead.companies, (c as any).current_employer) });
+        out.push({
+          ...c, ...s,
+          previousEmployer: previousEmployer(c.profile as any, lead.companies, (c as any).current_employer),
+          rescoreAsked: rescoreFor(calls, c.id, lead.id, lead.jd_version ?? null),
+        });
       }
       return NextResponse.json({ ranked: out.sort((a, b) => (a.blockers.length ? 1 : 0) - (b.blockers.length ? 1 : 0) || b.score - a.score).slice(0, 10) });
     }

@@ -9,7 +9,7 @@
  *
  *   npx tsx scripts/screening-check.ts
  */
-import { rescoreReason, takesVerdict, verdictAllowed, progress, type AnswerRow } from '../src/lib/screening';
+import { rescoreReason, rescoreFor, takesVerdict, verdictAllowed, progress, type AnswerRow, type CallFlag } from '../src/lib/screening';
 
 let failed = 0;
 const check = (ok: boolean, what: string, detail = '') => {
@@ -68,6 +68,35 @@ const both = rescoreReason([
 ]);
 check(!!both && /right to work was refused.*FROSIO III was confirmed/.test(both),
   'every verdict is named, in the order the questions were asked', String(both));
+
+/* ------------------------------- which call the score card may speak for (lead AND jd_version) */
+const call = (over: Partial<CallFlag>): CallFlag => ({
+  candidate_id: 'cand', lead_id: 'lead', jd_version: 2,
+  needs_rescore: true, rescore_reason: 'right to work was refused on the call', finished_at: '2026-09-17T10:00:00Z',
+  ...over,
+});
+
+check(rescoreFor([call({})], 'cand', 'lead', 2) === 'right to work was refused on the call',
+  'a finished call against this lead at this version speaks for itself');
+check(rescoreFor([call({})], 'cand', 'lead', 3) === null,
+  'the SAME call says nothing once the JD is rewritten to version 3 — a flag must not survive a rewrite');
+check(rescoreFor([call({ jd_version: 3 })], 'cand', 'lead', 2) === null,
+  'nor does a call answered against a newer version speak for an older score');
+check(rescoreFor([call({})], 'cand', 'other-lead', 2) === null, 'a call about another lead says nothing here');
+check(rescoreFor([call({})], 'someone-else', 'lead', 2) === null, 'nor does another candidate\'s call');
+check(rescoreFor([call({ finished_at: null })], 'cand', 'lead', 2) === null,
+  'a call still in progress says nothing — needs_rescore is only settled when it is finished');
+check(rescoreFor([call({ needs_rescore: false, rescore_reason: null })], 'cand', 'lead', 2) === null,
+  'a finished call that marked nothing says nothing');
+check(rescoreFor([], 'cand', 'lead', 2) === null, 'no calls at all says nothing');
+check(rescoreFor([call({ jd_version: null })], 'cand', 'lead', null) === 'right to work was refused on the call',
+  'a call with no JD version speaks for a score with no JD version');
+check(rescoreFor([call({ jd_version: null })], 'cand', 'lead', 2) === null,
+  'but "no version" is not a wildcard — it does not speak for version 2');
+check(rescoreFor([
+  call({ finished_at: '2026-09-17T09:00:00Z', rescore_reason: 'the older call' }),
+  call({ finished_at: '2026-09-17T11:00:00Z', rescore_reason: 'the newer call' }),
+], 'cand', 'lead', 2) === 'the newer call', 'the newest finished call is the one that speaks');
 
 /* ------------------------------------------------------------------------------ progress */
 const p = progress([a({ answer: 'said something' }), a({ verdict: 'yes', kind: 'right_to_work' }), a({}), a({ answer: '   ' })]);
