@@ -46,6 +46,13 @@ async function handle(req: Request, me: SignedIn) {
     // record for the person named. Until 2026-09-15 nothing asked, and Paul Daniel Pascale's certificate went onto #9.
     // Checked against the workspace before anything is stored.
     const targetId = String(form.get('candidate_id') ?? '').trim() || null;
+    // The certificate-check screen (/app/certificate) drops here too, but it does exactly one thing: read a
+    // certificate and check it with the issuer. No candidate is created and none is touched — not even the
+    // exact-name attach below, which is right for Verify (a ticket arriving for someone already in the pool
+    // belongs on them) and wrong here, where the recruiter asked a question about a document, not about a
+    // person. The document is still stored, because a check that keeps no evidence cannot be re-read, and it
+    // waits in Verify's "documents attached to nobody" panel to be attached deliberately later.
+    const certificateOnly = String(form.get('mode') ?? '') === 'certificate_only';
 
     const db = supabaseAdmin();
     const results: any[] = [];
@@ -80,6 +87,17 @@ async function handle(req: Request, me: SignedIn) {
         if (ext.doc_type === 'other') {
           row.kind = 'other';
           row.why = 'not a candidate document';
+          results.push(row);                                  // deliberately not saved
+          continue;
+        }
+
+        // Certificate-check screen: anything that is not a certificate is refused and NOT stored. The judgement
+        // is extractDocument's own doc_type, the same classifier Verify uses — never the file name, never a list
+        // written here that would drift from it. A CV dropped on this screen therefore cannot create a candidate,
+        // because it never reaches the branch that would.
+        if (certificateOnly && ext.doc_type !== 'certificate') {
+          row.kind = 'refused';
+          row.why = `this screen checks certificates only — that file was read as a ${ext.doc_type.replace('_', ' ')}. Drop it into Verify, which takes every kind.`;
           results.push(row);                                  // deliberately not saved
           continue;
         }
@@ -172,7 +190,7 @@ async function handle(req: Request, me: SignedIn) {
         // Dropped on a candidate's page, it goes on them only when the name on it fits theirs; otherwise it is stored
         // unattached and the page asks. Anywhere else, only an exact name match attaches by itself.
         const fit = target ? holderFits(ext.holder, target.full_name) : null;
-        const cand = target ? (fit!.fits ? target : null) : autoMatch(known, ext.holder);
+        const cand = certificateOnly ? null : target ? (fit!.fits ? target : null) : autoMatch(known, ext.holder);
         if (target && !fit!.fits) row.mismatch = mismatchFor(target, ext.holder, fit!.why, ext.doc_type);
         const doc = await store(db, me, bytes, f, ext.doc_type, cand?.id ?? null, ext);
         row.documentId = doc?.id ?? null;

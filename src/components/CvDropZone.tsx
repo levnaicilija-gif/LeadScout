@@ -25,7 +25,10 @@ export function CvDropZone({ variant }: { variant: 'rail' | 'home' }) {
   // The zone counts its own enters and leaves, which can go out of step the same way the page's did. When the page says no
   // file is being dragged any more, the highlight goes too.
   useEffect(() => { if (!dragging) { depth.current = 0; setOver(false); } }, [dragging]);
-  if (pathname.startsWith('/app/verify')) return null;
+  // Verify and Certificate check each have a drop zone of their own, so the rail's would be a second way in on a
+  // screen that already has one — and on Certificate check a worse one: it files a CV against a candidate, which
+  // is the exact thing that screen exists not to do.
+  if (pathname.startsWith('/app/verify') || pathname.startsWith('/app/certificate')) return null;
 
   const withFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files');
   const rail = variant === 'rail';

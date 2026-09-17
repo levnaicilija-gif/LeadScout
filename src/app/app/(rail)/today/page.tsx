@@ -242,7 +242,7 @@ export default async function Today() {
     <h2 className="mb-1 text-[16px] font-bold">Your tools</h2>
     <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
       <Tool
-        href="/app/verify" tone="cand" badge="drop files" title="Certificate check"
+        href="/app/certificate" tone="cand" badge="drop files" title="Certificate check"
         body="Just a certificate, no CV attached? Decoded against the real issuer standard, then checked with the register — what it covers, until when."
         stats={[{ n: checkedToday.count ?? 0, label: 'checked today' }, { n: `${searchableCount()} of ${schemes}`, label: 'searched automatically' }]}
         action="Check a certificate →"

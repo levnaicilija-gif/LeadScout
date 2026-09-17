@@ -30,7 +30,10 @@ const IDLE_MS = 1000;
 export function CandidateDrop() {
   const pathname = usePathname() ?? '';
   const router = useRouter();
-  const standAside = pathname.startsWith('/app/verify') || pathname.startsWith('/app/onboarding');
+  // Certificate check stands aside for the same reason Verify does, and one more: the floating "+ Add CV" button
+  // is the way in at 390px, where the rail lies down — offering it on a screen that deliberately touches nobody
+  // would put a candidate-creating drop one tap from a certificate check.
+  const standAside = pathname.startsWith('/app/verify') || pathname.startsWith('/app/onboarding') || pathname.startsWith('/app/certificate');
   const [dragging, setDragging] = useState(false);
   const [overlayLeft, setOverlayLeft] = useState(0);
   const [busy, setBusy] = useState('');

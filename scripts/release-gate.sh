@@ -74,6 +74,10 @@ else
   # Today's queue item opens the leads it names and nothing else: ?ids= on each tab, the cross-link between
   # the two halves, "Clear filter" back to the whole list, and both tabs unchanged with no ids at all.
   step queue-ids npx tsx --env-file=.env.local scripts/queue-ids-probe.ts "$BASE"
+  # Certificate check: one drop zone, certificates only, nobody created or touched — and Verify unchanged.
+  # It drops a real CV to prove the refusal, so one classification call per gate run is spent on purpose; the
+  # probe's workspace is marked is_test, so that spend is logged and not counted against the daily cap.
+  step certificate npx tsx --env-file=.env.local scripts/certificate-probe.ts "$BASE"
   # Item 18: the industry entitlement is enforced by the server — by the session, the routes and 0032's trigger —
   # tried with throwaway accounts. Exit 2 means 0032 is not applied: nothing to enforce yet, reported, not passed.
   echo "=== industry-follow" | tee -a "$LOG"

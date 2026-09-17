@@ -22,7 +22,7 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SU
 const SIGNED_OUT = [['login', '/login'], ['signup', '/signup']];
 const SIGNED_IN = [
   ['home', '/app/home'], ['today', '/app/today'], ['leads-won', '/app/radar'],
-  ['leads-hiring', '/app/radar?tab=hiring'], ['verify', '/app/verify'], ['pitch', '/app/pitch'],
+  ['leads-hiring', '/app/radar?tab=hiring'], ['verify', '/app/verify'], ['certificate', '/app/certificate'], ['pitch', '/app/pitch'],
   ['candidates', '/app/candidates'], ['campaigns', '/app/campaigns'], ['settings', '/app/settings'],
 ];
 
@@ -85,7 +85,10 @@ const SIGNED_IN = [
         // Clicking it must open the file picker. No file is chosen: this runs in the real workspace, so nothing is read.
         const shown = (sel: string) => page.locator(sel).evaluateAll((els) => els.filter((e) => (e as any).checkVisibility()).length);
         const [zones, buttons] = [await shown('[data-cv-drop-zone]'), await shown('[data-candidate-drop-button]')];
-        const [wantZones, wantButtons] = name === 'verify' ? [0, 0] : tag === 'desktop' ? [1, 0] : [0, 1];
+        // Verify and Certificate check both stand aside: each has its own drop zone, so the rail's CV zone and the
+        // floating "+ Add CV" button would be a second, confusing way in on a screen that already has one.
+        const ownZone = name === 'verify' || name === 'certificate';
+        const [wantZones, wantButtons] = ownZone ? [0, 0] : tag === 'desktop' ? [1, 0] : [0, 1];
         if (zones !== wantZones || buttons !== wantButtons) problems.push(`${tag} ${name}: ${zones} CV drop zone(s) and ${buttons} "+ Add CV" button(s) on screen, expected ${wantZones} and ${wantButtons}`);
         if (wantZones || wantButtons) {
           await page.waitForFunction(() => document.documentElement.dataset.hydrated === 'true', undefined, { timeout: 30000 }).catch(() => {});
