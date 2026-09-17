@@ -23,6 +23,17 @@ export type TodayItem = {
   from: string;
   /** HH:MM, and only when something is genuinely booked for that time. Otherwise there is no clock. */
   at?: string;
+  /**
+   * WHEN the thing behind this item happened, as an ISO timestamp — so Today can split its queue
+   * into "while you were out" and "since you arrived" (2026-09-17).
+   *
+   * Deliberately absent on items that have no event time. An expiring certificate is a date in the
+   * future, not something that happened; a campaign short of documents is a standing state. Those
+   * belong in neither window, and visit.ts drops an item with no `when` from both rather than
+   * guessing one — inventing a timestamp would put a standing task in "while you were out" every
+   * single morning.
+   */
+  when?: string | null;
 };
 
 const day = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
@@ -36,7 +47,7 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
   const [pending, noReply, newLeads, expiring, missingDocs, hiring] = await Promise.all([
     sb.from('verifications').select('id, issuer_email_sent_at, documents(candidate_id, extracted, candidates!candidate_id(reference_code))').eq('result', 'pending'),
     sb.from('outreach').select('id, sent_at, leads(project_name, companies(name))').eq('status', 'sent').is('reply_at', null).lte('sent_at', day(-3)),
-    sb.from('leads').select(`id, kind, company_id, country, project_name, fit_score, trades_inferred, source_url, companies(name)${industriesOn ? ', industries' : ''}`).eq('status', 'new').gte('created_at', day(-7)).order('fit_score', { ascending: false }).limit(20),
+    sb.from('leads').select(`id, kind, company_id, country, project_name, fit_score, trades_inferred, source_url, created_at, companies(name)${industriesOn ? ', industries' : ''}`).eq('status', 'new').gte('created_at', day(-7)).order('fit_score', { ascending: false }).limit(20),
     sb.from('verifications').select('id, valid_until, documents(cert_body, candidates!candidate_id(id, reference_code))').eq('result', 'valid').lte('valid_until', day(60).slice(0, 10)),
     campaignsMissingDocs(sb),
     hiringWorthCalling(sb, industriesOn, followedFirst),
@@ -77,8 +88,13 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
   const allNames = [...leadNames, ...hiringNames];
   if (allNames.length) {
     const n = aged.length + hiring.length;
+    // The newest thing in this one combined item is its timestamp: it is the moment that makes the
+    // item worth reading now, and the only honest stamp for a row that stands for several leads.
+    const newest = [...aged.map(({ l }) => l.created_at), ...hiring.map((h) => h.newest)]
+      .filter(Boolean).map(String).sort().pop() ?? null;
     items.push({
       dot: '',
+      when: newest,
       title: `Read ${n} new lead${n === 1 ? '' : 's'}${allNames[0] ? ` — ${allNames[0]} first` : ''}`,
       sub: allNames.join(', '),
       href: '/app/radar',
@@ -97,6 +113,8 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
     const sent = v.issuer_email_sent_at ? new Date(v.issuer_email_sent_at).getTime() : Date.now();
     items.push({
       dot: 'warn',
+      // When the issuer was asked. A reply that has not come is dated by the asking.
+      when: v.issuer_email_sent_at ?? null,
       title: `Issuer reply due on ${doc?.candidates?.reference_code ?? 'a candidate'}'s ${doc?.extracted?.issuer ?? 'certificate'} — day ${Math.max(1, Math.ceil((Date.now() - sent) / 86400000))}`,
       sub: 'Nudge drafted · blocks one pack',
       href: `/app/candidates?ref=${doc?.candidates?.reference_code ?? ''}`,
@@ -110,6 +128,7 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
     const l: any = o.leads;
     items.push({
       dot: '',
+      when: o.sent_at ?? null,
       title: `Follow up ${l?.companies?.name ?? 'a contact'} — no reply since ${new Date(o.sent_at).toLocaleDateString('en-GB')}`,
       sub: l?.project_name ?? '',
       href: '/app/radar',
@@ -229,7 +248,7 @@ export const whenLabel = (item: TodayItem, index: number) => item.at ?? (index =
  * Guarded: the contact column and the row state both arrive with 0020, and naming a column that
  * does not exist fails the whole query rather than omitting a field.
  */
-async function hiringWorthCalling(sb: SupabaseClient, industriesOn = false, followedFirst: (i: string[] | null | undefined) => number = () => 1): Promise<{ id: string; name: string; why: string; ageing: boolean }[]> {
+async function hiringWorthCalling(sb: SupabaseClient, industriesOn = false, followedFirst: (i: string[] | null | undefined) => number = () => 1): Promise<{ id: string; name: string; why: string; ageing: boolean; newest: string | null }[]> {
   const contacts = await hasPostingContact(sb);
   const state = await hasHiringState(sb);
   const cols = `company_id, role, title, headcount, posted_at, first_seen_at${contacts ? ', contact_name' : ''}, companies!inner(name${state ? ', hiring_status' : ''}${industriesOn ? ', industries' : ''})`;
@@ -248,7 +267,7 @@ async function hiringWorthCalling(sb: SupabaseClient, industriesOn = false, foll
   // step up, the same rule as Hiring now's row — so medium can qualify here as high, and the reason says why.
   const { byCompany: signalsBy } = await compoundByCompany(sb, [...byCompany.keys()], (await hasAwardDate(sb)) ? ', award_date, award_date_basis' : '');
 
-  const out: { id: string; name: string; why: string; ageing: boolean; sink: number; first: number }[] = [];
+  const out: { id: string; name: string; why: string; ageing: boolean; newest: string | null; sink: number; first: number }[] = [];
   for (const [id, ps] of byCompany) {
     const openings = ps.reduce((n, p) => n + (p.headcount && p.headcount > 0 ? p.headcount : 1), 0);
     const newest = ps.map((p) => p.posted_at ?? p.first_seen_at).filter(Boolean).sort().pop();
@@ -271,6 +290,9 @@ async function hiringWorthCalling(sb: SupabaseClient, industriesOn = false, foll
         ? `${raised.role} re-advertised ${raised.count}× in ${REPOST_WINDOW_DAYS} days`
         : high ? (liftedToHigh ? `${openings} opening${openings === 1 ? '' : 's'}, pressure ${base} → high — ${signals!.label}` : `${openings} openings, newest within a month`) : `${named.contact_name} is named on the advert`,
       ageing: !raised && age.state === 'flagged',
+      // The newest advert, already computed above for the pressure rule — returned now so Today can
+      // put this company in the right window rather than guessing when it appeared.
+      newest: newest ? String(newest) : null,
       sink: ageSink(age.state, !!raised),
       first: followedFirst(ps[0].companies?.industries),
     });

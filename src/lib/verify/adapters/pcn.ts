@@ -32,6 +32,7 @@ const norm = (s?: string) => (s ?? '').toLowerCase().replace(/\s+/g, '');
 
 export const pcn: Adapter = {
   body: 'pcn',
+  searchable: true,
   name: 'PCN — BINDT (bindt.org)',
   issuerUrl: URL_,
   supports: (i) => isPcnNumber(i.number) || !!lastName(i.holder),

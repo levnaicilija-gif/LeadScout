@@ -63,6 +63,10 @@ const make = (c: Closed): Adapter => ({
   body: c.body,
   name: c.name,
   issuerUrl: c.issuerUrl,
+  // These four never fetch — a captcha, a login, or a register that holds companies and not people.
+  // Declared here because this factory drops `why` into the closure, which is what made a count
+  // testing for that field read all eight adapters as searchable (2026-09-17).
+  searchable: false,
   supports: () => true,
   async lookup(_i: LookupInput): Promise<LookupResult> {
     return {

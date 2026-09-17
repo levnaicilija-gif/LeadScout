@@ -103,3 +103,7 @@ export const hasSendsCreatedAt = (sb: SupabaseClient) => hasColumn(sb, 'sends', 
 
 /** 0040: the screening call — the questions as asked, and what the candidate said. */
 export const hasScreeningCalls = (sb: SupabaseClient) => hasTable(sb, 'screening_calls');
+
+/** 0042: when you were last here, and the follow-ups you have dealt with. */
+export const hasLastSeen = (sb: SupabaseClient) => hasColumn(sb, 'users', 'last_seen_at');
+export const hasFollowupResolutions = (sb: SupabaseClient) => hasTable(sb, 'followup_resolutions');

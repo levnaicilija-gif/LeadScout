@@ -83,6 +83,7 @@ export function readCswip(payload: CswipPayload | null, input: LookupInput, chec
 
 export const cswip: Adapter = {
   body: 'cswip',
+  searchable: true,
   name: 'CSWIP / BGAS-CSWIP — TWI Certification (cswip.com)',
   issuerUrl: PAGE_URL,
   supports: () => true, // always answers; explains itself when it cannot search

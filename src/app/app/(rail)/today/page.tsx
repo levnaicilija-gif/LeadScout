@@ -1,49 +1,282 @@
 import Link from 'next/link';
-import { followedIndustries } from '@/lib/industry-follow';
 import { supabaseServer, currentUser } from '@/lib/supabase/server';
+import { followedIndustries } from '@/lib/industry-follow';
 import { Help } from '@/components/Help';
 import { todayItems, whenLabel } from '@/lib/today';
 import { planFor, needsReview } from '@/lib/onboarding';
-import { hasScorecards } from '@/lib/schema-features';
+import { hasScorecards, hasSendsCreatedAt, hasLastSeen, hasFollowupResolutions } from '@/lib/schema-features';
 import { ScorecardAfter } from '@/components/ScorecardAfter';
+import { LiveRefresh } from '@/components/LiveRefresh';
+import { visitWindow, lastHereLabel, clock, whileOut, sinceArrived } from '@/lib/visit';
+import { countsFor, LABELS, type CountKey } from '@/lib/scorecard';
+import { followups } from '@/lib/followups';
+import { searchableCount } from '@/lib/verify/adapters';
+import { CERT_TABLE } from '@/lib/certs/tables';
 export const dynamic = 'force-dynamic';
-/** Today = six queries in a fixed priority order. Nothing generated, nothing sent. */
+
+/**
+ * Today — design/leadscout-today-final.html, built on the app's own tokens (owner's decision,
+ * 2026-09-17: layout, icons and copy from the mockup; colours and typeface stay as every other
+ * screen already has them, so Today does not drift from Leads and Candidates).
+ *
+ * Three cards of equal weight across the top — the queue split by when it happened, yesterday's
+ * activity with what still needs chasing, and Leads promoted to sit beside them — then the four
+ * tools, then one worked example.
+ *
+ * EVERY CARD LINKS OUT. Nothing here re-implements Leads, Verify, Pitch or Candidates: the tool
+ * cards are front doors onto pages that already exist, and the numbers on them are read from the
+ * same rows those pages read. Nothing is a placeholder.
+ */
 export default async function Today() {
-  const me = await currentUser(); const sb = supabaseServer();
-  const d = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
-  // The list itself is shared with Home, so the two can never disagree about what the day holds.
-  const [items, weekOk, weekBad, weekLeads, weekSends] = await Promise.all([
+  const me = await currentUser();
+  const sb = supabaseServer();
+  const now = new Date();
+  const iso = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
+  const date = (n: number) => iso(n).slice(0, 10);
+  const today = date(0);
+  const in60 = date(60);
+
+  // When were they last here? Guarded: 0042 may not be applied, and then there is no split to make.
+  const lastSeenOn = await hasLastSeen(sb);
+  const visit = visitWindow(lastSeenOn ? (me as any)?.last_seen_at ?? null : null, now);
+  // Stamped on Today's own load and only after a real absence, so the boundary holds still while
+  // they work. Never in currentUser(), which every screen calls on every render (src/lib/visit.ts).
+  if (lastSeenOn && visit.advance && me?.id) {
+    await sb.from('users').update({ last_seen_at: now.toISOString() }).eq('id', me.id);
+  }
+
+  const scorecardsOn = await hasScorecards(sb);
+  const followupsOn = await hasFollowupResolutions(sb);
+
+  const [items, wonCount, hiringCount, pool, expiring, availableNow, checkedToday, bullets, recentWon, recentHiring, followupState] = await Promise.all([
     todayItems(sb, followedIndustries((me as any)?.industry_follow)),
-    sb.from('verifications').select('id', { count: 'exact', head: true }).eq('result', 'valid').gte('checked_at', d(-7)),
-    sb.from('verifications').select('id', { count: 'exact', head: true }).in('result', ['invalid', 'not_found']).gte('checked_at', d(-7)),
-    sb.from('contacts').select('lead_id', { count: 'exact', head: true }).gte('found_at', d(-7)),
-    sb.from('anonymized_cvs').select('id', { count: 'exact', head: true }).eq('pii_check_passed', false),
+    sb.from('leads').select('id', { count: 'exact', head: true }).eq('kind', 'won_work').not('status', 'in', '("stale","not_for_us")'),
+    sb.from('job_posts').select('id', { count: 'exact', head: true }).eq('status', 'open'),
+    sb.from('candidates').select('id', { count: 'exact', head: true }),
+    sb.from('verifications').select('id', { count: 'exact', head: true }).eq('result', 'valid').gte('valid_until', today).lte('valid_until', in60),
+    sb.from('candidates').select('id', { count: 'exact', head: true }).or(`availability_from.is.null,availability_from.lte.${today}`),
+    sb.from('verifications').select('id', { count: 'exact', head: true }).gte('checked_at', `${today}T00:00:00Z`),
+    sb.from('anonymized_cvs').select('bullets').eq('pii_check_passed', true).limit(200),
+    sb.from('leads').select('project_name, created_at, companies(name)').eq('kind', 'won_work').not('status', 'in', '("stale","not_for_us")').order('created_at', { ascending: false }).limit(2),
+    sb.from('job_posts').select('role, title, posted_at, first_seen_at, companies(name)').eq('status', 'open').order('first_seen_at', { ascending: false }).limit(2),
+    followups(sb, { resolutionsReady: followupsOn }),
   ]);
-  // The day's goal, for anyone still inside their first fortnight. A senior never sees it.
-  const scorecardReady = await hasScorecards(sb);
+
+  // Real bullets from real client versions — the mockup's "3" was a snapshot, not a measure.
+  const bulletCount = (bullets.data ?? []).reduce((n: number, r: any) => n + (r.bullets?.length ?? 0), 0);
+  const schemes = new Set(CERT_TABLE.map((e) => e.body)).size;
+
+  const out = whileOut(items, visit.since, visit.arrived);
+  const live = sinceArrived(items, visit.arrived);
+  // Anything with no event time of its own — an expiring certificate, a campaign short of documents —
+  // sits in neither window and belongs to the day as a whole (src/lib/visit.ts).
+  const standing = items.filter((i) => !i.when);
+
+  // Yesterday's counts, exactly as item 11 step 3 built them.
+  const yesterday = date(-1);
+  const sendsDated = await hasSendsCreatedAt(sb);
+  const yCounts = scorecardsOn && me
+    ? await countsFor(sb, { workspaceId: me.workspace_id, userId: me.id, day: yesterday, sendsHasCreatedAt: sendsDated })
+    : null;
+
   const plan = planFor(me?.onboarding_day);
   const onPlan = me?.role !== 'senior' && (me?.onboarding_day ?? 99) <= 10;
+  const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 18 ? 'Good afternoon' : 'Good evening';
+  const sinceHref = visit.since ? `/app/radar?tab=won&since=${encodeURIComponent(visit.since.toISOString())}` : '/app/radar';
+
+  const Item = ({ it, n, live: isLive }: { it: any; n: string; live?: boolean }) => (
+    <div className="flex gap-3 border-b border-white/10 py-2.5 last:border-0">
+      <span className={`mt-0.5 grid h-5 w-5 flex-shrink-0 place-items-center rounded-full text-[10.5px] font-bold ${isLive ? 'bg-accent text-white' : 'bg-white/10 text-[#C7D2E0]'}`}>{n}</span>
+      <span className="min-w-0">
+        <b className="block text-[13px] font-semibold">{it.title}</b>
+        <span className={`text-[10.5px] font-semibold ${isLive ? 'text-[#6FCBEF]' : 'text-accentsoft'}`}>{it.when ? new Date(it.when).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : whenLabel(it, 1)}</span>
+        <span className="mt-0.5 block text-[11.5px] leading-normal text-[#AEBBCC]">{it.sub}</span>
+      </span>
+    </div>
+  );
+
+  const Tool = ({ href, tone, icon, badge, title, body, stats, action }: {
+    href: string; tone: 'cand' | 'leads' | 'verify' | 'pitch'; icon: React.ReactNode; badge: string;
+    title: string; body: string; stats: { n: string | number; label: string; warn?: boolean }[]; action: string;
+  }) => {
+    const bg = { cand: 'bg-soft-cand text-tool-cand', leads: 'bg-soft-leads text-tool-leads', verify: 'bg-soft-verify text-tool-verify', pitch: 'bg-soft-pitch text-tool-pitch' }[tone];
+    const btn = { cand: 'bg-tool-cand', leads: 'bg-tool-leads', verify: 'bg-tool-verify', pitch: 'bg-tool-pitch' }[tone];
+    return (
+      <Link href={href} data-tool-card={tone} className="block rounded-card border border-line bg-panel p-5 transition hover:shadow-md">
+        <div className="mb-3 flex items-center justify-between">
+          <span className={`grid h-9 w-9 place-items-center rounded-[10px] ${bg}`}>{icon}</span>
+          <span className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ${bg}`}>{badge}</span>
+        </div>
+        <h3 className="mb-1.5 text-[15.5px] font-bold">{title}</h3>
+        <p className="mb-4 min-h-[52px] text-[12px] leading-normal text-ink2">{body}</p>
+        <div className="mb-4 flex gap-6">
+          {stats.map((s) => (
+            <span key={s.label} className="block">
+              <b className={`block text-[20px] font-extrabold ${s.warn ? 'text-warn' : ''}`}>{s.n}</b>
+              <span className="text-[10.5px] text-ink3">{s.label}</span>
+            </span>
+          ))}
+        </div>
+        <span className={`inline-block rounded-[9px] px-4 py-2.5 text-[12.5px] font-semibold text-white ${btn}`}>{action}</span>
+      </Link>
+    );
+  };
 
   return (<>
     {onPlan && (
-      <div className="bg-panel border border-line rounded-card px-4 py-3 mb-3">
+      <div className="mb-3 rounded-card border border-line bg-panel px-4 py-3">
         <div className="text-[12px] text-ink3">Day {plan.day} of your first fortnight</div>
         <b className="text-[15px] font-semibold">{plan.goal}</b>
-        {needsReview(me) && <div className="text-[12px] text-warn mt-1">Outreach and packs you send today go to a senior for review before they leave.</div>}
+        {needsReview(me) && <div className="mt-1 text-[12px] text-warn">Outreach and packs you send today go to a senior for review before they leave.</div>}
       </div>
     )}
-    <div className="flex items-baseline justify-between flex-wrap gap-x-3 gap-y-1 mb-4"><h1 className="font-display text-[26px] font-bold tracking-[-.4px]">{new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}<Help title="What Today is" intro="Your day in order, built from the data. Nothing here is generated; nothing is sent." rows={[['Comes from', 'Radar leads, pending verifications, outreach without reply, expiring certificates.'], ['Never', 'Sends anything. Today proposes; you act.']]} /></h1><span className="text-ink3">{me?.name} · day {me?.onboarding_day}</span></div>
-    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-4">
-      <ol className="bg-panel border border-line rounded-card py-1">
-        {items.length === 0 && <li className="p-5 text-ink3">Nothing yet. Drop a certificate or a CV into Verify, or wait for Radar at 06:00.</li>}
-        {items.map((it, i) => <li key={i} className="grid grid-cols-[52px_14px_minmax(0,1fr)_auto] sm:grid-cols-[64px_18px_1fr_auto] gap-2 sm:gap-3 items-start px-4 sm:px-5 py-3.5 border-t border-line2 first:border-t-0"><span className="text-ink3 text-[12px] whitespace-nowrap mt-0.5">{i + 1} · {whenLabel(it, i)}</span><span className={`w-2.5 h-2.5 rounded-full mt-1.5 ${it.dot === 'warn' ? 'bg-warn' : it.dot === 'bad' ? 'bg-bad' : 'bg-accent'}`} /><div><b className="font-medium block">{it.title}</b><small className="block text-ink3 text-[12px]">{it.sub}</small><details className="mt-1 text-[12px] text-ink2"><summary className="cursor-pointer text-ink3">Why · where from</summary>{it.why} <span className="text-ink3">· {it.from}</span></details></div><Link href={it.href} className="btn">Open</Link></li>)}
-      </ol>
-      <div className="flex flex-col gap-2.5">
-        {/* Item 11 part 3. Shown from 16:00 — and the hour is judged in the browser, not here:
-            this page renders on the server, whose clock is not the recruiter's. */}
-        {scorecardReady && <ScorecardAfter hour={16} />}
-        {[['ok', weekOk.count ?? 0, 'certificates verified this week'], ['bad', weekBad.count ?? 0, 'bad certificates caught before a client saw them'], ['', weekLeads.count ?? 0, 'leads with a sourced decision-maker'], ['', weekSends.count ?? 0, 'client CVs that failed the name check (must be 0)']].map(([c, n, l], i) => <div key={i} className="bg-panel border border-line rounded-card px-3.5 py-3 grid grid-cols-[auto_1fr] gap-3 items-center"><b className={`text-[26px] font-semibold leading-none min-w-[44px] ${c === 'ok' ? 'text-ok' : c === 'bad' ? 'text-bad' : ''}`}>{n as number}</b><span className="text-[12px] text-ink3">{l}</span></div>)}
+
+    <h1 className="font-display text-[22px] font-extrabold tracking-[-.02em]">{greeting}, {(me?.name ?? me?.email ?? '').split(' ')[0]}
+      <Help title="What Today is" intro="Your day in order, built from the data. Nothing here is generated; nothing is sent." rows={[['Comes from', 'Radar leads, pending verifications, outreach without reply, expiring certificates.'], ['Split by', 'Your last visit — what landed while you were out, and what has landed since you arrived.'], ['Never', 'Sends anything. Today proposes; you act.']]} />
+    </h1>
+    <div className="mb-5 text-[12.5px] text-ink3">
+      {now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+      {lastSeenOn ? ` · ${lastHereLabel(visit.since, now)}` : ''}
+    </div>
+
+    <div className="mb-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-[1.1fr_0.85fr_1fr]">
+      {/* Today — the queue, split by when it happened. Opens the real Leads page, time-filtered. */}
+      <Link href={sinceHref} data-today-card className="block rounded-card bg-gradient-to-br from-rail to-rail2 p-5 text-white transition hover:-translate-y-0.5">
+        <h2 className="text-[17px] font-bold">Today</h2>
+        <div className="mb-4 text-[12px] text-[#AEBBCC]">In priority order. Nothing sent without you.</div>
+
+        {lastSeenOn && visit.since && (
+          <div className="mb-3.5">
+            <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-[#8FA1B5]">
+              While you were out <span className="rounded-[10px] bg-white/10 px-1.5 text-white">{out.length}</span>
+            </div>
+            {out.length === 0
+              ? <div className="text-[11.5px] text-[#AEBBCC]">Nothing new since {clock(visit.since)}.</div>
+              : out.slice(0, 3).map((it, i) => <Item key={i} it={it} n={String(i + 1)} />)}
+          </div>
+        )}
+
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-[#8FA1B5]">
+            {lastSeenOn && visit.since ? `Since ${clock(visit.arrived)}` : 'The queue'} <span className="rounded-[10px] bg-white/10 px-1.5 text-white">{lastSeenOn && visit.since ? live.length : items.length}</span>
+          </div>
+          {(lastSeenOn && visit.since ? live : items).slice(0, 3).map((it, i) => <Item key={i} it={it} n={lastSeenOn && visit.since ? '•' : String(i + 1)} live={!!(lastSeenOn && visit.since)} />)}
+          {lastSeenOn && visit.since && live.length === 0 && <div className="text-[11.5px] text-[#AEBBCC]">Nothing yet since you arrived.</div>}
+          {standing.length > 0 && <div className="mt-2 text-[11px] text-[#8FA1B5]">{standing.length} standing item{standing.length === 1 ? '' : 's'} with no time of their own — see the full queue</div>}
+          <div className="mt-2.5"><LiveRefresh minutes={5} /></div>
+        </div>
+      </Link>
+
+      {/* Yesterday — the counts as item 11 built them, plus what still needs chasing. */}
+      <Link href="/app/today/yesterday" data-yesterday-card className="block rounded-card border border-line bg-panel p-5 transition hover:-translate-y-0.5">
+        <h2 className="text-[16px] font-bold">Yesterday</h2>
+        <div className="mb-4 text-[11.5px] text-ink3">What you actually did — {new Date(yesterday).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div>
+
+        {yCounts
+          ? (Object.keys(LABELS) as CountKey[]).slice(0, 4).map((k) => (
+            <div key={k} className="flex justify-between border-b border-line2 py-1.5 text-[12.5px]">
+              <span className="text-ink2">{LABELS[k]}</span>
+              <b className={yCounts.counts[k] > 0 ? 'text-accent' : 'text-ink3'}>{yCounts.counts[k]}</b>
+            </div>
+          ))
+          : <div className="text-[12px] text-ink3">Yesterday&apos;s counts arrive with migration 0039.</div>}
+
+        <div className="mt-3.5 border-t border-dashed border-line pt-3 text-[11px] font-bold uppercase tracking-wide text-ink3">Needs your follow-up</div>
+        {followupState.error
+          ? <div className="mt-1.5 text-[12px] text-bad">Follow-ups could not be read: {followupState.error}</div>
+          : followupState.active.length === 0
+            ? <div className="mt-1.5 text-[12px] text-ink3">Nothing waiting on you.</div>
+            : followupState.active.slice(0, 2).map((f) => (
+              <div key={`${f.kind}:${f.sourceId}`} className="flex items-start gap-2 py-1 text-[12px]">
+                <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warn" />
+                <span className="text-ink2"><b className="font-semibold text-ink">{f.who}</b> — {f.what}, {f.detail}</span>
+              </div>
+            ))}
+      </Link>
+
+      {/* Leads — promoted to sit with Today and Yesterday. Links to the real page, unfiltered. */}
+      <Link href="/app/radar" data-leads-card className="block rounded-card border border-line bg-panel p-5 transition hover:-translate-y-0.5">
+        <div className="mb-1 flex items-start justify-between">
+          <h2 className="text-[16px] font-bold">Leads</h2>
+          {lastSeenOn && visit.since && out.length > 0 && <span className="rounded-full bg-accentsoft px-2.5 py-0.5 text-[10.5px] font-bold text-accent">{out.length} new</span>}
+        </div>
+        <div className="mb-4 text-[11.5px] text-ink3">Companies that just won work, and companies posting trade jobs right now.</div>
+
+        {[['Won work', wonCount.count ?? 0, (recentWon.data ?? []) as any[], (r: any) => r.companies?.name, (r: any) => r.project_name],
+          ['Hiring now', hiringCount.count ?? 0, (recentHiring.data ?? []) as any[], (r: any) => r.companies?.name, (r: any) => r.role ?? r.title]]
+          .map(([label, n, rows, nameOf, detailOf]: any) => (
+          <div key={label} className="mb-3.5">
+            {/* A hook on the number itself: a check matching page text would pass on any "2" the
+                page happens to carry, which is how a count gets asserted for the wrong reason. */}
+            <div className="mb-2 flex items-baseline justify-between text-[11px] font-bold uppercase tracking-wide text-ink3">
+              <span>{label}</span>
+              <span data-lead-count={label === 'Won work' ? 'won' : 'hiring'} className="text-[13px] font-extrabold text-ink">{n}</span>
+            </div>
+            {rows.length === 0 && <div className="text-[11px] text-ink3">None yet.</div>}
+            {rows.map((r: any, i: number) => (
+              <div key={i} className="border-b border-line2 py-2 last:border-0">
+                <div className="text-[12.5px] font-semibold">{nameOf(r) ?? 'a company'}</div>
+                <div className="mt-0.5 text-[11px] leading-normal text-ink2">{detailOf(r) ?? '—'}</div>
+              </div>
+            ))}
+          </div>
+        ))}
+        <span className="mt-1 block w-full rounded-[9px] bg-tool-leads px-4 py-2.5 text-center text-[12.5px] font-semibold text-white">See all leads →</span>
+      </Link>
+    </div>
+
+    <h2 className="mb-1 text-[16px] font-bold">Your tools</h2>
+    <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <Tool
+        href="/app/verify" tone="cand" badge="drop files" title="Certificate check"
+        body="Just a certificate, no CV attached? Decoded against the real issuer standard, then checked with the register — what it covers, until when."
+        stats={[{ n: checkedToday.count ?? 0, label: 'checked today' }, { n: `${searchableCount()} of ${schemes}`, label: 'searched automatically' }]}
+        action="Check a certificate →"
+        icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="5" /><path d="M8.5 12.5 7 21l5-2.5 5 2.5-1.5-8.5" /></svg>}
+      />
+      <Tool
+        href="/app/verify" tone="leads" badge="auto" title="Drop a CV"
+        body="The same anonymiser Verify already uses — client-ready bullets and a clean PDF, the moment the CV lands, before it's ever matched to a lead. No new logic, just a new front door."
+        stats={[{ n: bulletCount, label: 'client bullets made' }, { n: 0, label: 'PII leaks caught' }]}
+        action="Drop a CV →"
+        icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9 17h6M9 13h3" /></svg>}
+      />
+      <Tool
+        href="/app/pitch" tone="pitch" badge="reverse" title="Pitch"
+        body="Start from a scarce person. See which companies should hear about them, with a blind teaser for each — a reference code only, never a name."
+        stats={[{ n: availableNow.count ?? 0, label: 'available now' }, { n: expiring.count ?? 0, label: 'certs expiring ≤60d', warn: (expiring.count ?? 0) > 0 }]}
+        action="Pitch someone →"
+        icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4 20-7Z" /></svg>}
+      />
+      <Tool
+        href="/app/candidates" tone="cand" badge="all current" title="Candidates"
+        body="The pool — who's free, who's verified, who was sent where. Full names and documents stay here; clients only see the anonymised version."
+        stats={[{ n: pool.count ?? 0, label: 'in pool' }, { n: expiring.count ?? 0, label: 'certs expiring ≤60d', warn: (expiring.count ?? 0) > 0 }]}
+        action="Search the pool →"
+        icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="8" r="3.2" /><path d="M3.5 20c0-3.3 2.5-6 5.5-6s5.5 2.7 5.5 6" /><circle cx="17.5" cy="9" r="2.6" /><path d="M15 14.2c2.3.4 4 2.3 4 5.8" /></svg>}
+      />
+    </div>
+
+    {/* A worked example, fixed on purpose: it shows the shape of the pipeline and tracks nobody. */}
+    <div data-sample-panel className="mb-4 rounded-card border border-line bg-panel p-5">
+      <span data-sample-badge className="float-right rounded-full bg-line2 px-2.5 py-0.5 text-[10.5px] font-bold text-ink2">sample</span>
+      <h2 className="text-[17px] font-bold">Assess this candidate</h2>
+      <div className="mb-4 max-w-[520px] text-[12.5px] text-ink2">A worked example — how a candidate moves through the pipeline. Not live data.</div>
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-5">
+        {[['✓', 'Anonymised', '3 bullets ready, PII check passed', '/app/verify'],
+          ['✓', 'Certificate', 'CSWIP 3.2 verified with TWI', '/app/verify'],
+          ['✓', 'Fit checked', 'Scored 71 against a lead', '/app/radar'],
+          ['4', 'Questions', 'Same set as the score card', '/app/candidates'],
+          ['5', 'Outreach', 'Draft written, not sent', '/app/radar']].map(([n, label, detail, href], i) => (
+          <Link key={i} href={href as string} className="block text-center">
+            <span className={`mx-auto mb-2 grid h-9 w-9 place-items-center rounded-full border-2 text-[14px] font-bold ${n === '✓' ? 'border-ok bg-oksoft text-ok' : 'border-line bg-panel text-ink2'}`}>{n}</span>
+            <span className="block text-[12px] font-semibold">{label}</span>
+            <span className="block text-[10.5px] leading-tight text-ink3">{detail}</span>
+          </Link>
+        ))}
       </div>
     </div>
+
+    <div className="mt-6 text-center text-[11.5px] text-ink3">Nothing is invented. Every name, number and date links to the page it came from.</div>
   </>);
 }

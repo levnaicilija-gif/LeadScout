@@ -53,6 +53,7 @@ function parseDate(s?: string): string | undefined {
 
 export const frosio: Adapter = {
   body: 'frosio',
+  searchable: true,
   name: 'FROSIO (frosio.no — no public register; Accredible credential URL only)',
   issuerUrl: ISSUER_URL,
   // Always handled here: only the credential URL can be checked, and when there is none

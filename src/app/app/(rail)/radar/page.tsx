@@ -19,7 +19,7 @@ import { preparedSearches } from '@/lib/hiring-contacts';
 import { siteTrust } from '@/lib/site-trust';
 import { boostedFit } from '@/lib/compound-signals';
 export const dynamic = 'force-dynamic';
-export default async function Radar({ searchParams }: { searchParams: { tab?: string; lead?: string; agencies?: string; company?: string; country?: string; trade?: string; employer?: string; pressure?: string; source?: string; sort?: string; industries?: string } }) {
+export default async function Radar({ searchParams }: { searchParams: { tab?: string; lead?: string; agencies?: string; company?: string; country?: string; trade?: string; employer?: string; pressure?: string; source?: string; sort?: string; industries?: string; since?: string } }) {
   const sb = supabaseServer(); const tab = searchParams.tab === 'hiring' ? 'job_post' : 'won_work';
   const hiring = tab === 'job_post';
   // Item 18 part 3: Leads and Hiring now open on the industries this person follows. ?industries=all shows everything,
@@ -70,7 +70,16 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // Item 18 part 1: ?country= on Won work, as Hiring now has. The chips come from the countries the open won-work
   // leads actually carry — all of them, not the 50 per kind on screen, or a country outside the top 50 has no chip.
   const country = !hiring && typeof searchParams.country === 'string' && /^[A-Z]{2}$/.test(searchParams.country) ? searchParams.country : null;
-  const countryQs = (country ? `&country=${country}` : '') + viewQs;
+  // Today's card opens this page filtered to what arrived while the recruiter was away. It is a
+  // PARAMETER on the real Leads page, not a second table: the same columns, the same chips, the same
+  // drawer. `since` is an ISO timestamp from users.last_seen_at, so it is the recruiter's own last
+  // visit rather than a clock time (2026-09-17). Declared here, above countryQs, because every link
+  // the page builds threads it through that string — a source chip, a sort chip, a country chip or a
+  // row href that dropped it would silently clear the filter on the first click.
+  const sinceRaw = typeof searchParams.since === 'string' ? searchParams.since : null;
+  const since = sinceRaw && !Number.isNaN(Date.parse(sinceRaw)) ? new Date(sinceRaw).toISOString() : null;
+  const sinceQs = since ? `&since=${encodeURIComponent(since)}` : '';
+  const countryQs = (country ? `&country=${country}` : '') + viewQs + sinceQs;
   // 0024 gives an award notice its own award date; before it, an award lead ages from the notice's publication.
   const awardCols = (await hasAwardDate(sb)) ? ', award_date, award_date_basis' : '';
   // Item 21: the quoted contact's address and where it came from (the embed never loaded email or quote, so the drawer
@@ -81,8 +90,13 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const openLeads = (cols: string, head = false) => {
     const q = sb.from('leads').select(cols, head ? { count: 'exact', head: true } : undefined).eq('kind', tab).not('status', 'in', '("stale","not_for_us")');
     const inCountry = country ? q.eq('country', country) : q;
-    return industryFilter ? inCountry.or(`industries.ov.{${industryFilter.join(',')}},industries.eq.{}`) : inCountry;
+    const inWindow = since ? inCountry.gte('created_at', since) : inCountry;
+    return industryFilter ? inWindow.or(`industries.ov.{${industryFilter.join(',')}},industries.eq.{}`) : inWindow;
   };
+  // What the same query says with no time filter, so the banner can offer the whole list by number.
+  const { count: everyOpen } = since
+    ? await sb.from('leads').select('id', { count: 'exact', head: true }).eq('kind', tab).not('status', 'in', '("stale","not_for_us")')
+    : { count: null as number | null };
   const NEWS_ONLY = 'source_url.is.null,source_url.not.ilike.https://ted.europa.eu/*';
   const TENDER_URL = 'https://ted.europa.eu/%';
   const none = { data: [] as any[], error: null as any };
@@ -232,6 +246,19 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
     <div className="flex items-baseline justify-between flex-wrap gap-x-3 gap-y-1 mb-3"><h1 className="font-display text-[26px] font-bold tracking-[-.4px]">Leads{hiring ? <HiringHelp /> : <Help title="What Radar is" intro="Reads your sources every morning and tells you which companies will need people, and who to talk to." rows={[['Won work', 'Company won a contract; the person quoted by name; when the work starts.'], ['News / Tender award', 'News is a story Radar read. Tender award is a contract award notice from TED: the buyer, the winner, the value — and no quoted person. The same contract from both is one row, the second source linked.'], ['Hiring now', 'Open trade postings, certs asked for, who to contact — from the posting, company site or Industry Contacts.'], ['Verified', 'Source re-fetched each morning; Confirm records that you checked it. Outreach needs both.'], ['Age', 'A news lead is ageing at 45 days and a stale signal at 90, from the article\'s date; an award at 180 and 365, from the award date. Older leads sink and dim — never hidden, never re-statused. No date says "age unknown".'], ['Boosted', 'A company with two or more independent signals inside 60 days — a tender award, a news mention, an open advert (a re-advertised role is the same signal, stronger, never a second one) — has every lead\'s fit raised ×1.1 for each signal beyond the first, capped at 100 (25 outside Europe). The row names the signals and the fit before; the drawer gives each date. One signal changes nothing.'], ['Never', 'Invents a name, an email, a phone or a job opening.']]} />}</h1><span className="text-ink3">{last?.last_crawled_at ? `Last read ${new Date(last.last_crawled_at).toLocaleString()}` : 'Not read yet'}{tab === 'job_post' ? ` · careers pages ${lastJobs?.last_jobs_crawl_at ? new Date(lastJobs.last_jobs_crawl_at).toLocaleDateString() : 'not crawled yet'}` : ''}</span></div>
     {/* v4 segmented control: the tab you are on is the navy one, not an underline. */}
     <div className="flex gap-1 bg-panel border border-line rounded-[12px] p-1 w-max mb-3.5">{[['won', 'Won work'], ['hiring', 'Hiring now']].map(([t, l]) => <a key={t} href={`?tab=${t}`} className={`px-3.5 py-2 rounded-[9px] font-medium ${(t === 'hiring') === (tab === 'job_post') ? 'bg-rail text-white' : 'text-ink2 hover:bg-line2'}`}>{l}</a>)}</div>
+    {since && (
+      <div data-since-filter className="mb-3 rounded-card border border-accent bg-accentsoft px-4 py-3 flex items-baseline justify-between gap-3 flex-wrap">
+        <div>
+          <b className="font-semibold text-accent">Showing {hiring ? `${groupsAll.length} compan${groupsAll.length === 1 ? 'y' : 'ies'}` : `${shownWon} of ${everyOpen ?? shownWon} open leads`}</b>
+          <div className="text-[12px] text-ink2 mt-0.5">
+            Found since {new Date(since).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' })} — your last visit, not a fixed clock time
+          </div>
+        </div>
+        <a data-clear-since className="text-[12.5px] font-semibold text-accent" href={`?tab=${hiring ? 'hiring' : 'won'}${source ? `&source=${source}` : ''}${sortQs}${country ? `&country=${country}` : ''}${viewQs}`}>
+          Clear filter — see all {everyOpen ?? shownWon} →
+        </a>
+      </div>
+    )}
     {followBanner}
     {hiring && compoundError && <div className="mb-3 text-bad text-[13px]">A company's other signals could not be read: {compoundError}. No pressure below is boosted, which may be wrong.</div>}
     {hiring ? <HiringNow {...hiringProps} /> : (

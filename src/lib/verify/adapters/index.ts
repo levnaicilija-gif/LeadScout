@@ -16,6 +16,21 @@ export const ADAPTERS: Record<string, Adapter> = { frosio, pcn, cswip, ampp, ira
 /** Welder ISO 9606 (DNV/BV/TÜV/LRQA): no public register → issuer email + test-report consistency (see verify route). */
 export const ISSUER_EMAIL_BODIES = new Set(['iso9606']);
 
+/**
+ * The schemes this app really does search, read from what each adapter declares.
+ *
+ * Exported so a screen states a counted property rather than a number somebody typed. "8 of 16
+ * schemes automatic" rode along for a session as the size of this map; four of its entries exist
+ * only to explain that they cannot search. The honest figure is 4 of the 16 schemes CERT_TABLE
+ * decodes, with iso9606 checked by asking its issuer instead (scripts/cert-schemes-check.ts).
+ */
+export const SEARCHABLE_BODIES = new Set(
+  Object.values(ADAPTERS).filter((a) => a.searchable).map((a) => a.body),
+);
+
+/** How many schemes are searched automatically. Counted, never written down. */
+export const searchableCount = () => SEARCHABLE_BODIES.size;
+
 export async function runLookup(body: string, input: LookupInput): Promise<LookupResult> {
   const a = ADAPTERS[body];
   const checkedAt = new Date().toISOString();

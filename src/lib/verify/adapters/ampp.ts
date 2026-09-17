@@ -79,6 +79,7 @@ export function readAmpp(rows: AmppRow[], input: LookupInput, checkedAt: string,
 
 export const ampp: Adapter = {
   body: 'ampp',
+  searchable: true,
   name: 'AMPP — public credential registry (nace.useclarus.com)',
   issuerUrl: PAGE_URL,
   supports: (i) => !!amppNumber(i.number) || !!amppSurname(i.holder),
