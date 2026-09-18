@@ -71,6 +71,16 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // found as a known edge.
   const alsoDropped = alsoAll.length - also.length;
 
+  // Today's card opens this page filtered to what arrived while the recruiter was away. It is a
+  // PARAMETER on the real Leads page, not a second table: the same columns, the same chips, the same
+  // drawer. `since` is an ISO timestamp from users.last_seen_at, so it is the recruiter's own last
+  // visit rather than a clock time (2026-09-17).
+  // Parsed HERE, above the postings query, because that query filters on it from 2026-09-18 — const is
+  // not hoisted, and reading it from there while it was declared below threw on the Hiring now tab the
+  // last time this mistake was made with `ids`.
+  const sinceRaw = typeof searchParams.since === 'string' ? searchParams.since : null;
+  const since = sinceRaw && !Number.isNaN(Date.parse(sinceRaw)) ? new Date(sinceRaw).toISOString() : null;
+
   // Hiring now reads job_posts directly: a posting on a company's own careers page has no lead
   // behind it, and inventing one to hang it off would be a lead nobody decided to create.
   const { data: postings } = hiring
@@ -83,7 +93,13 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
       // an array filter and the view would quietly show four of five with nothing saying so. With no ids
       // the filter is not applied at all — chaining one unconditionally would empty the whole tab.
       const named = ids.length ? q.in('company_id', ids) : q;
-      return named.order('posted_at', { ascending: false, nullsFirst: false }).order('first_seen_at', { ascending: false }).limit(400);
+      // The time window, chained HERE for the same reason the ids filter is: this query keeps only the
+      // newest 400 postings, so filtering the grouped rows afterwards would drop a company the count still
+      // claimed. `first_seen_at` is the column that means "we discovered it" — which is what a "last 24
+      // hours" window asks — while `posted_at` is what a row DISPLAYS, and can be months earlier on an
+      // advert we only just crawled (2026-09-18).
+      const inWindow = since ? named.gte('first_seen_at', since) : named;
+      return inWindow.order('posted_at', { ascending: false, nullsFirst: false }).order('first_seen_at', { ascending: false }).limit(400);
     })()
     : { data: null };
   const { count: boards } = hiring
@@ -111,8 +127,7 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // visit rather than a clock time (2026-09-17). Declared here, above countryQs, because every link
   // the page builds threads it through that string — a source chip, a sort chip, a country chip or a
   // row href that dropped it would silently clear the filter on the first click.
-  const sinceRaw = typeof searchParams.since === 'string' ? searchParams.since : null;
-  const since = sinceRaw && !Number.isNaN(Date.parse(sinceRaw)) ? new Date(sinceRaw).toISOString() : null;
+  // `since` itself is parsed further up, above the postings query that filters on it.
   const sinceQs = since ? `&since=${encodeURIComponent(since)}` : '';
   const idsQs = ids.length ? `&ids=${ids.join(',')}${also.length ? `&also=${also.join(',')}` : ''}` : '';
   const countryQs = (country ? `&country=${country}` : '') + viewQs + sinceQs + idsQs;
@@ -281,7 +296,11 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // work and wrong for Hiring now — there `kind` is job_post, so it would count job-post LEADS rather than
   // companies advertising, and the banner would offer a number that means nothing on the screen it is on.
   // Counted only while a filter is on, and never for the ids case on Won work, where everyOpen already says it.
-  const everyHiringCompany = hiring && ids.length
+  // Fires for `since` as well as `ids` (2026-09-18): with a time filter on this tab and this count left
+  // null, everyHere fell back to groupsAll.length — the FILTERED number — so "Clear filter — see all N"
+  // offered exactly the count it was clearing. A link that promises what is already on screen is worse
+  // than no link at all.
+  const everyHiringCompany = hiring && (ids.length || since)
     ? await (async () => {
       const { data } = await sb.from('job_posts').select('company_id').eq('status', 'open').not('company_id', 'is', null).limit(2000);
       return new Set(((data ?? []) as any[]).map((p) => p.company_id)).size;

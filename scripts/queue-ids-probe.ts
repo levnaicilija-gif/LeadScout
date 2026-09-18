@@ -78,6 +78,14 @@ async function signIn(p: Page, a: { email: string; password: string }) {
   const NAMED_COMPANIES = 2;
   const DECOY_COMPANIES = 1;
   const ALL_COMPANIES = NAMED_COMPANIES + DECOY_COMPANIES;
+  // For the ?since= window on Hiring now (2026-09-18). Every posting used to be seeded two days old, so a
+  // 24-hour window would have matched NOTHING and an assertion against it would have passed by filtering
+  // everything away — a vacuous check, the same shape as a notice that always renders. One company is
+  // seeded inside the window and the rest outside it, so the filter has something to keep AND something to
+  // drop. Counted from constants, never typed as literals: "Showing 3 of 5" stopped testing what it claimed
+  // the moment a seed changed.
+  const RECENT_COMPANIES = 1;
+  const HOURS_IN_WINDOW = 1;
   const iso = (daysAgo: number) => new Date(Date.now() - daysAgo * 86400000).toISOString();
 
   const mkCompany = async (label: string) => (await admin.from('companies').insert({
@@ -107,7 +115,13 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       workspace_id: who.workspace, company_id: c.id, status: 'open',
       role: `Queue welder ${i}`, country: 'DK', trades: ['welder'],
       source_url: `https://example.invalid/queue-ids/${stamp}/${i}`,
-      posted_at: iso(2).slice(0, 10), first_seen_at: iso(2), is_test: true,
+      // Staggered for the ?since= window: the first company was discovered an hour ago, the rest two days
+      // ago. posted_at stays two days old on ALL of them on purpose — the window filters on first_seen_at
+      // ("we discovered it") while a row DISPLAYS posted_at, and seeding both the same way would let a
+      // filter that read the wrong column pass anyway.
+      posted_at: iso(2).slice(0, 10),
+      first_seen_at: i < RECENT_COMPANIES ? iso(HOURS_IN_WINDOW / 24) : iso(2),
+      is_test: true,
     })),
   );
   if (postErr) throw new Error(`seeding postings failed: ${postErr.message}`);
@@ -228,10 +242,37 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       check(!hText.includes(`Queue Hiring 2 ${stamp}`), 'the decoy company is not in the filtered table');
       check(await sideways(page) <= 2, `Hiring now does not scroll sideways at ${tag}`, `${await sideways(page)}px`);
 
+      // 4b — ?since= on Hiring now (2026-09-18). Until now that tab had NO time filter at all: since was
+      // parsed for Won work and the postings query ignored it, so Today's card could not narrow this tab to
+      // what arrived overnight. The filter is chained inside the query rather than onto the grouped rows,
+      // because the query keeps only the newest 400 and an array filter would drop a company the count still
+      // claimed. One seeded company is an hour old and the other two are two days old, so the window has
+      // something to keep AND something to drop — without that split this check would pass by matching
+      // nothing at all.
+      const since24h = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      await page.goto(`${BASE}/app/radar?tab=hiring&since=${encodeURIComponent(since24h)}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await hydrated(page);
+      const sinceRows = await page.locator('[data-row-href]').count();
+      check(sinceRows === RECENT_COMPANIES, `Hiring now, last 24h: exactly the ${RECENT_COMPANIES} company discovered inside the window`, `${sinceRows} row(s)`);
+      const sinceText = await page.locator('main').innerText().catch(() => '');
+      const oldOnes = hiringCompanies.slice(RECENT_COMPANIES).map((c: any) => c.name);
+      check(oldOnes.every((n: string) => !sinceText.includes(n)), 'and the companies first seen two days ago are not in it', oldOnes.join(', '));
+      const sinceBanner = flat(await page.locator('[data-since-filter]').first().innerText().catch(() => ''));
+      check(new RegExp(`Showing ${RECENT_COMPANIES} compan`).test(sinceBanner), 'the banner counts what the table shows', sinceBanner.slice(0, 130));
+      // The reason everyHiringCompany had to widen from `ids.length` to `ids.length || since`: with it null
+      // the banner fell back to the FILTERED count, so "Clear filter — see all N" offered the number it was
+      // already showing. A link promising what is on screen is worse than no link.
+      check(new RegExp(`see all ${ALL_COMPANIES}`).test(sinceBanner), `and "Clear filter" offers every company (${ALL_COMPANIES}), not the filtered ${RECENT_COMPANIES}`, sinceBanner.slice(0, 160));
+      await page.locator('[data-clear-since]').first().click();
+      await page.waitForURL((u) => !u.href.includes('since='), { timeout: 30000 }).catch(() => {});
+      await hydrated(page);
+      check(!page.url().includes('since='), 'clearing the time filter returns to the unfiltered tab', page.url().replace(BASE, ''));
+      check(await page.locator('[data-row-href]').count() === ALL_COMPANIES, `and all ${ALL_COMPANIES} companies are back`, `${await page.locator('[data-row-href]').count()} row(s)`);
+
       // 5 — Clear filter returns to the whole list, on each tab.
-      for (const [label, url, want, count] of [
-        ['Won work', wonUrl, ALL_LEADS, async () => (await wonRows(page)).length],
-        ['Hiring now', hiringUrl, ALL_COMPANIES, async () => page.locator('[data-row-href]').count()],
+      for (const [label, url, want, count, rowSel] of [
+        ['Won work', wonUrl, ALL_LEADS, async () => (await wonRows(page)).length, 'table.tbl tbody tr'],
+        ['Hiring now', hiringUrl, ALL_COMPANIES, async () => page.locator('[data-row-href]').count(), '[data-row-href]'],
       ] as const) {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
         await hydrated(page);
@@ -243,6 +284,16 @@ async function signIn(p: Page, a: { email: string; password: string }) {
         await hydrated(page);
         check(!page.url().includes('ids='), `${label}: clearing returns to the unfiltered list`, page.url().replace(BASE, ''));
         check(await page.locator('[data-ids-filter]').count() === 0, `${label}: and the filter banner is gone`);
+        // Wait for the rows to be BACK, rather than counting whatever is on screen the instant the URL
+        // changes (2026-09-18). hydrated() cannot carry this: it resolves on a document flag the previous
+        // page already set, so it says nothing about the new render having painted — this check read 0 rows
+        // at 390px on a page whose URL and banner were already correct, and the same assertion passed at
+        // 1500px seconds earlier. A timeout here still fails, but with the real count in the message rather
+        // than a timing loss dressed up as missing data.
+        await page.waitForFunction(
+          ([sel, n]) => document.querySelectorAll(sel as string).length === (n as number),
+          [rowSel, want] as const, { timeout: 30000 },
+        ).catch(() => {});
         check(await count() === want, `${label}: the full list is back — all ${want}`, `${await count()} row(s)`);
       }
       await ctx.close();
