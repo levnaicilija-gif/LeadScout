@@ -179,6 +179,35 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       await page.goto(wonUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await hydrated(page);
 
+      // 2c — over the cap, the filter SAYS SO. The cap is 200 and no caller can reach it today (Today names
+      // six leads and five companies), so this is forced with a hand-built URL — an unreachable path that is
+      // never exercised is indistinguishable from a broken one. Both halves are asserted on purpose: the
+      // notice must appear with the real number when items are dropped, AND be absent on a normal filtered
+      // view, because a notice that always rendered would pass a one-sided check while lying to the recruiter.
+      const overCap = Array.from({ length: 205 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`);
+      await page.goto(`${BASE}/app/radar?tab=won&ids=${[...namedLeadIds, ...overCap].join(',')}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await hydrated(page);
+      const truncated = page.locator('[data-ids-truncated]');
+      const dropped = await truncated.count() > 0 ? Number(await truncated.getAttribute('data-ids-truncated')) : 0;
+      check(dropped === NAMED_LEADS + overCap.length - 200, 'over the cap, the filter says how many it could not carry', `${dropped} dropped of ${NAMED_LEADS + overCap.length} named`);
+      check(/not shown here/i.test(flat(await truncated.innerText().catch(() => ''))), 'and says plainly they are not shown, rather than dropping them quietly', flat(await truncated.innerText().catch(() => '')).slice(0, 120));
+      await page.goto(wonUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await hydrated(page);
+      check(await page.locator('[data-ids-truncated]').count() === 0, 'and under the cap it is not shown at all — the notice is not always-on');
+
+      // 2d — `also` gets the same treatment, because the cross-link's "+N hiring now" is read straight off
+      // it: a truncated `also` understates the other tab by exactly what it dropped. Forced the same way,
+      // and asserted on both sides for the same reason.
+      await page.goto(`${BASE}/app/radar?tab=won&ids=${namedLeadIds.join(',')}&also=${[...namedCompanyIds, ...overCap].join(',')}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await hydrated(page);
+      const alsoCut = page.locator('[data-also-truncated]');
+      const alsoDrop = await alsoCut.count() > 0 ? Number(await alsoCut.getAttribute('data-also-truncated')) : 0;
+      check(alsoDrop === NAMED_COMPANIES + overCap.length - 200, 'over the cap, the cross-link says how many it could not carry', `${alsoDrop} dropped of ${NAMED_COMPANIES + overCap.length} named`);
+      check(/not shown here/i.test(flat(await alsoCut.innerText().catch(() => ''))), 'and says so plainly rather than a silently short count', flat(await alsoCut.innerText().catch(() => '')).slice(0, 130));
+      await page.goto(wonUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await hydrated(page);
+      check(await page.locator('[data-also-truncated]').count() === 0, 'and under the cap the cross-link notice is not shown either');
+
       // 3 — the cross-link to the other half of the same item.
       const also = page.locator('[data-also-link]').first();
       check(await also.count() > 0, 'the filtered view offers the hiring-now half', flat(await also.innerText().catch(() => '')));

@@ -50,10 +50,26 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // hand-edited one must not be able to build an unbounded `.in()` or smuggle anything into a filter.
   // Declared above the postings query because that query filters on it — const is not hoisted, and
   // reading it from there before this line threw on the Hiring now tab (caught by typecheck).
+  // The cap is 200, not 60 (owner's decision, 2026-09-18): a view that lists everything from the last 24
+  // hours can name more than 60, and a click-through that quietly showed fewer rows than the view listed
+  // would be the "count does not match" fault this filter exists to avoid. What the cap must never do is
+  // drop items in silence, so the FULL parsed list is kept and the difference is carried to the banner —
+  // a hidden cap and a silent truncation are the same bug one step apart.
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  const readIds = (raw?: string) => (typeof raw === 'string' ? [...new Set(raw.split(',').map((s) => s.trim()).filter((s) => UUID.test(s)))].slice(0, 60) : []);
-  const ids = readIds(searchParams.ids);
-  const also = readIds(searchParams.also);
+  const ID_CAP = 200;
+  const parseIds = (raw?: string) => (typeof raw === 'string' ? [...new Set(raw.split(',').map((s) => s.trim()).filter((s) => UUID.test(s)))] : []);
+  const idsAll = parseIds(searchParams.ids);
+  const alsoAll = parseIds(searchParams.also);
+  const ids = idsAll.slice(0, ID_CAP);
+  const also = alsoAll.slice(0, ID_CAP);
+  const idsDropped = idsAll.length - ids.length;
+  // `also` gets the same treatment as `ids`, not a silently short count (owner's decision, 2026-09-18):
+  // the cross-link reads "+5 hiring now →" straight off `also.length`, so a truncated `also` would
+  // understate the other tab by exactly the number it dropped. Unreachable at today's volume — and so was
+  // the ids path until it was made visible — but the tender-portal work and the 24h view both add source
+  // volume, and a second matching gap left open is the kind that gets rediscovered as a bug rather than
+  // found as a known edge.
+  const alsoDropped = alsoAll.length - also.length;
 
   // Hiring now reads job_posts directly: a posting on a company's own careers page has no lead
   // behind it, and inventing one to hang it off would be a lead nobody decided to create.
@@ -314,6 +330,23 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
               ? <>Found since {new Date(since).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' })} — your last visit, not a fixed clock time</>
               : <>The {hiring ? 'companies' : 'leads'} today&apos;s queue named — these {shownHere} and nothing else{also.length > 0 && <>, {hiring ? 'read beside' : 'and'} {also.length} on the other tab</>}</>}
           </div>
+          {/* Said out loud, never swallowed: the line above claims "these N and nothing else", and a silent
+              truncation would make that claim false. 200 is the cap; anything past it is named here rather
+              than dropped quietly, which is the whole reason the full parsed list is kept at the top. */}
+          {idsDropped > 0 && (
+            <div data-ids-truncated={idsDropped} className="mt-1 text-[12px] font-semibold text-warn">
+              {idsDropped} more {hiring ? 'compan' : 'lead'}{idsDropped === 1 ? (hiring ? 'y was' : ' was') : (hiring ? 'ies were' : 's were')} named than this filter carries ({ID_CAP} at a time) — they are not shown here.
+            </div>
+          )}
+          {/* The same again for `also`, and the noun INVERTS: the line above describes this tab, while the
+              cross-link beside it describes the other one — "+N hiring now" is companies when we are on Won
+              work, "← N won work" is leads when we are on Hiring now. A sentence that reads plausibly and
+              names the wrong table is worse than an obvious error, so this follows the link's own label. */}
+          {alsoDropped > 0 && (
+            <div data-also-truncated={alsoDropped} className="mt-1 text-[12px] font-semibold text-warn">
+              {alsoDropped} more {hiring ? 'lead' : 'compan'}{alsoDropped === 1 ? (hiring ? ' was' : 'y was') : (hiring ? 's were' : 'ies were')} named than the {hiring ? '← won work' : '+ hiring now'} link carries ({ID_CAP} at a time) — they are not shown here.
+            </div>
+          )}
         </div>
         <span className="flex items-baseline gap-3 flex-wrap">
           {/* The other half of the same queue item: six leads and five companies are different tables on
