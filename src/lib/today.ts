@@ -309,3 +309,142 @@ async function hiringWorthCalling(sb: SupabaseClient, industriesOn = false, foll
   }
   return out.sort((a, b) => (a.first - b.first) || (a.sink - b.sink)).slice(0, 5);
 }
+
+/** Which of the three things a 24-hour row is. The key is also the `data-source-group` on screen. */
+export type Last24Group = 'news' | 'ted' | 'hiring';
+
+export type Last24Row = {
+  group: Last24Group;
+  /** Lead id for news and TED, COMPANY id for hiring — the two tabs filter on different tables. */
+  id: string;
+  title: string;
+  sub: string;
+  /**
+   * The sort key, and nothing else. For a lead it is the fit — boosted where the company carries two
+   * signal types — and for a company it is its pressure mapped onto the same scale so one comparator can
+   * order all three sources under "hottest first". It is NEVER rendered: a hiring row has no fit score,
+   * and showing this as one would invent a number the database does not hold. Called `rank` rather than
+   * `fit` so that cannot be mistaken later (owner's decision, 2026-09-18).
+   */
+  rank: number;
+  boosted: boolean;
+  /**
+   * WHAT THE ROW SHOWS — the date the thing happened, not the moment we found it. A TED notice awarded
+   * three weeks ago and crawled an hour ago belongs in this window and must read its award date; the
+   * window itself filters on discovery (created_at / first_seen_at), which is a different question.
+   */
+  ts: string | null;
+  /** What `ts` means, in the row's own words — never a bare date with no provenance. */
+  tsBasis: string;
+};
+
+/** low/medium/high against the live lead distribution: leads sit at 80-88, so high ranks with a strong
+ *  lead and low sits below the weakest one. Internal to the sort — see Last24Row.rank. */
+const PRESSURE_RANK: Record<Pressure, number> = { low: 40, medium: 60, high: 80 };
+
+/**
+ * Everything discovered in the last 24 hours, hottest first, across all three sources.
+ *
+ * Deliberately NOT todayItems with a filter on it. Today's queue is a priority list of six leads and five
+ * companies; this is every single thing that arrived in a rolling window, which needs a source type per
+ * row, a fit to rank by, a timestamp to show, and an id to hand to ?ids= — none of which TodayItem has.
+ *
+ * Two dates per row, and conflating them is the mistake this is written to avoid. The WINDOW filters on
+ * when we discovered a thing (leads.created_at, job_posts.first_seen_at); the row DISPLAYS when the thing
+ * happened (published_at, award_date, posted_at). An advert posted in June and crawled this morning is
+ * new to the recruiter and must say "posted 2026-06-14".
+ *
+ * Uncapped by design (owner's decision, 2026-09-18): measured at 3 leads and 7 postings in a real 24
+ * hours, with the uncapped queries at ~0.12s. A hidden cap here would be the same fault as a silently
+ * short ?ids= list — the card scrolls instead, and each group states its own count including zero.
+ */
+export async function last24h(
+  sb: SupabaseClient,
+  followed: IndustryId[] | 'all' = 'all',
+  now = new Date(),
+): Promise<{ rows: Last24Row[]; counts: Record<Last24Group, number>; since: string }> {
+  const since = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
+  const industriesOn = await hasIndustries(sb);
+  const awardCols = (await hasAwardDate(sb)) ? ', award_date, award_date_basis' : '';
+  const keep = (industries: string[] | null | undefined) =>
+    followed === 'all' || (industries ?? []).length === 0 || (industries ?? []).some((i) => (followed as string[]).includes(i));
+
+  const [leadsRes, postsRes] = await Promise.all([
+    sb.from('leads')
+      .select(`id, kind, company_id, country, project_name, fit_score, source_url, created_at, companies(name)${industriesOn ? ', industries' : ''}`)
+      .eq('kind', 'won_work').not('status', 'in', '("stale","not_for_us")').gte('created_at', since),
+    sb.from('job_posts')
+      .select(`id, company_id, role, title, headcount, posted_at, first_seen_at, companies!inner(name${industriesOn ? ', industries' : ''})`)
+      .eq('status', 'open').not('company_id', 'is', null).gte('first_seen_at', since),
+  ]);
+
+  const leads = ((leadsRes.data ?? []) as any[]).filter((l) => keep(l.industries));
+  const posts = ((postsRes.data ?? []) as any[]).filter((p) => keep(p.companies?.industries));
+
+  // Article dates for the leads in the window only, service-role — the same route todayItems uses,
+  // because articles carry no read policy. A failure leaves the rows in place with no date rather than
+  // dropping them: a lead that arrived is news whether or not its article date could be read.
+  const { byLead } = await articlesByLead(leads.map((l) => l.id), awardCols);
+  const { byCompany: signals } = await compoundByCompany(sb, [...leads.map((l) => l.company_id), ...posts.map((p) => p.company_id)], awardCols, now);
+
+  const rows: Last24Row[] = [];
+
+  for (const l of leads) {
+    const a: any = primaryArticle(byLead.get(l.id) ?? [], l.source_url);
+    const tender = leadSource(l.source_url) === 'tender';
+    const c = signals.get(l.company_id);
+    const lifted = c && c.factor > 1 ? boostedFit(l.fit_score ?? 0, c, l.country) : null;
+    const award = tender ? (a?.award_date ?? null) : null;
+    rows.push({
+      group: tender ? 'ted' : 'news',
+      id: String(l.id),
+      title: l.companies?.name ?? 'a company',
+      sub: l.project_name ?? (tender ? 'Contract award' : 'News mention'),
+      rank: lifted?.fit ?? l.fit_score ?? 0,
+      boosted: !!lifted,
+      ts: award ?? a?.published_at ?? null,
+      tsBasis: award ? (a?.award_date_basis || 'award date') : a?.published_at ? (tender ? 'award notice published' : 'article published') : 'no date on the source',
+    });
+  }
+
+  // One row per COMPANY, not per advert: three adverts from one yard is one company to call, and the id
+  // handed to ?ids= on the hiring tab is a company id.
+  const byCompany = new Map<string, any[]>();
+  for (const p of posts) (byCompany.get(p.company_id) ?? byCompany.set(p.company_id, []).get(p.company_id)!).push(p);
+  for (const [id, ps] of byCompany) {
+    // The same pressure rule Hiring now uses, reached rather than reinvented (hiringWorthCalling above).
+    const openings = ps.reduce((n, p) => n + (p.headcount && p.headcount > 0 ? p.headcount : 1), 0);
+    const newest = ps.map((p) => p.posted_at ?? p.first_seen_at).filter(Boolean).sort().pop();
+    const fresh = newest ? (now.getTime() - Date.parse(String(newest))) / 86400000 <= 30 : false;
+    const base: Pressure = openings >= 5 && fresh ? 'high' : openings >= 5 || (openings >= 2 && fresh) ? 'medium' : 'low';
+    const c = signals.get(id);
+    const lifted = c && c.factor > 1 ? boostedPressure(base, c) : null;
+    const pressure = lifted?.pressure ?? base;
+    const roles = [...new Set(ps.map((p) => roleKey(p) || 'Trade role'))];
+    const posted = ps.map((p) => p.posted_at).filter(Boolean).sort().pop();
+    rows.push({
+      group: 'hiring',
+      id: String(id),
+      title: ps[0].companies?.name ?? 'a company',
+      sub: `${openings} opening${openings === 1 ? '' : 's'} · ${roles.slice(0, 2).join(', ')}${roles.length > 2 ? ` +${roles.length - 2}` : ''} · pressure ${pressure}${lifted?.boosted ? ` (was ${base})` : ''}`,
+      rank: PRESSURE_RANK[pressure],
+      boosted: !!lifted?.boosted,
+      // Sliced to a date because posted_at is a `date` and first_seen_at a `timestamptz`: the fallback
+      // otherwise put "2026-09-18T12:25:40.048237+00:00" on screen beside rows reading "2026-09-17".
+      // Same value, different shape, and the row is the only place a recruiter sees either.
+      ts: (posted ?? ps.map((p) => p.first_seen_at).filter(Boolean).sort().pop() ?? null)?.slice(0, 10) ?? null,
+      tsBasis: posted ? 'advert posted' : 'first seen by our crawl — the advert states no posting date',
+    });
+  }
+
+  rows.sort((a, b) => (b.rank - a.rank) || String(a.title).localeCompare(String(b.title)));
+  return {
+    rows,
+    counts: {
+      news: rows.filter((r) => r.group === 'news').length,
+      ted: rows.filter((r) => r.group === 'ted').length,
+      hiring: rows.filter((r) => r.group === 'hiring').length,
+    },
+    since,
+  };
+}

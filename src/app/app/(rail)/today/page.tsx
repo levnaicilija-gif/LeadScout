@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { supabaseServer, currentUser } from '@/lib/supabase/server';
 import { followedIndustries } from '@/lib/industry-follow';
 import { Help } from '@/components/Help';
-import { todayItems, whenLabel, type TodayItem } from '@/lib/today';
+import { todayItems, whenLabel, last24h, type TodayItem, type Last24Row } from '@/lib/today';
 import { planFor, needsReview } from '@/lib/onboarding';
 import { hasScorecards, hasSendsCreatedAt, hasLastSeen, hasFollowupResolutions } from '@/lib/schema-features';
 import { ScorecardAfter } from '@/components/ScorecardAfter';
@@ -90,6 +90,16 @@ export default async function Today({ searchParams }: { searchParams: { view?: s
   // default rather than whatever they last clicked. Read the way every other enum param on Leads is read
   // (searchParams.sort === 'latest'), so an unknown value falls back rather than throwing.
   const view24h = searchParams?.view === '24h';
+  // Only when the recruiter asked for it. This is three more queries — leads, postings, and the article
+  // dates behind them — and putting it in the Promise.all above would spend them on every Priority load,
+  // which is the default and by far the common one. It also could not go there: that block runs before
+  // view24h is parsed, so the value it depends on does not exist yet.
+  const feed = view24h ? await last24h(sb, followedIndustries((me as any)?.industry_follow), now) : null;
+  const GROUPS: { key: Last24Row['group']; label: string; empty: string; tab: 'won' | 'hiring' }[] = [
+    { key: 'news', label: 'News', empty: 'nothing new in your followed industries', tab: 'won' },
+    { key: 'ted', label: 'TED tender award', empty: 'no award notices in the last 24 hours', tab: 'won' },
+    { key: 'hiring', label: 'Hiring now', empty: 'no new adverts in the last 24 hours', tab: 'hiring' },
+  ];
 
   // The row is a link, because it names work and the work is somewhere else (2026-09-17). Until now the
   // queue rendered as plain text on Today and on Home: an item reading "Read 11 new leads — Peene-Werft
@@ -189,7 +199,7 @@ export default async function Today({ searchParams }: { searchParams: { view?: s
             : 'In priority order. Nothing sent without you.'}
         </div>
 
-        {lastSeenOn && visit.since && (
+        {!view24h && lastSeenOn && visit.since && (
           <div className="mb-3.5">
             <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-[#8FA1B5]">
               While you were out <span className="rounded-[10px] bg-white/10 px-1.5 text-white">{out.length}</span>
@@ -200,15 +210,61 @@ export default async function Today({ searchParams }: { searchParams: { view?: s
           </div>
         )}
 
-        <div>
-          <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-[#8FA1B5]">
-            {lastSeenOn && visit.since ? `Since ${clock(visit.arrived)}` : 'The queue'} <span className="rounded-[10px] bg-white/10 px-1.5 text-white">{lastSeenOn && visit.since ? live.length : items.length}</span>
+        {!view24h && (
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-[#8FA1B5]">
+              {lastSeenOn && visit.since ? `Since ${clock(visit.arrived)}` : 'The queue'} <span className="rounded-[10px] bg-white/10 px-1.5 text-white">{lastSeenOn && visit.since ? live.length : items.length}</span>
+            </div>
+            {(lastSeenOn && visit.since ? live : items).slice(0, 3).map((it, i) => <Item key={i} it={it} n={lastSeenOn && visit.since ? '•' : String(i + 1)} live={!!(lastSeenOn && visit.since)} />)}
+            {lastSeenOn && visit.since && live.length === 0 && <div className="text-[11.5px] text-[#AEBBCC]">Nothing yet since you arrived.</div>}
+            {standing.length > 0 && <div className="mt-2 text-[11px] text-[#8FA1B5]">{standing.length} standing item{standing.length === 1 ? '' : 's'} with no time of their own — see the full queue</div>}
           </div>
-          {(lastSeenOn && visit.since ? live : items).slice(0, 3).map((it, i) => <Item key={i} it={it} n={lastSeenOn && visit.since ? '•' : String(i + 1)} live={!!(lastSeenOn && visit.since)} />)}
-          {lastSeenOn && visit.since && live.length === 0 && <div className="text-[11.5px] text-[#AEBBCC]">Nothing yet since you arrived.</div>}
-          {standing.length > 0 && <div className="mt-2 text-[11px] text-[#8FA1B5]">{standing.length} standing item{standing.length === 1 ? '' : 's'} with no time of their own — see the full queue</div>}
-          <div className="mt-2.5"><LiveRefresh minutes={5} /></div>
-        </div>
+        )}
+
+        {/* The last 24 hours, one list across three sources, hottest first. Grouped by where a thing came
+            from and NOT capped: measured at a handful of rows a day, so the card scrolls rather than hiding
+            any — a hidden cap here would be the same fault as a silently short ?ids= list. A group with
+            nothing in it still says so: a source that has gone quiet is information, and hiding the heading
+            would leave a recruiter unable to tell "nothing arrived" from "we stopped looking".
+            Every row is a Link inside a DIV — never inside the heading's anchor or another row — because an
+            <a> in an <a> is what took this card down at 390px (React #418). */}
+        {view24h && feed && (
+          <div className="max-h-[420px] overflow-y-auto pr-1">
+            {GROUPS.map(({ key, label, empty, tab }) => {
+              const rows = feed.rows.filter((r) => r.group === key);
+              // The whole group behind one link, so the click opens exactly the set the section lists.
+              const href = rows.length ? `/app/radar?tab=${tab}&ids=${rows.map((r) => r.id).join(',')}` : null;
+              return (
+                <div key={key} data-source-group={key} className="mb-3.5 last:mb-0">
+                  <div className="mb-2 flex items-baseline gap-2 text-[11px] font-bold uppercase tracking-wide text-[#8FA1B5]">
+                    {label} <span data-group-count={rows.length} className="rounded-[10px] bg-white/10 px-1.5 text-white">{rows.length}</span>
+                    {rows.length === 0 && <span className="normal-case font-normal tracking-normal text-[#AEBBCC]">— {empty}</span>}
+                  </div>
+                  {rows.map((r) => (
+                    <Link
+                      key={r.id}
+                      href={href!}
+                      data-last24-row={r.group}
+                      className="flex gap-3 border-b border-white/10 py-2 last:border-0 transition hover:bg-white/[.04]"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <b className="block text-[13px] font-semibold">{r.title}{r.boosted && <span className="ml-1.5 rounded-[6px] bg-white/15 px-1.5 text-[10px] font-bold">boosted</span>}</b>
+                        <span className="mt-0.5 block text-[11.5px] leading-normal text-[#AEBBCC]">{r.sub}</span>
+                      </span>
+                      {/* The date the thing HAPPENED, with what it means — never the moment we found it. */}
+                      <span data-row-ts={r.ts ?? ''} className="shrink-0 text-right text-[10.5px] text-[#8FA1B5]" title={r.tsBasis}>
+                        {r.ts ?? 'no date'}
+                        <span className="block text-[9.5px] opacity-80">{r.tsBasis.split('—')[0].trim()}</span>
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="mt-2.5"><LiveRefresh minutes={5} /></div>
       </div>
 
       {/* Yesterday — the counts as item 11 built them, plus what still needs chasing. */}

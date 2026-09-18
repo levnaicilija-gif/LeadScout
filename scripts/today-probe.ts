@@ -79,7 +79,17 @@ async function signIn(p: Page, a: { email: string; password: string }) {
   // banner merely exists tested nothing.
   const OLD = 3;
   const RECENT = 2;
-  const WON = OLD + RECENT;
+  // One lead an hour old, for the "last 24 hours" view (2026-09-18). Declared HERE rather than beside the
+  // seed rows because WON is computed from it and const is not hoisted — the same ordering fault as the
+  // `since` parse on the Leads page. RECENT is seeded at iso(1), exactly one day back, which sits ON the
+  // 24-hour boundary and falls in or out on sub-second drift; the 24h assertions therefore count this
+  // lead and never the boundary ones, or they would fail by the clock rather than by the code.
+  const IN_WINDOW_LEADS = 1;
+  const WON = OLD + RECENT + IN_WINDOW_LEADS;
+  // How many fall inside the THREE-DAY ?since= window the filtered-Leads checks use: the recent two and
+  // the hour-old one. Named once, because the next person to seed a lead will otherwise update the total
+  // and miss these — which is exactly what adding IN_WINDOW_LEADS did to "Showing 2 of 5".
+  const IN_SINCE_WINDOW = RECENT + IN_WINDOW_LEADS;
   const POSTS = 4;
   const iso = (daysAgo: number) => new Date(Date.now() - daysAgo * 86400000).toISOString();
   const company = (await admin.from('companies').insert({
@@ -89,6 +99,7 @@ async function signIn(p: Page, a: { email: string; password: string }) {
   const leadRows = [
     ...Array.from({ length: OLD }, (_, i) => ({ days: 5, n: i })),
     ...Array.from({ length: RECENT }, (_, i) => ({ days: 1, n: OLD + i })),
+    ...Array.from({ length: IN_WINDOW_LEADS }, (_, i) => ({ days: 1 / 24, n: OLD + RECENT + i })),
   ].map(({ days, n }) => ({
     workspace_id: who.workspace, company_id: company, kind: 'won_work', status: 'new',
     country: 'DK', project_name: `Probe project ${n}`, trades_inferred: ['welder'],
@@ -105,14 +116,22 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       workspace_id: who.workspace, company_id: company, status: 'open',
       role: `Probe welder ${i}`, country: 'DK', trades: ['welder'],
       source_url: `https://example.invalid/today-probe/${stamp}/${i}`,
-      posted_at: iso(2).slice(0, 10), first_seen_at: iso(2), is_test: true,
+      // Staggered for the "last 24 hours" view (2026-09-18): the first posting was discovered an hour
+      // ago, the rest two days ago. Every one used to be iso(2) — all outside a 24-hour window — so an
+      // assertion on that view would have matched nothing and passed by filtering everything away, the
+      // same vacuity already fixed in queue-ids-probe. posted_at stays two days old on ALL of them on
+      // purpose: the window reads first_seen_at ("we discovered it") while the row DISPLAYS posted_at,
+      // and seeding both alike would let a filter reading the wrong column pass anyway.
+      posted_at: iso(2).slice(0, 10),
+      first_seen_at: i === 0 ? iso(1 / 24) : iso(2),
+      is_test: true,
     })),
   );
   if (postErr) throw new Error(`seeding postings failed: ${postErr.message}`);
 
   const won = WON;
   const openPosts = POSTS;
-  console.log(`seeded in the probe's own workspace: ${WON} won-work leads (${OLD} older than the window, ${RECENT} inside it), ${POSTS} open postings`);
+  console.log(`seeded in the probe's own workspace: ${WON} won-work leads (${OLD} older than the three-day window, ${RECENT} on the one-day boundary, ${IN_WINDOW_LEADS} an hour old), ${POSTS} open postings (1 discovered an hour ago, ${POSTS - 1} two days ago)`);
 
   // ---- the applied path, which the guarded run could not reach
   //
@@ -170,6 +189,68 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       check(on24h.length === 1 && on24h[0] === '24h', 'and ?view=24h moves the active mark onto it', JSON.stringify(on24h));
       check(await p.evaluate(() => document.querySelectorAll('a a').length) === 0, 'still no nested anchor on the 24h view');
       check(await p.locator('[data-error-boundary]').count() === 0, 'and the 24h view renders — no error boundary');
+
+      // ---- the last 24 hours, counted exactly (2026-09-18)
+      //
+      // Exact numbers from the seed constants, never a threshold: a check reading `rows > 0` passes on the
+      // right rows and the wrong ones alike, which is how a filter that returns everything looks healthy.
+      const groups = await p.evaluate(() => [...document.querySelectorAll('[data-source-group]')]
+        .map((e) => [(e as HTMLElement).dataset.sourceGroup, Number((e.querySelector('[data-group-count]') as HTMLElement)?.dataset.groupCount ?? -1)]));
+      check(groups.length === 3 && groups.map(([k]) => k).join(',') === 'news,ted,hiring',
+        'all three sources have a section, in a fixed order', JSON.stringify(groups));
+      const countOf = (k: string) => (groups.find(([g]) => g === k)?.[1] ?? -1) as number;
+      // Four postings, ONE company: this view lists companies to call, not adverts, so grouping is what is
+      // being asserted here — a per-advert list would read 1 and look identical to a broken 4.
+      check(countOf('hiring') === 1, 'hiring groups four adverts into the one company behind them', `${countOf('hiring')}`);
+      // Every seeded lead is example.invalid, so leadSource() calls them all news and TED is legitimately
+      // empty — the one case in this seed that proves a silent source still announces itself.
+      check(countOf('ted') === 0, 'TED is empty in this workspace', `${countOf('ted')}`);
+      const tedText = flat(await p.locator('[data-source-group="ted"]').innerText().catch(() => ''));
+      check(/no award notices in the last 24 hours/i.test(tedText),
+        'and says so rather than vanishing — a quiet source is information', tedText.slice(0, 110));
+      check(countOf('news') === IN_WINDOW_LEADS, `news holds the ${IN_WINDOW_LEADS} lead created inside the window`, `${countOf('news')}`);
+      const rowsIn24h = await p.locator('[data-last24-row]').count();
+      // Summed from the group counts rather than a constant plus a bare 1: the "+1" was the hiring group,
+      // an unnamed number of exactly the kind that drifts when a seed changes — the same fault the
+      // IN_SINCE_WINDOW rename had just removed from this file. This also makes the check mean something
+      // sharper: the rendered rows must equal what the three headings claim, so a group that counts five
+      // and lists four cannot pass.
+      const claimed = countOf('news') + countOf('ted') + countOf('hiring');
+      check(rowsIn24h === claimed, 'the rows on screen match what the group headings claim', `${rowsIn24h} row(s) vs ${claimed} claimed`);
+      // A row states the date the thing HAPPENED — and for a great many real leads there is no such
+      // date to state: 644 of 1008 articles carry published_at (counted 2026-09-18), so a third of them
+      // say when nothing. Demanding a date of EVERY row asserts something untrue of production, and the
+      // only way to satisfy it in the page would be to show created_at — when WE found it — as if it
+      // were when it happened, which is the one thing last24h's contract forbids. The first form of this
+      // check did demand exactly that and failed here; the page was right and the assertion was wrong.
+      // So the two cases are checked apart, by group, against what this seed actually creates:
+      //
+      //   hiring — always dated, because posted_at falls back to first_seen_at and the crawl always
+      //            knows when it first saw an advert;
+      //   news   — the seeded lead has NO article, so its date is honestly absent. An article is not
+      //            seeded to make it dated: articles are global (no workspace_id, no is_test) and
+      //            lead_articles.article_id does not cascade, so one seeded here could not be swept by
+      //            workspace and would sit in the real table indistinguishable from crawled content.
+      //
+      // The empty attribute is still refused: the undated row must SAY "no date on the source" beside
+      // its basis, which is what stops a row that renders nothing at all from passing as honest.
+      const datesIn = (group: string) => p.evaluate((g) => [...document.querySelectorAll(`[data-source-group="${g}"] [data-last24-row] [data-row-ts]`)]
+        .map((e) => ({ ts: (e as HTMLElement).dataset.rowTs ?? '', text: (e.textContent ?? '').replace(/\s+/g, ' ').trim() })), group);
+      const hiringDates = await datesIn('hiring');
+      check(hiringDates.length === countOf('hiring') && hiringDates.every((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.ts)),
+        'every hiring row carries a real date — the crawl always knows when it first saw an advert',
+        JSON.stringify(hiringDates.map((r) => r.ts)));
+      const newsDates = await datesIn('news');
+      check(newsDates.length === countOf('news') && newsDates.every((r) => r.ts === '' && /no date on the source/i.test(r.text)),
+        'the seeded news lead has no article, so its row says "no date on the source" rather than going blank',
+        JSON.stringify(newsDates));
+      // The hiring row must point at the HIRING tab: its id is a company id, and sending it to Won work
+      // would filter lead ids against it and match nothing. Checked by group, never by position.
+      const hiringHref = await p.locator('[data-source-group="hiring"] [data-last24-row]').first().getAttribute('href').catch(() => null);
+      check(/\/app\/radar\?tab=hiring&ids=/.test(hiringHref ?? ''), 'the hiring row opens the hiring tab, filtered to its company', String(hiringHref).slice(0, 90));
+      const newsHref = await p.locator('[data-source-group="news"] [data-last24-row]').first().getAttribute('href').catch(() => null);
+      check(/\/app\/radar\?tab=won&ids=/.test(newsHref ?? ''), 'and the news row opens Won work, filtered to its leads', String(newsHref).slice(0, 90));
+
       await p.goto(`${BASE}/app/today`, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await hydrated(p);
 
@@ -266,13 +347,15 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     check(await p.locator('[data-error-boundary]').count() === 0, 'the filtered Leads page renders');
     check(await appears(p, '[data-since-filter]'), 'it says it is filtered, and to when');
     const banner = flat(await p.locator('[data-since-filter]').innerText());
-    // The arithmetic, not just the banner: RECENT of the seeded leads fall inside a three-day
-    // window and OLD fall outside it, so this must read "2 of 5" and offer all 5.
-    check(new RegExp(`Showing ${RECENT} of ${WON} open leads`).test(banner),
-      `the filter counts correctly — ${RECENT} of ${WON} inside a three-day window`, banner.slice(0, 160));
+    // The arithmetic, not just the banner: IN_SINCE_WINDOW of the seeded leads fall inside a three-day
+    // window and OLD fall outside it. Counted from the constants — when the 24h view added an hour-old
+    // lead this read "2 of 5" against a page rendering "3 of 6", which a hardcoded literal would have
+    // turned into a mystery instead of an arithmetic change.
+    check(new RegExp(`Showing ${IN_SINCE_WINDOW} of ${WON} open leads`).test(banner),
+      `the filter counts correctly — ${IN_SINCE_WINDOW} of ${WON} inside a three-day window`, banner.slice(0, 160));
     check(new RegExp(`see all ${WON}`).test(banner), `the clear-filter link offers the whole list (${WON})`, banner.slice(0, 160));
     const rows = await p.locator('tbody tr').count();
-    check(rows === RECENT, `and the table shows exactly the ${RECENT} leads found in the window`, `${rows} row(s)`);
+    check(rows === IN_SINCE_WINDOW, `and the table shows exactly the ${IN_SINCE_WINDOW} leads found in the window`, `${rows} row(s)`);
     // The full column set, not a trimmed table.
     const heads = await p.locator('thead th').allInnerTexts();
     check(heads.length >= 7 && heads.some((h) => /Decision-maker/i.test(h)) && heads.some((h) => /Verified/i.test(h)),
