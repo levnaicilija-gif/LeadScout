@@ -199,6 +199,11 @@ async function run(req: Request) {
 
         const trades = inferTrades(x.trades, role, x.location).trades;
         const { error: up } = await db.from('job_posts').upsert({
+          // Same omission as the careers/ATS crawl, and fixed for the same reason: a posting with no
+          // workspace and no lead is reachable only through its company, which is not a guarantee anybody
+          // wrote down. This path has produced no rows yet (no via='board' exists), so it is unproven rather
+          // than innocent — it had the identical gap and ws.id in scope all along.
+          workspace_id: ws.id,
           company_id: companyId, source_id: src.id, source_url: url,
           title: role, role, trades,
           location: x.location ?? null, country: country ?? null,

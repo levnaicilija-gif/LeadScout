@@ -305,6 +305,13 @@ export async function runJobPostsBatch(req: Request) {
         if (country && !isEuropean(country)) { stats.outsideEurope++; continue; }
 
         const row: any = {
+          // The workspace this posting belongs to. Omitting it wrote 31 rows with workspace_id AND lead_id
+          // both null (2026-09-17, still being written days after 0016's backfill), which 0016's policy can
+          // only reach through its third arm — the company — so they were readable by luck rather than by
+          // design, and Hiring now lost 12 companies for every signed-in user while the service role saw
+          // them all. crawlWorkspace() throws rather than returning null, so ws.id is always a real
+          // workspace here; 0043 will make the column not null so a third writer cannot repeat this quietly.
+          workspace_id: ws.id,
           company_id: c.id, source_url: j.url, title, role: title,
           location: j.location ?? null, country: country ?? null, trades, certs_required: k.certs,
           // A date the feed lists, else the one already stored (left alone), else the posting's own

@@ -162,8 +162,14 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     await p2.goto(`${BASE}/app/certificate`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await hydrated(p2);
     const phoneBody = flat(await p2.locator('body').innerText());
-    check(!/Something went wrong — reload the page/.test(phoneBody), 'the page renders at 390px — no error boundary');
-    check(await p2.locator('[data-certificate-drop]').count() === 1, 'the drop zone is there at 390px');
+    // Both of these failed on 2026-09-18 saying only that they failed. A check that cannot say WHAT it saw
+    // is the swallowed-wait defect in another costume: the log could not distinguish an error boundary from
+    // an empty render from a bounce to /login, and the difference is the whole diagnosis. So both now carry
+    // the URL and the first of the body — and the URL matters most, because an auth transient sends the
+    // screen to /login, where a drop zone is legitimately absent and the page is not broken at all.
+    const phoneWhere = `at ${p2.url().replace(BASE, '')} · ${phoneBody.slice(0, 120) || '(empty body)'}`;
+    check(!/Something went wrong — reload the page/.test(phoneBody), 'the page renders at 390px — no error boundary', phoneWhere);
+    check(await p2.locator('[data-certificate-drop]').count() === 1, 'the drop zone is there at 390px', phoneWhere);
     check(await sideways(p2) <= 2, 'nothing scrolls sideways at 390px', `${await sideways(p2)}px`);
     await phone.close();
   } finally {
