@@ -36,6 +36,22 @@ const sideways = (p: Page) => p.evaluate(() => document.documentElement.scrollWi
 const appears = async (p: Page, sel: string, ms = 30000) => {
   try { await p.waitForSelector(sel, { state: 'attached', timeout: ms }); return true; } catch { return false; }
 };
+/**
+ * Empty while the page rendered; otherwise WHAT threw, taken off the boundary itself (2026-09-18).
+ *
+ * The check used to count [data-error-boundary] and say only that one was there, so a failed render
+ * reported "no error boundary — FAIL" and nothing else: on 2026-09-18 the 390px run failed this way and
+ * the cause had to be recovered from next start's own log afterwards, where it read
+ * "AuthRetryableFetchError 0", digests 273046742 and 1786437619 — the transient already on file. error.tsx
+ * prints that digest as "Reference: <digest>" (data-error-reference), which is the one piece of evidence
+ * tying a probe failure to a server error, and the probe was throwing it away.
+ */
+const boundaryWhy = async (p: Page) => {
+  if (await p.locator('[data-error-boundary]').count() === 0) return '';
+  const ref = flat(await p.locator('[data-error-reference]').first().innerText().catch(() => ''));
+  const said = flat(await p.locator('[data-error-boundary]').first().innerText().catch(() => ''));
+  return `error boundary on screen — ${ref || 'no reference shown'} — ${said.slice(0, 120)}`;
+};
 
 async function account() {
   const email = `today-probe+${stamp}@rfbt-recruitment.com`;
@@ -45,7 +61,14 @@ async function account() {
   const uid = data.user!.id;
   const { data: me } = await admin.from('users').select('workspace_id').eq('id', uid).maybeSingle();
   await markWorkspaceTest(admin, me?.workspace_id);
-  await followAllForProbe(admin, uid);
+  // READ the problem rather than discarding it (2026-09-18). followAllForProbe RETURNS a string and never
+  // throws — deliberately, so the caller decides what a failure means — and this called it bare, the way
+  // design-shots does not (design-shots.ts:44-45 throws). An account whose industry_follow write failed
+  // has not chosen industries, so (rail)/layout.tsx:23 sends it to /app/onboarding for the whole run, and
+  // every content check then fails with [] and -1 while "renders — no error boundary" and "no nested
+  // anchor" still PASS, because an empty page satisfies an absence check. Nothing in the output said so.
+  const followProblem = await followAllForProbe(admin, uid);
+  if (followProblem) throw new Error(followProblem);
   await admin.from('users').update({ role: 'senior', onboarding_day: 30 }).eq('id', uid);
   return { uid, email, password, workspace: me?.workspace_id as string };
 }
@@ -57,6 +80,15 @@ async function signIn(p: Page, a: { email: string; password: string }) {
   await p.fill('input[type=password]', a.password);
   await p.click('form button:not([type=button])');
   await p.waitForURL(/\/app\//, { timeout: 60000 }).catch(() => {});
+  // Say WHERE it landed, and refuse to carry on somewhere else (2026-09-18). The wait above matches
+  // /app/onboarding exactly as well as /app/today and swallows its own timeout besides, so a run could
+  // proceed from the onboarding gate — or from /login after a failed auth check — with every later
+  // assertion failing for a reason no line of the output named. A run that cannot reach the app must stop
+  // here, where the URL is still in hand, rather than 30 seconds later at a locator that was never coming.
+  const landed = p.url().replace(BASE, '') || '/';
+  if (!/^\/app(\/|$)/.test(landed) || /^\/app\/onboarding/.test(landed)) {
+    throw new Error(`signing in did not reach the app — landed on ${landed}${/onboarding/.test(landed) ? ' (the industry gate: this account never followed any industry)' : ''}`);
+  }
 }
 
 (async () => {
@@ -163,7 +195,8 @@ async function signIn(p: Page, a: { email: string; password: string }) {
 
       await p.goto(`${BASE}/app/today`, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await hydrated(p);
-      check(await p.locator('[data-error-boundary]').count() === 0, 'Today renders — no error boundary');
+      const todayWhy = await boundaryWhy(p);
+      check(todayWhy === '', 'Today renders — no error boundary', todayWhy);
 
       // ---- the view toggle (2026-09-18)
       //
@@ -188,7 +221,8 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       const on24h = await activeOn();
       check(on24h.length === 1 && on24h[0] === '24h', 'and ?view=24h moves the active mark onto it', JSON.stringify(on24h));
       check(await p.evaluate(() => document.querySelectorAll('a a').length) === 0, 'still no nested anchor on the 24h view');
-      check(await p.locator('[data-error-boundary]').count() === 0, 'and the 24h view renders — no error boundary');
+      const view24hWhy = await boundaryWhy(p);
+      check(view24hWhy === '', 'and the 24h view renders — no error boundary', view24hWhy);
 
       // ---- the last 24 hours, counted exactly (2026-09-18)
       //
@@ -326,7 +360,8 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       // ---- the detail page
       await p.goto(`${BASE}/app/today/yesterday`, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await hydrated(p);
-      check(await p.locator('[data-error-boundary]').count() === 0, 'the Yesterday detail page renders');
+      const yesterdayWhy = await boundaryWhy(p);
+      check(yesterdayWhy === '', 'the Yesterday detail page renders', yesterdayWhy);
       const detail = flat(await p.locator('body').innerText());
       check(/Needs your follow-up/i.test(detail), 'it carries the follow-up section');
       check(/Today.s queue, in full/i.test(detail), 'and the whole queue');
@@ -344,7 +379,8 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     const since = new Date(Date.now() - 3 * 86400000).toISOString();
     await p.goto(`${BASE}/app/radar?tab=won&since=${encodeURIComponent(since)}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await hydrated(p);
-    check(await p.locator('[data-error-boundary]').count() === 0, 'the filtered Leads page renders');
+    const filteredWhy = await boundaryWhy(p);
+    check(filteredWhy === '', 'the filtered Leads page renders', filteredWhy);
     check(await appears(p, '[data-since-filter]'), 'it says it is filtered, and to when');
     const banner = flat(await p.locator('[data-since-filter]').innerText());
     // The arithmetic, not just the banner: IN_SINCE_WINDOW of the seeded leads fall inside a three-day
