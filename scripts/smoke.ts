@@ -247,6 +247,24 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     // Item 19: a new lead whose company has a tender award and an open posting is labelled boosted on Today too.
     check(/Smoke Compound AS \(boosted\)/.test(today), 'item 19: Today labels a lead whose company has two signal types "boosted"', today.match(/Read \d+ new leads?[^\n]*\n?[^\n]*/)?.[0] ?? 'no new-leads item on Today');
 
+    // 3b — Certificate check, as a SIGNED-IN user, against whatever is actually deployed.
+    //
+    // 027e1c5 shipped the rail link, Today's card, the intake mode, a probe and a gate step — and not the page
+    // itself, which was written but never staged. Production therefore carried two entry points to a route Next
+    // had never been given, and a signed-in senior clicking "Certificate check" got Next's own 404 while every
+    // check said the feature was fine: certificate-probe and design-shots run against localhost, where the
+    // untracked file sat on disk, and /app/certificate answered 307 exactly as /app/definitely-not-a-page does,
+    // because middleware matches /app/:path* and redirects before routing. A status code cannot tell a real
+    // route from a missing one. So this asserts on what the page RENDERS, here, on the deployed base.
+    await page.goto(`${BASE}/app/certificate`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('[data-certificate-drop]', { timeout: 30000 }).catch(() => {});
+    const certPage = await bodyOf(page);
+    // Next's own 404 body, exactly — there is no custom not-found.tsx. Matching a bare "404" as well would
+    // fail on any page carrying that as a reference code or a count, which is a false red, not extra safety.
+    check(!/This page could not be found/.test(certPage), 'Certificate check is a real route on the deployed build — not a 404', certPage.replace(/\s+/g, ' ').slice(0, 120));
+    check(await page.locator('[data-certificate-drop]').count() === 1, 'and its drop zone renders for a signed-in user', `${await page.locator('[data-certificate-drop]').count()} zone(s)`);
+    check(/Certificate check/.test(certPage) && /Drop certificates here/i.test(certPage), 'asking for certificates, with the heading', certPage.replace(/\s+/g, ' ').slice(0, 140));
+
     // 4 — Leads
     await page.goto(`${BASE}/app/radar`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     // Wait for a lead row, not a fixed 1.2 s. On 2026-09-14 production rendered Leads in 1.0–1.6 s and eleven
