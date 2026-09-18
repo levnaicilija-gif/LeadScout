@@ -281,8 +281,30 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
       : null;
   return (<>
     <div className="flex items-baseline justify-between flex-wrap gap-x-3 gap-y-1 mb-3"><h1 className="font-display text-[26px] font-bold tracking-[-.4px]">Leads{hiring ? <HiringHelp /> : <Help title="What Radar is" intro="Reads your sources every morning and tells you which companies will need people, and who to talk to." rows={[['Won work', 'Company won a contract; the person quoted by name; when the work starts.'], ['News / Tender award', 'News is a story Radar read. Tender award is a contract award notice from TED: the buyer, the winner, the value — and no quoted person. The same contract from both is one row, the second source linked.'], ['Hiring now', 'Open trade postings, certs asked for, who to contact — from the posting, company site or Industry Contacts.'], ['Verified', 'Source re-fetched each morning; Confirm records that you checked it. Outreach needs both.'], ['Age', 'A news lead is ageing at 45 days and a stale signal at 90, from the article\'s date; an award at 180 and 365, from the award date. Older leads sink and dim — never hidden, never re-statused. No date says "age unknown".'], ['Boosted', 'A company with two or more independent signals inside 60 days — a tender award, a news mention, an open advert (a re-advertised role is the same signal, stronger, never a second one) — has every lead\'s fit raised ×1.1 for each signal beyond the first, capped at 100 (25 outside Europe). The row names the signals and the fit before; the drawer gives each date. One signal changes nothing.'], ['Never', 'Invents a name, an email, a phone or a job opening.']]} />}</h1><span className="text-ink3">{last?.last_crawled_at ? `Last read ${new Date(last.last_crawled_at).toLocaleString()}` : 'Not read yet'}{tab === 'job_post' ? ` · careers pages ${lastJobs?.last_jobs_crawl_at ? new Date(lastJobs.last_jobs_crawl_at).toLocaleDateString() : 'not crawled yet'}` : ''}</span></div>
-    {/* v4 segmented control: the tab you are on is the navy one, not an underline. */}
-    <div className="flex gap-1 bg-panel border border-line rounded-[12px] p-1 w-max mb-3.5">{[['won', 'Won work'], ['hiring', 'Hiring now']].map(([t, l]) => <a key={t} href={`?tab=${t}`} className={`px-3.5 py-2 rounded-[9px] font-medium ${(t === 'hiring') === (tab === 'job_post') ? 'bg-rail text-white' : 'text-ink2 hover:bg-line2'}`}>{l}</a>)}</div>
+    {/* v4 segmented control: the tab you are on is the navy one, not an underline.
+        It carries the filter across, like every other link on this page (2026-09-18). It was the ONE that
+        threaded nothing — `?tab=hiring` and nothing else — so switching tabs from a filtered view silently
+        dropped the filter and landed on the whole list with no banner to say what had happened. Clearing is
+        the Clear filter link's job, never a side effect of navigating.
+        `ids` SWAP rather than carry: they are lead ids on Won work and company ids on Hiring now, so handing
+        them straight over would filter company_id against lead ids and match nothing — a filtered view of
+        zero rows, which is worse than the bug it replaced. `also` is already the other tab's set, so the two
+        change places, exactly as the cross-link between them does. `source` and `country` are Won-work's own
+        (country is gated on !hiring), so they go only when Won work is where we are heading. */}
+    <div className="flex gap-1 bg-panel border border-line rounded-[12px] p-1 w-max mb-3.5">{[['won', 'Won work'], ['hiring', 'Hiring now']].map(([t, l]) => {
+      const toHiring = t === 'hiring';
+      const staying = toHiring === hiring;
+      const nextIds = staying ? ids : also;
+      const nextAlso = staying ? also : ids;
+      const href = `?tab=${t}`
+        + (!toHiring && source ? `&source=${source}` : '')
+        + sortQs
+        + (!toHiring && country ? `&country=${country}` : '')
+        + viewQs
+        + sinceQs
+        + (nextIds.length ? `&ids=${nextIds.join(',')}${nextAlso.length ? `&also=${nextAlso.join(',')}` : ''}` : '');
+      return <a key={t} data-tab={t} href={href} className={`px-3.5 py-2 rounded-[9px] font-medium ${(t === 'hiring') === (tab === 'job_post') ? 'bg-rail text-white' : 'text-ink2 hover:bg-line2'}`}>{l}</a>;
+    })}</div>
     {filtered && (
       <div data-since-filter={since ? '' : undefined} data-ids-filter={ids.length ? ids.length : undefined} className="mb-3 rounded-card border border-accent bg-accentsoft px-4 py-3 flex items-baseline justify-between gap-3 flex-wrap">
         <div>

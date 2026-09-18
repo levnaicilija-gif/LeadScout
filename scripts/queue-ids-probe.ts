@@ -156,6 +156,29 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       check(new RegExp(`and ${NAMED_COMPANIES} on the other tab`).test(banner), 'it says how many are on the other tab', banner.slice(0, 160));
       check(await sideways(page) <= 2, `nothing scrolls sideways at ${tag}`, `${await sideways(page)}px`);
 
+      // 2b — the TAB carries the filter too. This is the one control on the page that threaded nothing, so
+      // switching tabs from a filtered view landed on the whole list with no banner — the owner hit it on
+      // production and the URL was a bare /app/radar?tab=hiring. Clearing is the Clear filter link's job.
+      // The ids must SWAP, not carry: lead ids on Won work, company ids on Hiring now, so handing them over
+      // unchanged would filter company_id against lead ids and show a filtered view of nothing.
+      const tabHref = await page.locator('[data-tab="hiring"]').getAttribute('href') ?? '';
+      check(/[?&]ids=/.test(tabHref), 'the Hiring now TAB keeps the filter rather than dropping it', tabHref.slice(0, 120));
+      check(namedCompanyIds.every((id) => tabHref.includes(id)), 'and it carries the COMPANY ids, not the lead ids', tabHref.slice(0, 160));
+      // The ids segment only — `also` legitimately holds the lead ids, so searching the whole href would
+      // always find them and the check could never fail. startsWith() was the same mistake: it only caught a
+      // lead id in first position.
+      const tabIdsPart = (tabHref.match(/[?&]ids=([^&]*)/)?.[1] ?? '').split(',');
+      check(!namedLeadIds.some((id) => tabIdsPart.includes(id)), 'and no lead id is handed to the hiring tab, where it would filter company_id against nothing', tabIdsPart.join(',').slice(0, 90));
+      await page.locator('[data-tab="hiring"]').click();
+      await page.waitForURL(/tab=hiring/, { timeout: 30000 }).catch(() => {});
+      await hydrated(page);
+      check(page.url().includes('ids='), 'after the switch the URL still carries ids', page.url().replace(BASE, '').slice(0, 120));
+      check(await page.locator('[data-ids-filter]').count() > 0, 'and the filter banner is still there — the filter did not vanish silently');
+      const afterTab = await page.locator('[data-row-href]').count();
+      check(afterTab === NAMED_COMPANIES, `and it shows the ${NAMED_COMPANIES} named companies, not the whole list`, `${afterTab} row(s)`);
+      await page.goto(wonUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await hydrated(page);
+
       // 3 — the cross-link to the other half of the same item.
       const also = page.locator('[data-also-link]').first();
       check(await also.count() > 0, 'the filtered view offers the hiring-now half', flat(await also.innerText().catch(() => '')));
