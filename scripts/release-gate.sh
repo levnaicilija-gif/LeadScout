@@ -74,6 +74,12 @@ else
   # Today's queue item opens the leads it names and nothing else: ?ids= on each tab, the cross-link between
   # the two halves, "Clear filter" back to the whole list, and both tabs unchanged with no ids at all.
   step queue-ids npx tsx --env-file=.env.local scripts/queue-ids-probe.ts "$BASE"
+  # Today itself: the three cards, the four tool cards, the visit split, the follow-up round trip — and from
+  # 2026-09-18 the view toggle, including the check that no anchor sits inside another one, which is what took
+  # Today down at 390px. This probe existed since the redesign and was NEVER a gate step: every screen it
+  # covers was verified by running it by hand, so a regression on Today would have reached production with a
+  # green gate behind it. It says which path it ran (0042 applied or not), so a pass names what it covered.
+  step today npx tsx --env-file=.env.local scripts/today-probe.ts "$BASE"
   # Certificate check: one drop zone, certificates only, nobody created or touched — and Verify unchanged.
   # It drops a real CV to prove the refusal, so one classification call per gate run is spent on purpose; the
   # probe's workspace is marked is_test, so that spend is logged and not counted against the daily cap.

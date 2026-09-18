@@ -27,7 +27,7 @@ export const dynamic = 'force-dynamic';
  * cards are front doors onto pages that already exist, and the numbers on them are read from the
  * same rows those pages read. Nothing is a placeholder.
  */
-export default async function Today() {
+export default async function Today({ searchParams }: { searchParams: { view?: string } }) {
   const me = await currentUser();
   const sb = supabaseServer();
   const now = new Date();
@@ -83,6 +83,13 @@ export default async function Today() {
   const onPlan = me?.role !== 'senior' && (me?.onboarding_day ?? 99) <= 10;
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 18 ? 'Good afternoon' : 'Good evening';
   const sinceHref = visit.since ? `/app/radar?tab=won&since=${encodeURIComponent(visit.since.toISOString())}` : '/app/radar';
+  // Priority or the last 24 hours, and Priority on every load (owner's decision, 2026-09-18): the state
+  // lives in the URL and nowhere else — no cookie, no column, no localStorage — so "default" is simply the
+  // ABSENCE of the parameter. That is also why the Priority button links to bare /app/today rather than
+  // ?view=priority: one URL means Priority, not two, and a recruiter who bookmarks or reloads gets the
+  // default rather than whatever they last clicked. Read the way every other enum param on Leads is read
+  // (searchParams.sort === 'latest'), so an unknown value falls back rather than throwing.
+  const view24h = searchParams?.view === '24h';
 
   // The row is a link, because it names work and the work is somewhere else (2026-09-17). Until now the
   // queue rendered as plain text on Today and on Home: an item reading "Read 11 new leads — Peene-Werft
@@ -157,7 +164,30 @@ export default async function Today() {
         <h2 className="text-[17px] font-bold">
           <Link href={sinceHref} data-today-link className="hover:underline">Today</Link>
         </h2>
-        <div className="mb-4 text-[12px] text-[#AEBBCC]">In priority order. Nothing sent without you.</div>
+        {/* The toggle sits as a SIBLING of the heading, inside the card's div — never inside the <h2>, whose
+            only child is the card's own link, and never inside a queue row. The card is a div precisely so
+            that things in it may be links; putting these buttons inside the heading's anchor would nest one
+            <a> in another, which is what took Today down at 390px (React #418). Checked in the rendered DOM
+            before the gate, not after. */}
+        <div data-today-toggle className="mb-2.5 mt-2 flex w-max gap-1 rounded-[10px] bg-white/10 p-0.5 text-[11px] font-semibold">
+          <Link
+            href="/app/today"
+            data-today-view="priority"
+            data-active={!view24h ? 'true' : 'false'}
+            className={`rounded-[8px] px-2.5 py-1 transition ${!view24h ? 'bg-white text-rail' : 'text-[#C7D2E0] hover:bg-white/10'}`}
+          >Priority</Link>
+          <Link
+            href="/app/today?view=24h"
+            data-today-view="24h"
+            data-active={view24h ? 'true' : 'false'}
+            className={`rounded-[8px] px-2.5 py-1 transition ${view24h ? 'bg-white text-rail' : 'text-[#C7D2E0] hover:bg-white/10'}`}
+          >Last 24 hours</Link>
+        </div>
+        <div className="mb-4 text-[12px] text-[#AEBBCC]">
+          {view24h
+            ? 'Everything found in the last 24 hours, hottest first. The window is real elapsed time, not a clock hour.'
+            : 'In priority order. Nothing sent without you.'}
+        </div>
 
         {lastSeenOn && visit.since && (
           <div className="mb-3.5">

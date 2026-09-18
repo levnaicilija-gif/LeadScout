@@ -146,6 +146,33 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       await hydrated(p);
       check(await p.locator('[data-error-boundary]').count() === 0, 'Today renders — no error boundary');
 
+      // ---- the view toggle (2026-09-18)
+      //
+      // The nesting check is the point of this block, not a formality: making queue rows links put an <a>
+      // inside the card's own <a> and took Today down at 390px with React #418, whose minified message says
+      // only a number. The toggle sits as a sibling of the heading inside a div for that reason, and this
+      // asserts it stays that way. Both URLs are loaded because the active state must FOLLOW the parameter —
+      // checking only the default would pass just as well if the toggle ignored the URL entirely.
+      check(await p.evaluate(() => document.querySelectorAll('a a').length) === 0,
+        'no anchor is nested inside another anchor', `${await p.evaluate(() => document.querySelectorAll('a a').length)} found`);
+      check(await p.locator('[data-today-view]').count() === 2, 'both view buttons render — Priority and Last 24 hours');
+      const activeOn = async () => p.evaluate(() => [...document.querySelectorAll('[data-today-view]')]
+        .filter((e) => (e as HTMLElement).dataset.active === 'true').map((e) => (e as HTMLElement).dataset.todayView));
+      const bare = await activeOn();
+      check(bare.length === 1 && bare[0] === 'priority', 'with no parameter, Priority is the one marked active — the default is the absence of it', JSON.stringify(bare));
+      const viewHrefs = await p.evaluate(() => Object.fromEntries([...document.querySelectorAll('[data-today-view]')]
+        .map((e) => [(e as HTMLElement).dataset.todayView, e.getAttribute('href')])));
+      check(viewHrefs.priority === '/app/today' && viewHrefs['24h'] === '/app/today?view=24h',
+        'and each button points where it should — Priority back to the bare URL, not ?view=priority', JSON.stringify(viewHrefs));
+      await p.goto(`${BASE}/app/today?view=24h`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await hydrated(p);
+      const on24h = await activeOn();
+      check(on24h.length === 1 && on24h[0] === '24h', 'and ?view=24h moves the active mark onto it', JSON.stringify(on24h));
+      check(await p.evaluate(() => document.querySelectorAll('a a').length) === 0, 'still no nested anchor on the 24h view');
+      check(await p.locator('[data-error-boundary]').count() === 0, 'and the 24h view renders — no error boundary');
+      await p.goto(`${BASE}/app/today`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await hydrated(p);
+
       // ---- the three top cards
       check(await appears(p, '[data-today-card]'), 'the Today card is there');
       check(await appears(p, '[data-yesterday-card]'), 'the Yesterday card is there');
@@ -164,7 +191,12 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       // ---- the four tool cards, each onto a page that exists
       const tools = await p.locator('[data-tool-card]').count();
       check(tools === 4, 'four tool cards', `${tools}`);
-      for (const [tone, href] of [['cand', '/app/verify'], ['leads', '/app/verify'], ['pitch', '/app/pitch']] as const) {
+      // The cand card is Certificate check and opens /app/certificate, not Verify (027e1c5 moved it when that
+      // screen became its own page). This line still said /app/verify and nothing caught it for a day, because
+      // this probe was not a gate step until 2026-09-18 — the first run after registering it failed here, which
+      // is the probe doing its job rather than a fault in the page. `leads` is the "Drop a CV" card and still
+      // goes to Verify, so only the first pair moved.
+      for (const [tone, href] of [['cand', '/app/certificate'], ['leads', '/app/verify'], ['pitch', '/app/pitch']] as const) {
         const got = await p.locator(`[data-tool-card="${tone}"]`).first().getAttribute('href');
         check(got === href, `the ${tone} tool card links to ${href}`, String(got));
       }
