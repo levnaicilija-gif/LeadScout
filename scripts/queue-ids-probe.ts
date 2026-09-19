@@ -39,6 +39,22 @@ const flat = (s: string) => s.replace(/\s+/g, ' ').trim();
 const hydrated = (p: Page) => p.waitForFunction(() => document.documentElement.dataset.hydrated === 'true', undefined, { timeout: 60000 }).catch(() => {});
 const sideways = (p: Page) => p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
+/**
+ * Empty while the page rendered; otherwise WHAT threw, off the boundary itself (2026-09-19).
+ *
+ * This probe had NO error-boundary check at all, so an auth transient rendering src/app/error.tsx read
+ * here as "0 row(s)" or an absent link — the disguise CLAUDE.md's swallowed-failure item describes. It
+ * cost two gates on 2026-09-19: one reported four content failures with vacuous absence checks passing
+ * beside them, the other died clicking a Clear filter link that a boundary meant was never there, and
+ * both digests had to be read out of next start's own log afterwards. Same helper as today-probe's.
+ */
+const boundaryWhy = async (p: Page) => {
+  if (await p.locator('[data-error-boundary]').count() === 0) return '';
+  const ref = flat(await p.locator('[data-error-reference]').first().innerText().catch(() => ''));
+  const said = flat(await p.locator('[data-error-boundary]').first().innerText().catch(() => ''));
+  return `error boundary on screen — ${ref || 'no reference shown'} — ${said.slice(0, 120)}`;
+};
+
 /** The company name on each row of the Won work table, in order. */
 const wonRows = (p: Page) => p.locator('table.tbl tbody tr').evaluateAll(
   (rows) => rows.map((r) => (r.querySelector('td') as HTMLElement | null)?.innerText?.split('\n')[0]?.trim() ?? ''),
@@ -278,7 +294,16 @@ async function signIn(p: Page, a: { email: string; password: string }) {
         await hydrated(page);
         const clear = page.locator('[data-clear-since]').first();
         const offer = flat(await clear.innerText().catch(() => ''));
-        check(new RegExp(`see all ${want}`).test(offer), `${label}: "Clear filter" offers the real total (${want})`, offer);
+        // Say WHY there is no link, and do not then click it (2026-09-19). The innerText above already
+        // swallowed its own timeout, so a missing link failed this check with an EMPTY detail and the
+        // click below spent 30 s and killed the run — on an error-boundary page whose reference was on
+        // screen the whole time. The boundary is read first, so a transient names itself here.
+        const clearWhy = offer ? '' : (await boundaryWhy(page)) || 'no [data-clear-since] link on the page';
+        check(new RegExp(`see all ${want}`).test(offer), `${label}: "Clear filter" offers the real total (${want})`, offer || clearWhy);
+        if (!offer) {
+          check(false, `${label}: the clear-filter round trip could not run`, 'there was no link to click — the line above says why');
+          continue;
+        }
         await clear.click();
         await page.waitForURL((u) => !u.href.includes('ids='), { timeout: 30000 }).catch(() => {});
         await hydrated(page);

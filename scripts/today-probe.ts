@@ -52,6 +52,26 @@ const boundaryWhy = async (p: Page) => {
   const said = flat(await p.locator('[data-error-boundary]').first().innerText().catch(() => ''));
   return `error boundary on screen — ${ref || 'no reference shown'} — ${said.slice(0, 120)}`;
 };
+/**
+ * Why the follow-up list does not hold the row it was asked for (2026-09-19). Same fault as boundaryWhy
+ * above: the page already says what went wrong and the check was throwing it away.
+ *
+ * `followups()` degrades softly — a failed `outreach` read pushes its message into `state.error` and
+ * returns `active` WITHOUT the row (src/lib/followups.ts:66), so the page renders "Nothing waiting on
+ * you" (data-no-followups) under "Some follow-ups could not be read: <message>". Both are on screen and
+ * this check read neither, so a transient read failure and a genuinely missing row failed identically:
+ * "the unanswered outreach is listed as a follow-up — FAIL" and nothing else, twice on 2026-09-19
+ * (00:14 and 09:39), neither attributable without re-running by hand. The data itself was proved sound
+ * both times — service role and the RLS-bound user each return the row, and the page renders it.
+ */
+const followupWhy = async (p: Page) => {
+  const read = flat(await p.locator('body').innerText().catch(() => '')).match(/Some follow-ups could not be read:[^.]*/i);
+  if (read) return read[0];
+  if (await p.locator('[data-no-followups]').count() > 0) return 'the list rendered empty — "Nothing waiting on you", and the page reported no read error';
+  if (await p.locator('[data-followup-list]').count() === 0) return 'no follow-up list rendered at all — the section never got that far';
+  const keys = await p.locator('[data-followup]').evaluateAll((els) => els.map((e) => e.getAttribute('data-followup')));
+  return `the list rendered, carrying ${keys.length} other row(s): ${JSON.stringify(keys).slice(0, 120)}`;
+};
 
 async function account() {
   const email = `today-probe+${stamp}@rfbt-recruitment.com`;
@@ -381,34 +401,43 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     await hydrated(p);
     const filteredWhy = await boundaryWhy(p);
     check(filteredWhy === '', 'the filtered Leads page renders', filteredWhy);
-    check(await appears(p, '[data-since-filter]'), 'it says it is filtered, and to when');
-    const banner = flat(await p.locator('[data-since-filter]').innerText());
-    // The arithmetic, not just the banner: IN_SINCE_WINDOW of the seeded leads fall inside a three-day
-    // window and OLD fall outside it. Counted from the constants — when the 24h view added an hour-old
-    // lead this read "2 of 5" against a page rendering "3 of 6", which a hardcoded literal would have
-    // turned into a mystery instead of an arithmetic change.
-    check(new RegExp(`Showing ${IN_SINCE_WINDOW} of ${WON} open leads`).test(banner),
-      `the filter counts correctly — ${IN_SINCE_WINDOW} of ${WON} inside a three-day window`, banner.slice(0, 160));
-    check(new RegExp(`see all ${WON}`).test(banner), `the clear-filter link offers the whole list (${WON})`, banner.slice(0, 160));
-    const rows = await p.locator('tbody tr').count();
-    check(rows === IN_SINCE_WINDOW, `and the table shows exactly the ${IN_SINCE_WINDOW} leads found in the window`, `${rows} row(s)`);
-    // The full column set, not a trimmed table.
-    const heads = await p.locator('thead th').allInnerTexts();
-    check(heads.length >= 7 && heads.some((h) => /Decision-maker/i.test(h)) && heads.some((h) => /Verified/i.test(h)),
-      'the same full column set as the unfiltered page', heads.join(' | '));
+    const filtered = await appears(p, '[data-since-filter]');
+    check(filtered, 'it says it is filtered, and to when', filtered ? '' : filteredWhy || 'no [data-since-filter] on the page');
+    // Everything below reads that banner or clicks the link inside it, so with no banner there is nothing
+    // to read: on 2026-09-19 the auth transient put an error boundary on this page and the next line spent
+    // 30 s in innerText and killed the run — with the boundary's own reference already printed one line
+    // above, and the follow-up round trip never reached. Same guard as that round trip's, one section up.
+    if (!filtered) {
+      check(false, 'the filtered Leads checks could not run', 'the page never showed its filter banner — the two lines above say why');
+    } else {
+      const banner = flat(await p.locator('[data-since-filter]').innerText());
+      // The arithmetic, not just the banner: IN_SINCE_WINDOW of the seeded leads fall inside a three-day
+      // window and OLD fall outside it. Counted from the constants — when the 24h view added an hour-old
+      // lead this read "2 of 5" against a page rendering "3 of 6", which a hardcoded literal would have
+      // turned into a mystery instead of an arithmetic change.
+      check(new RegExp(`Showing ${IN_SINCE_WINDOW} of ${WON} open leads`).test(banner),
+        `the filter counts correctly — ${IN_SINCE_WINDOW} of ${WON} inside a three-day window`, banner.slice(0, 160));
+      check(new RegExp(`see all ${WON}`).test(banner), `the clear-filter link offers the whole list (${WON})`, banner.slice(0, 160));
+      const rows = await p.locator('tbody tr').count();
+      check(rows === IN_SINCE_WINDOW, `and the table shows exactly the ${IN_SINCE_WINDOW} leads found in the window`, `${rows} row(s)`);
+      // The full column set, not a trimmed table.
+      const heads = await p.locator('thead th').allInnerTexts();
+      check(heads.length >= 7 && heads.some((h) => /Decision-maker/i.test(h)) && heads.some((h) => /Verified/i.test(h)),
+        'the same full column set as the unfiltered page', heads.join(' | '));
 
-    // A chip must not drop the filter.
-    const chip = p.locator('[data-source-filter] a').nth(1);
-    const chipHref = await chip.getAttribute('href');
-    check(!!chipHref && chipHref.includes('since='), 'a source chip keeps ?since= — the filter is not cleared by clicking one', String(chipHref));
-    const sortHref = await p.locator('[data-sort-control] a').last().getAttribute('href');
-    check(!!sortHref && sortHref.includes('since='), 'and so does the sort control', String(sortHref));
+      // A chip must not drop the filter.
+      const chip = p.locator('[data-source-filter] a').nth(1);
+      const chipHref = await chip.getAttribute('href').catch(() => null);
+      check(!!chipHref && chipHref.includes('since='), 'a source chip keeps ?since= — the filter is not cleared by clicking one', String(chipHref));
+      const sortHref = await p.locator('[data-sort-control] a').last().getAttribute('href').catch(() => null);
+      check(!!sortHref && sortHref.includes('since='), 'and so does the sort control', String(sortHref));
 
-    await p.locator('[data-clear-since]').click();
-    await p.waitForLoadState('domcontentloaded');
-    await hydrated(p);
-    check(!p.url().includes('since='), 'clearing the filter returns to the unfiltered list', p.url());
-    check(await p.locator('[data-since-filter]').count() === 0, 'and the filter banner is gone');
+      await p.locator('[data-clear-since]').click();
+      await p.waitForLoadState('domcontentloaded');
+      await hydrated(p);
+      check(!p.url().includes('since='), 'clearing the filter returns to the unfiltered list', p.url());
+      check(await p.locator('[data-since-filter]').count() === 0, 'and the filter banner is gone');
+    }
     await ctx.close();
 
     // ---- marking a follow-up done, and it staying on the record
@@ -421,40 +450,55 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       await hydrated(fp);
 
       const key = `no_reply:${seededOutreach}`;
-      check(await appears(fp, `[data-followup="${key}"]`), 'the unanswered outreach is listed as a follow-up');
-      const before = flat(await fp.locator(`[data-followup="${key}"]`).innerText());
-      check(/no response, 5 days/.test(before), 'and says how long it has been waiting', before.slice(0, 120));
+      const listed = await appears(fp, `[data-followup="${key}"]`);
+      check(listed, 'the unanswered outreach is listed as a follow-up', listed ? '' : await followupWhy(fp));
+      // Read the row only if it is THERE. This line used to run regardless, so an absent row spent 30 s
+      // in innerText and then killed the probe with an uncaught TimeoutError — the check above had already
+      // recorded the failure, and the crash cost every remaining round-trip check as well as the run's own
+      // summary line. A failed assertion must fail its own check and let the rest of the run report.
+      const before = listed ? flat(await fp.locator(`[data-followup="${key}"]`).innerText()) : '';
+      check(listed && /no response, 5 days/.test(before), 'and says how long it has been waiting',
+        listed ? before.slice(0, 120) : 'not listed — see the line above');
 
-      await fp.locator(`[data-followup-note="${key}"]`).fill('Rang them, calling back Thursday.');
-      // Wait for the POST to answer and then for the item to GO, rather than sleeping and counting:
-      // FollowupList calls router.refresh() after the write, and a flat wait passed once and raced
-      // the next run (2026-09-17). A check that turns on timing is worse than no check (CLAUDE.md).
-      const saved = fp.waitForResponse((r) => r.url().includes('/api/followup') && r.request().method() === 'POST', { timeout: 30000 });
-      await fp.locator(`[data-mark-done="${key}"]`).click();
-      const savedRes = await saved.catch(() => null);
-      check(!!savedRes && savedRes.status() === 200, 'the resolution is saved (POST /api/followup answers 200)',
-        savedRes ? String(savedRes.status()) : 'no response in 30 s');
+      // Everything below DRIVES that row — fills its note, clicks its Mark done, then reads the Resolved
+      // panel it moves into — so with no row there is nothing to drive. Each of those was an unguarded
+      // locator call: guarding only the innerText above just moved the crash to the fill, which is what
+      // a mutated run showed (TimeoutError at the fill, 30 s, run dead, remaining checks and the summary
+      // line lost). Skip the round trip instead, and let the run finish and report everything else.
+      if (!listed) {
+        check(false, 'the follow-up round trip could not run', 'the row was never listed — the two lines above say why');
+      } else {
+        await fp.locator(`[data-followup-note="${key}"]`).fill('Rang them, calling back Thursday.');
+        // Wait for the POST to answer and then for the item to GO, rather than sleeping and counting:
+        // FollowupList calls router.refresh() after the write, and a flat wait passed once and raced
+        // the next run (2026-09-17). A check that turns on timing is worse than no check (CLAUDE.md).
+        const saved = fp.waitForResponse((r) => r.url().includes('/api/followup') && r.request().method() === 'POST', { timeout: 30000 });
+        await fp.locator(`[data-mark-done="${key}"]`).click();
+        const savedRes = await saved.catch(() => null);
+        check(!!savedRes && savedRes.status() === 200, 'the resolution is saved (POST /api/followup answers 200)',
+          savedRes ? String(savedRes.status()) : 'no response in 30 s');
 
-      const gone = await fp.locator(`[data-followup="${key}"]`).waitFor({ state: 'detached', timeout: 30000 }).then(() => true).catch(() => false);
-      check(gone, 'marking it done takes it out of the active list',
-        gone ? '' : `still on screen after the refresh — ${flat(await fp.locator('[data-followup-list]').innerText().catch(() => ''))}`.slice(0, 160));
-      check(await appears(fp, '[data-resolved-panel]'), 'and it appears under Resolved — never deleted, never hidden');
-      const resolved = flat(await fp.locator('[data-resolved-panel]').innerText());
-      check(/Rang them, calling back Thursday/.test(resolved), 'with what the recruiter said they did', resolved.slice(0, 160));
-      check(/never deleted/i.test(resolved), 'and the panel says it is kept');
+        const gone = await fp.locator(`[data-followup="${key}"]`).waitFor({ state: 'detached', timeout: 30000 }).then(() => true).catch(() => false);
+        check(gone, 'marking it done takes it out of the active list',
+          gone ? '' : `still on screen after the refresh — ${flat(await fp.locator('[data-followup-list]').innerText().catch(() => ''))}`.slice(0, 160));
+        check(await appears(fp, '[data-resolved-panel]'), 'and it appears under Resolved — never deleted, never hidden');
+        const resolved = flat(await fp.locator('[data-resolved-panel]').innerText().catch(() => ''));
+        check(/Rang them, calling back Thursday/.test(resolved), 'with what the recruiter said they did', resolved.slice(0, 160));
+        check(/never deleted/i.test(resolved), 'and the panel says it is kept');
 
-      const { data: row } = await admin.from('followup_resolutions')
-        .select('kind, source_id, note, resolved_by, resolved_at').eq('source_id', seededOutreach).maybeSingle();
-      check(row?.kind === 'no_reply' && row?.resolved_by === who.uid && !!row?.resolved_at,
-        'the database holds who resolved it and when — the audit shape, not a deletion', JSON.stringify(row));
-      check(row?.note === 'Rang them, calling back Thursday.', 'and the note they wrote');
+        const { data: row } = await admin.from('followup_resolutions')
+          .select('kind, source_id, note, resolved_by, resolved_at').eq('source_id', seededOutreach).maybeSingle();
+        check(row?.kind === 'no_reply' && row?.resolved_by === who.uid && !!row?.resolved_at,
+          'the database holds who resolved it and when — the audit shape, not a deletion', JSON.stringify(row));
+        check(row?.note === 'Rang them, calling back Thursday.', 'and the note they wrote');
 
-      // Resolving twice is the same act, not two (0042's unique key).
-      await fp.reload({ waitUntil: 'domcontentloaded' });
-      await hydrated(fp);
-      const { count: twice } = await admin.from('followup_resolutions')
-        .select('id', { count: 'exact', head: true }).eq('source_id', seededOutreach);
-      check(twice === 1, 'and exactly one resolution row exists for it', `${twice}`);
+        // Resolving twice is the same act, not two (0042's unique key).
+        await fp.reload({ waitUntil: 'domcontentloaded' });
+        await hydrated(fp);
+        const { count: twice } = await admin.from('followup_resolutions')
+          .select('id', { count: 'exact', head: true }).eq('source_id', seededOutreach);
+        check(twice === 1, 'and exactly one resolution row exists for it', `${twice}`);
+      }
       await fc.close();
     }
   } finally {

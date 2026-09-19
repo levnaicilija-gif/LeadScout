@@ -73,7 +73,20 @@ const SIGNED_IN = [
         // Since 2026-09-15 a failing screen shows src/app/error.tsx, not Next's text — matching only "Application error"
         // would let every broken screen through.
         const boundary = await page.locator('[data-error-boundary]').count();
-        if (boundary > 0 || /Application error|Unhandled Runtime Error|Something went wrong — reload the page/i.test(text)) problems.push(`${tag} ${name}: the page rendered an error`);
+        if (boundary > 0 || /Application error|Unhandled Runtime Error|Something went wrong — reload the page/i.test(text)) {
+          // Say WHAT threw, not merely that something did (2026-09-18). error.tsx prints the digest on this
+          // very page as "Reference: <digest>" (data-error-reference), and this check counted the boundary
+          // and dropped it: on 2026-09-18 the gate failed with "mobile today: the page rendered an error"
+          // (plus two cascades — a page showing a boundary has no "+ Add CV" button, so its count is 0 and
+          // clicking it cannot open the picker) and the cause had to be dug out of next start's own log
+          // afterwards, where it read "AuthRetryableFetchError 0", digests 273046742 and 1786437619.
+          // The trigger is deliberately unchanged: the text arm fires on Next's own error pages, where
+          // there is no [data-error-boundary] and so no reference to find, and a missing one must not
+          // stop a broken screen failing the run. Same shape as today-probe's boundaryWhy.
+          const ref = (await page.locator('[data-error-reference]').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+          const said = text.replace(/\s+/g, ' ').trim().slice(0, 120);
+          problems.push(`${tag} ${name}: the page rendered an error — ${ref || 'no reference shown'} — ${said}`);
+        }
         // A page wider than its viewport is a restyle bug, not a long table: tables scroll inside.
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
         if (overflow > 2) problems.push(`${tag} ${name}: page scrolls sideways by ${overflow}px`);
