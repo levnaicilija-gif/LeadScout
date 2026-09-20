@@ -345,13 +345,26 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     // 7 — with no ids, both tabs are untouched. The filter must chain nothing: an unconditional .in()
     // here emptied the whole Hiring now tab while this was being written.
     console.log('\n--- unfiltered, the tabs are unchanged ---');
-    for (const [label, url, want, count] of [
-      ['Won work', `${BASE}/app/radar?tab=won`, ALL_LEADS, async () => (await wonRows(page)).length],
-      ['Hiring now', `${BASE}/app/radar?tab=hiring`, ALL_COMPANIES, async () => page.locator('[data-row-href]').count()],
+    for (const [label, url, want, count, rowSel] of [
+      ['Won work', `${BASE}/app/radar?tab=won`, ALL_LEADS, async () => (await wonRows(page)).length, 'table.tbl tbody tr'],
+      ['Hiring now', `${BASE}/app/radar?tab=hiring`, ALL_COMPANIES, async () => page.locator('[data-row-href]').count(), '[data-row-href]'],
     ] as const) {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await hydrated(page);
-      check(await count() === want, `${label}: unfiltered still shows everything (${want})`, `${await count()} row(s)`);
+      // Wait for the rows to BE there before counting them — the fix section 5 got on 2026-09-18 and
+      // this loop never did. `hydrated()` resolves on a document flag the PREVIOUS page already set,
+      // so it says nothing about this render having painted: on 2026-09-20 a gate read 2 of 3
+      // companies here on a page whose URL and banner were already correct, while the same probe run
+      // alone passed three times in four. Unlike section 5's version the timeout is NOT swallowed —
+      // a wait that gives up says so on its own check, rather than leaving the count to report a
+      // timing loss as missing data, which is the disguise CLAUDE.md's swallowed-wait item names.
+      const settled = await page.waitForFunction(
+        ([sel, n]) => document.querySelectorAll(sel as string).length === (n as number),
+        [rowSel, want] as const, { timeout: 30000 },
+      ).then(() => true).catch(() => false);
+      const got = await count();
+      check(got === want, `${label}: unfiltered still shows everything (${want})`,
+        `${got} row(s)${settled ? '' : ' — and the wait for that count timed out, so this is a timing loss rather than missing data'}`);
       check(await page.locator('[data-ids-filter]').count() === 0, `${label}: and no filter banner is shown`);
     }
     await ctx.close();
