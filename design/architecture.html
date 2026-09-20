@@ -118,7 +118,7 @@ flowchart TD
   <p class="note">Design agreed, not yet built. Candidates, verifications, outreach and notes stay strictly private per workspace — an enforced boundary, not incidental.</p>
 
   <h2 id="leads">3. Won-work leads — extraction &amp; scoring</h2>
-  <p class="desc">A lead only exists if a real, contactable person at the winning company is named. The buyer-allowlist rule below — keeping an award when a recognised industry buyer (Ørsted, Energinet…) sits behind a contract filed under a generic code — is built and measured but <strong>not yet live</strong>; see the note under the diagram.</p>
+  <p class="desc">A lead only exists if a real, contactable person at the winning company is named. The buyer-allowlist rule below — keeping an award when a recognised industry buyer (Ørsted, Energinet…) sits behind a contract filed under a generic code — is <strong>live</strong>; see the note under the diagram.</p>
   <div class="card">
 <pre class="mermaid">
 flowchart TD
@@ -134,7 +134,7 @@ flowchart TD
     G --> H
 </pre>
   </div>
-  <p class="note">The buyer-allowlist branch is <strong>built and measured, not yet live</strong>. On the open TED corpus it is worth +74% (35 → 61 trade-relevant awards per 60 days across six countries), and all 20 additions were read individually. Production cannot reach that yet: the ingest's own query pre-filters TED on <code>classification-cpv IN (TRADE_CPV)</code>, so an award carrying none of the 42 trade codes anywhere is never fetched and no gate can keep it — measured, production would see 3 of 23. A second, targeted <code>buyer-name</code> query for the allowlisted buyers is required before the rule reaches its measured effect.</p>
+  <p class="note">The buyer-allowlist branch is <strong>live</strong>. Production now realises <strong>41 of 41</strong> available buyer-rescued awards: the ingest runs a second, targeted <code>buyer-name</code> query alongside <code>classification-cpv IN (TRADE_CPV)</code>, so an award carrying none of the 42 trade codes anywhere is fetched on its buyer instead of never being seen. Kept awards over 60 days went <strong>258 &rarr; 299</strong> (+16%, +41 real awards), for one extra TED notice fetched per day.</p>
 
   <h2 id="hiring">4. Hiring Now</h2>
   <p class="desc">Open job postings, grouped by company, with a real contact found automatically wherever possible.</p>
