@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LeadScout — Architecture &amp; Logic</title>
+<style>
+  :root{
+    --navy:#0E1A2B; --accent:#1F5FBF; --ok:#178A5A; --warn:#D97A1F;
+    --purple:#6B4FD8; --bg:#F6F7F9; --card:#FFFFFF; --ink:#0E1A2B;
+    --ink2:#6B7280; --line:#E4E7EC;
+    box-sizing:border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0B1220; --card:#111A2B; --ink:#EDEFF3; --ink2:#9AA4B2; --line:#22304A;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0B1220; --card:#111A2B; --ink:#EDEFF3; --ink2:#9AA4B2; --line:#22304A;
+  }
+  html{ scroll-padding-top: env(safe-area-inset-top, 0px); }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:"IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height:1.55;
+  }
+  .wrap{max-width:920px; margin:0 auto; padding:40px 24px 80px;}
+  h1{font-size:26px; margin:0 0 6px;}
+  .sub{color:var(--ink2); font-size:14px; margin:0 0 32px;}
+  h2{font-size:19px; margin:48px 0 6px; padding-top:8px; border-top:1px solid var(--line);}
+  h2:first-of-type{border-top:none; margin-top:0;}
+  .desc{color:var(--ink2); font-size:14px; margin:0 0 18px; max-width:70ch;}
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:18px; overflow-x:auto; margin-bottom:10px;
+  }
+  .note{
+    font-size:13px; color:var(--ink2); background:transparent;
+    border-left:3px solid var(--warn); padding:8px 14px; margin:10px 0 24px;
+  }
+  .legend{
+    display:flex; flex-wrap:wrap; gap:16px; font-size:13px; color:var(--ink2);
+    margin-bottom:8px;
+  }
+  .legend span{display:inline-flex; align-items:center; gap:6px;}
+  .dot{width:10px; height:10px; border-radius:50%; display:inline-block;}
+  .toc{
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:16px 20px; margin-bottom:36px; font-size:14px;
+  }
+  .toc a{color:var(--accent); text-decoration:none;}
+  .toc ol{margin:8px 0 0; padding-left:20px;}
+  pre.mermaid{background:transparent;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>LeadScout — from signup to every feature</h1>
+  <p class="sub">How the product works end to end: onboarding, the shared discovery pool, and each feature's own logic.</p>
+
+  <div class="legend">
+    <span><span class="dot" style="background:var(--accent)"></span> Shared across customers</span>
+    <span><span class="dot" style="background:var(--purple)"></span> Private per customer</span>
+    <span><span class="dot" style="background:var(--warn)"></span> Known gap / not yet built</span>
+  </div>
+
+  <div class="toc">
+    <strong>Contents</strong>
+    <ol>
+      <li><a href="#signup">Signup &amp; onboarding</a></li>
+      <li><a href="#pool">The shared discovery pool</a></li>
+      <li><a href="#leads">Won-work leads — extraction &amp; scoring</a></li>
+      <li><a href="#hiring">Hiring Now</a></li>
+      <li><a href="#verify">Certificate Check &amp; Verify / CV matching</a></li>
+      <li><a href="#today">The Today page</a></li>
+      <li><a href="#outreach">Outreach</a></li>
+    </ol>
+  </div>
+
+  <h2 id="signup">1. Signup &amp; onboarding</h2>
+  <p class="desc">A new customer's first choice — their industry — is also their entitlement boundary. It decides what they see from the shared pool from the first second, and which trade/buyer configuration applies to them.</p>
+  <div class="card">
+<pre class="mermaid">
+flowchart TD
+    A[New customer signs up] --> B[Choose ONE industry]
+    B --> C[Workspace created — industry entitlement set]
+    C --> D[Day 1: trade cards + glossary unlock]
+    D --> E{Onboarding day advances?}
+    E -->|Not built yet| F[Stays on Day 1]
+    E -->|Planned| G[Day N: full tool unlocks]
+    C --> H[Sees shared-pool data for that industry immediately]
+</pre>
+  </div>
+  <p class="note">onboarding_day currently never advances anywhere in the app — a real gap, more important now that a genuine "zero to hero" path is part of the product's mission, not just an RFBT convenience.</p>
+
+  <h2 id="pool">2. The shared discovery pool</h2>
+  <p class="desc">Discovery is crawled once and shared. Every customer sees the same underlying facts, filtered to their own industry. Candidates, CVs, notes and outreach are never shared — those stay private per workspace.</p>
+  <div class="card">
+<pre class="mermaid">
+flowchart TD
+    S1[News sources — ~610 sites] --> R[Radar: read + qualify each article]
+    S2[TED tender awards] --> T[Extract: CPV match OR buyer-allowlist match]
+    S3[Job boards + company career pages] --> J[Job-post crawl]
+    R --> P[(Shared pool: leads, companies, contacts)]
+    T --> P
+    J --> P
+    P --> F{Filtered by the customer's chosen industry}
+    F --> W1[Workspace: RFBT]
+    F --> W2[Workspace: Customer B]
+    F --> W3[Workspace: Customer C]
+</pre>
+  </div>
+  <p class="note">Design agreed, not yet built. Candidates, verifications, outreach and notes stay strictly private per workspace — an enforced boundary, not incidental.</p>
+
+  <h2 id="leads">3. Won-work leads — extraction &amp; scoring</h2>
+  <p class="desc">A lead only exists if a real, contactable person at the winning company is named. The buyer-allowlist rule below — keeping an award when a recognised industry buyer (Ørsted, Energinet…) sits behind a contract filed under a generic code — is built and measured but <strong>not yet live</strong>; see the note under the diagram.</p>
+  <div class="card">
+<pre class="mermaid">
+flowchart TD
+    A[Article or TED award] --> B{Company won something AND a named, contactable person quoted?}
+    B -->|No| X[Rejected — reason recorded]
+    B -->|Yes, and CPV matches a trade| C[Kept]
+    B -->|Yes, and buyer is on the allowlist + CPV is construction/repair| C
+    C --> D[Fit score]
+    D --> E{2+ signal types? award + news + open posting}
+    E -->|Yes| F[Boosted fit]
+    E -->|No| G[Base fit]
+    F --> H[Shown in Leads / Today]
+    G --> H
+</pre>
+  </div>
+  <p class="note">The buyer-allowlist branch is <strong>built and measured, not yet live</strong>. On the open TED corpus it is worth +74% (35 → 61 trade-relevant awards per 60 days across six countries), and all 20 additions were read individually. Production cannot reach that yet: the ingest's own query pre-filters TED on <code>classification-cpv IN (TRADE_CPV)</code>, so an award carrying none of the 42 trade codes anywhere is never fetched and no gate can keep it — measured, production would see 3 of 23. A second, targeted <code>buyer-name</code> query for the allowlisted buyers is required before the rule reaches its measured effect.</p>
+
+  <h2 id="hiring">4. Hiring Now</h2>
+  <p class="desc">Open job postings, grouped by company, with a real contact found automatically wherever possible.</p>
+  <div class="card">
+<pre class="mermaid">
+flowchart TD
+    A[Job board or company careers page] --> B[Crawl the posting]
+    B --> C[Group postings by company]
+    C --> D[Find a contact: careers page, leadership page, search]
+    D --> E[Pressure score: how many openings, how fresh]
+    E --> F[Shown in Hiring Now / Today]
+</pre>
+  </div>
+
+  <h2 id="verify">5. Certificate Check &amp; Verify / CV matching</h2>
+  <p class="desc">Certificate Check is deliberately narrow — nothing there ever becomes a candidate. Verify is where a real candidate record is built, from a CV, a certificate, or both together.</p>
+  <div class="card">
+<pre class="mermaid">
+flowchart TD
+    A[A document is dropped] --> B{Where, and what?}
+    B -->|Certificate only, on Certificate Check| C[Decode + check issuer register]
+    C --> D[Stored, unattached — no candidate created]
+    B -->|CV, on Verify| E[Candidate created]
+    B -->|CV + certificate together, on Verify| E
+    B -->|Certificate only, on Verify| F{Matches an existing candidate by name?}
+    F -->|Yes| G[Attached to that candidate — jobs re-matched]
+    F -->|No| H[New 'unconfirmed' candidate from name + trade]
+    E --> I[Top 3-5 matching jobs auto-suggested]
+    G --> I
+    H --> I
+    I --> J[Manual 'match one specific job' still available]
+</pre>
+  </div>
+  <p class="note">Auto-suggested matching is scoped and investigated, not yet built. A certificate dropped alone on Certificate Check never creates a candidate — by design.</p>
+
+  <h2 id="today">6. The Today page</h2>
+  <p class="desc">Two different views of the same underlying data — one curated and capped, one complete and uncapped.</p>
+  <div class="card">
+<pre class="mermaid">
+flowchart TD
+    A[Today page] --> B{Toggle}
+    B -->|Priority — default| C[Top 6 leads + top 5 hiring, ranked by fit, capped]
+    B -->|Last 24 hours| D[Everything from the last 24h — uncapped]
+    D --> E[Grouped by source, hottest first within each]
+    C --> F[Click an item → opens Leads, filtered to just that]
+    E --> F
+</pre>
+  </div>
+
+  <h2 id="outreach">7. Outreach</h2>
+  <p class="desc">Once a recruiter confirms a lead is worth pursuing, the app removes the blank-page problem.</p>
+  <div class="card">
+<pre class="mermaid">
+flowchart TD
+    A[Recruiter confirms a lead] --> B[Outreach bullet points drafted automatically]
+    B --> C[Send pack: anonymised CV + client-ready bullets]
+    C --> D[Recruiter reviews and sends]
+</pre>
+  </div>
+
+</div>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true });
+</script>
+</body>
+</html>

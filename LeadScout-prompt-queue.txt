@@ -635,6 +635,11 @@ data). This entry is a stated future direction only — item 20 remains
 "do not build until the owner starts it as its own project," and that
 condition is unchanged by this addendum.
 
+DIAGRAM: the full signup-to-feature architecture and logic is kept at
+design/architecture.html — open it directly in a browser to view the
+diagrams. Keep it in sync whenever a feature's real behaviour changes;
+it's a living reference, not a one-time snapshot.
+
 -------------------------------------------------------------------------------
 21. COMPANY-WEBSITE CONTACT DISCOVERY FOR WON WORK
 -------------------------------------------------------------------------------
