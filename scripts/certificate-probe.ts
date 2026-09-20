@@ -38,6 +38,41 @@ const flat = (s: string) => s.replace(/\s+/g, ' ').trim();
 const hydrated = (p: Page) => p.waitForFunction(() => document.documentElement.dataset.hydrated === 'true', undefined, { timeout: 60000 }).catch(() => {});
 const sideways = (p: Page) => p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
+/**
+ * Empty while the page rendered; otherwise WHAT threw, off the boundary itself (2026-09-20).
+ *
+ * This probe had no error-boundary read at all, so the auth transient already on file arrived as a
+ * locator that never appeared: on 2026-09-20 it passed its first eight checks, then died at the file
+ * input with a 30 s TimeoutError, printed no reason and no summary line, and the three
+ * AuthRetryableFetchError digests sat unread in next start's own log. Same helper as today-probe's
+ * and queue-ids-probe's.
+ */
+const boundaryWhy = async (p: Page) => {
+  if (await p.locator('[data-error-boundary]').count() === 0) return '';
+  const ref = flat(await p.locator('[data-error-reference]').first().innerText().catch(() => ''));
+  const said = flat(await p.locator('[data-error-boundary]').first().innerText().catch(() => ''));
+  return `error boundary on screen — ${ref || 'no reference shown'} — ${said.slice(0, 120)}`;
+};
+
+/**
+ * Drop a file only if there is an input to drop it on, and say so rather than throwing.
+ *
+ * Both drops used to call setInputFiles bare, so a page that rendered src/app/error.tsx — which has
+ * no file input — spent 30 s waiting and then killed the run with an uncaught TimeoutError. On
+ * 2026-09-20 that cost the run after eight passing checks: nothing else ran, no summary line was
+ * printed, and the boundary's own reference went unread while three AuthRetryableFetchError digests
+ * sat in next start's log. Returning false keeps the run alive so it reports everything else and
+ * exits on its own failure count. An early `return` would not do: the summary and process.exit sit
+ * AFTER the try/finally, so returning from inside it skips them and the probe exits 0 while failing.
+ */
+const dropFile = async (p: Page, file: string) => {
+  const input = p.locator('input[type=file]').first();
+  const there = await input.waitFor({ state: 'attached', timeout: 30000 }).then(() => true).catch(() => false);
+  if (!there) return false;
+  await input.setInputFiles([file]);
+  return true;
+};
+
 /** Intake and the issuer lookup both have to finish. Never wait on wording — the step text changes. */
 async function settled(p: Page, timeout = 280000) {
   return p.waitForFunction(
@@ -110,10 +145,12 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     await page.goto(`${BASE}/app/certificate`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await hydrated(page);
     const t0 = Date.now();
-    await page.locator('input[type=file]').first().setInputFiles(['fixtures/test-certificate.pdf']);
-    const doneCert = await settled(page);
+    const droppedCert = await dropFile(page, 'fixtures/test-certificate.pdf');
+    check(droppedCert, 'the certificate page offers a file input to drop onto',
+      droppedCert ? '' : (await boundaryWhy(page)) || 'no input[type=file] on the page');
+    const doneCert = droppedCert && await settled(page);
     console.log(`   certificate settled after ${Math.round((Date.now() - t0) / 1000)}s`);
-    check(doneCert, 'the certificate is read and the issuer asked, and the page stops working');
+    check(doneCert, 'the certificate is read and the issuer asked, and the page stops working', doneCert ? '' : await boundaryWhy(page));
     const cards = await page.locator('[data-certificate-card]').count();
     check(cards === 1, 'one certificate card is rendered', `${cards} card(s)`);
     const cardText = flat(await page.locator('[data-certificate-card]').first().innerText().catch(() => ''));
@@ -134,10 +171,12 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     await page.goto(`${BASE}/app/certificate`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await hydrated(page);
     const t1 = Date.now();
-    await page.locator('input[type=file]').first().setInputFiles(['fixtures/test-cv.pdf']);
-    const doneCv = await settled(page);
+    const droppedCv = await dropFile(page, 'fixtures/test-cv.pdf');
+    check(droppedCv, 'the page still offers a file input for the refusal case',
+      droppedCv ? '' : (await boundaryWhy(page)) || 'no input[type=file] on the page');
+    const doneCv = droppedCv && await settled(page);
     console.log(`   CV settled after ${Math.round((Date.now() - t1) / 1000)}s`);
-    check(doneCv, 'the CV is read and answered');
+    check(doneCv, 'the CV is read and answered', doneCv ? '' : await boundaryWhy(page));
     const refusedText = flat(await page.locator('[data-certificate-refused]').first().innerText().catch(() => ''));
     check(!!refusedText, 'the CV is refused on screen, not quietly accepted', refusedText.slice(0, 140));
     check(/checks certificates only/i.test(refusedText) && /verify/i.test(refusedText), 'and it says where to take it instead', refusedText.slice(0, 160));
