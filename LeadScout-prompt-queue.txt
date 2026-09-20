@@ -639,6 +639,11 @@ DIAGRAM: the full signup-to-feature architecture and logic is kept at
 design/architecture.html — open it directly in a browser to view the
 diagrams. Keep it in sync whenever a feature's real behaviour changes;
 it's a living reference, not a one-time snapshot.
+LIVE VIEW: the same document is also viewable (with rendered diagrams,
+no local Mermaid script needed) at
+https://claude.ai/artifact/ANZPb6wtBjitX7QGZMxLai — a hosted copy for
+quick reference; design/architecture.html in the repo is the source of
+truth and the one to actually edit.
 
 -------------------------------------------------------------------------------
 21. COMPANY-WEBSITE CONTACT DISCOVERY FOR WON WORK
