@@ -313,13 +313,21 @@ async function signIn(p: Page, a: { email: string; password: string }) {
         // changes (2026-09-18). hydrated() cannot carry this: it resolves on a document flag the previous
         // page already set, so it says nothing about the new render having painted — this check read 0 rows
         // at 390px on a page whose URL and banner were already correct, and the same assertion passed at
-        // 1500px seconds earlier. A timeout here still fails, but with the real count in the message rather
-        // than a timing loss dressed up as missing data.
-        await page.waitForFunction(
+        // 1500px seconds earlier.
+        //
+        // The timeout is READ rather than swallowed (2026-09-20). Until today this ended `.catch(() => {})`
+        // under a comment claiming "a timeout here still fails, but with the real count in the message
+        // rather than a timing loss dressed up as missing data" — which is the opposite of what a swallowed
+        // catch does, and CLAUDE.md had already recorded the comment as wrong. It cost a gate the same day:
+        // the auth transient (digests 1786437619, 273046742) left this reading "0 row(s)" and nothing else,
+        // while the identical loop in section 7 — fixed ten lines below — would have named the timing loss.
+        const settled = await page.waitForFunction(
           ([sel, n]) => document.querySelectorAll(sel as string).length === (n as number),
           [rowSel, want] as const, { timeout: 30000 },
-        ).catch(() => {});
-        check(await count() === want, `${label}: the full list is back — all ${want}`, `${await count()} row(s)`);
+        ).then(() => true).catch(() => false);
+        const back = await count();
+        check(back === want, `${label}: the full list is back — all ${want}`,
+          `${back} row(s)${settled ? '' : ' — and the wait for that count timed out, so this is a timing loss rather than missing data'}`);
       }
       await ctx.close();
     }
