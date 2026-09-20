@@ -546,6 +546,96 @@ RULES THAT KEEP IT FROM LEAKING
   (sent_by plus an author field).
 
 -------------------------------------------------------------------------------
+20a. PRODUCT DIRECTION — LeadScout as a standalone product for industrial/
+     offshore staffing recruiters (owner's decision, 2026-09-XX)
+-------------------------------------------------------------------------------
+Status: stated goal, not started. Item 20's shared-pool design is the
+technical foundation this depends on; still design-only until the owner
+starts it as its own project.
+
+FRAMING, explicit: LeadScout is its own product, not "RFBT's internal
+tool, also sold to others." RFBT is the first customer — the one whose
+real use validated every feature — not the entity the product is built
+around and extended outward from. Every future design decision should
+default to "is this true for any customer in this space," not "is this
+true for RFBT," even while RFBT remains the only live customer today.
+
+THE NUMBER ONE PROBLEM THIS SOLVES, stated as the owner's own priority:
+saving the recruiter's time. Every other stated benefit is downstream of
+this one. Concretely: reading sources so they don't have to (Radar),
+checking a certificate in seconds instead of manual lookup (Certificate
+Check), matching a CV to the right open role automatically instead of
+scanning postings by hand (item 26, auto-suggest matching), handing over
+a real contact's name/email/phone instead of hunting for one (items 13,
+21), and drafting outreach bullet points instead of a blank page. The
+measure of any future feature is whether it removes detective work and
+returns time the recruiter spends on the phone with candidates and
+clients instead.
+
+SECOND PILLAR, distinct from time-saving for an experienced recruiter:
+taking a brand-new recruiter from zero to competent. Already the
+tightened onboarding goal (two weeks), already partly built — item 9's
+trade cards, glossary and day-gated screens exist specifically for this.
+A new recruiter at a future customer should be able to learn the trade
+and the tool together, guided by what the app unlocks day by day, not
+handed the same interface as a ten-year veteran on day one.
+
+CONNECTS TO AN OPEN BUG, now more consequential than when first found:
+onboarding_day never advances anywhere in the app — nothing writes it,
+ever (found 2026-09-17, documented in CLAUDE.md's "Also outstanding").
+Tonight's fix only bypassed this for RFBT's two senior accounts. If a
+real zero-to-hero path is core to this product's mission, a genuine
+day-advancement mechanism (not a per-account bypass) becomes real,
+load-bearing work for this direction, not a small cleanup item — a new
+recruiter at a future customer needs their onboarding to actually
+progress, not freeze at day 1 the way both RFBT accounts already did.
+
+MANDATORY CORE, not configurable or optional per customer: Leads (won-
+work/news signals, item 12's TED extraction included), and Hiring Now
+(open job postings). Every customer gets both data pillars — this is
+what the product IS, not a feature a customer opts into.
+
+HOW CUSTOMIZATION ACTUALLY WORKS — simpler than a manual config screen:
+at signup, a new customer chooses ONE industry from item 18's existing
+17-category taxonomy. That single choice is the entitlement boundary:
+the shared pool distributes only leads, hiring-now postings and awards
+already classified under that industry. This reuses item 18's existing
+industries/industry_evidence classification directly — no new trade-list
+or buyer-list editor needs building. The trade definitions (TRADE_CPV)
+and buyer allowlist (src/lib/tender/buyers.ts) become PER-INDUSTRY, not
+per-individual-customer: every customer who picks the same industry
+inherits that industry's existing trade/buyer configuration (today's
+RFBT lists become "the industrial/offshore wind industry's" canonical
+set), rather than each customer hand-building their own from scratch.
+This also solves the day-one-empty-workspace problem directly: the
+moment a customer picks their industry, they see every already-crawled,
+already-classified lead in it immediately.
+
+NOT YET DECIDED, flagged for whenever this becomes active work: whether
+a customer can ever pick more than one industry (today's per-user
+industry_follow inside a workspace already allows up to 2 for capped
+accounts — is the signup-level industry choice the same axis, or a
+separate, stricter workspace-level boundary above it?); and how a new
+industry's own trade/buyer set gets built the first time a customer
+needs one that doesn't yet exist (RFBT's is the only one built today).
+
+TARGET MARKET: recruitment companies in the industrial/offshore staffing
+space — not a general-purpose recruiting tool for arbitrary industries.
+
+WORTH THE OWNER'S OWN AWARENESS, not a technical question: some future
+customers may directly compete with RFBT in the same recruitment
+market. The shared discovery data becomes a competitive asset available
+to any customer, RFBT included but not exclusively. Noted here so it's
+a conscious, revisited decision, not something settled by default while
+building.
+
+SEQUENCING: item 12's buyer-allowlist wiring and everything else already
+in flight continues unaffected, built as it stands today (RFBT's live
+data). This entry is a stated future direction only — item 20 remains
+"do not build until the owner starts it as its own project," and that
+condition is unchanged by this addendum.
+
+-------------------------------------------------------------------------------
 21. COMPANY-WEBSITE CONTACT DISCOVERY FOR WON WORK
 -------------------------------------------------------------------------------
 Extends item 13's contact-discovery mechanism to Won work leads (both tender
