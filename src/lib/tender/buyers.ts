@@ -58,6 +58,22 @@ export type TradeBuyer = {
   /** The evidence that put them here: what they buy, and how many awards the derivation counted. */
   why: string;
   /**
+   * The term to send to TED's `buyer-name~"…"`, when the match stem above will not find them.
+   *
+   * TED's `~` is whole-word and folds diacritics, but NOT the way `normalizeBuyer` does, and the two
+   * disagree on exactly two letters. Measured against the live API on 2026-09-21: "Stadtwerke Munchen"
+   * and "muenchen" both find München, so ü folds to u AND ue; "vestforbraending" finds Vestforbrænding,
+   * so æ folds to ae; but "kredsloeb" finds nothing while "kredslob" finds four, and "joenkoeping"
+   * finds nothing while "jonkoping" finds ten — ø and ö fold to a bare o. Prefixes do not work at all:
+   * "Kredsl" and "Vestforbr" both return zero, because this matches words rather than substrings.
+   *
+   * So the search term is stated per entry rather than derived, and only where it has to be. Sixteen
+   * of the eighteen entries are found by their own match stem, each returning buyers that
+   * `tradeBuyerFor` agrees with; `scripts/ted-buyer-terms-check.ts` re-runs that against TED whenever
+   * this list changes, because a term that quietly finds nothing is a buyer silently dropped.
+   */
+  search?: string;
+  /**
    * A stem under five characters, allowed only with a reason. Short stems are the one way this list
    * could put a town council back into the leads, so the exception is per entry and visible rather
    * than a lower threshold for everybody.
@@ -96,7 +112,7 @@ export const TRADE_BUYERS: TradeBuyer[] = [
     why: 'Copenhagen port and harbour development. 7 awards, 0 kept.' },
   { match: 'vestforbraending', label: 'I/S Vestforbrænding', country: 'DK', kind: 'energy',
     why: 'Waste-to-energy plant and district heating. 6 awards, 1 kept.' },
-  { match: 'kredsloeb transmission', label: 'Kredsløb Transmission A/S', country: 'DK', kind: 'energy',
+  { match: 'kredsloeb transmission', search: 'kredslob', label: 'Kredsløb Transmission A/S', country: 'DK', kind: 'energy',
     why: 'Aarhus district-heating transmission. 4 awards, 1 kept.' },
 
   // ---- Netherlands
@@ -116,7 +132,7 @@ export const TRADE_BUYERS: TradeBuyer[] = [
   // ---- Sweden
   { match: 'ellevio', label: 'Ellevio AB', country: 'SE', kind: 'grid',
     why: 'Swedish electricity distribution. 16 awards, 3 kept — the highest already-kept share of any buyer here, so it is the one whose gain will be smallest.' },
-  { match: 'joenkoeping energi', label: 'Jönköping Energi AB', country: 'SE', kind: 'energy',
+  { match: 'joenkoeping energi', search: 'jonkoping', label: 'Jönköping Energi AB', country: 'SE', kind: 'energy',
     why: 'Municipal energy company — district heating and power. 14 awards, 0 kept.' },
 
   // ---- Germany

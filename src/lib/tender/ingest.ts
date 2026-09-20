@@ -20,7 +20,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { classifyAndStoreLead, refreshCompanyIndustries } from '@/lib/industry-store';
 import { searchTed, tedStats, AWARD_FIELDS, type TedRecord } from './ted';
 import { AWARD_NOTICE_TYPES, TRADE_CPV, tradeCpvFor } from './cpv';
-import { normalizeAward, awardText, formatValue } from './award';
+import { KIND_SECTOR, TRADE_BUYERS, tradeBuyerFor, type TradeBuyer } from './buyers';
+import { normalizeAward, awardText, formatValue, type Award } from './award';
 import { findOrCreateCompany } from '@/lib/find-or-create-company';
 import { findSameContract, mergeSameContract, canonicalOf, type SourceRecord } from '@/lib/same-contract';
 import { inferTrades } from '@/lib/trades';
@@ -78,6 +79,46 @@ export async function tedWindowFor(db: SupabaseClient): Promise<{ from: string; 
   return { from: from < floor ? floor : from, to };
 }
 
+/**
+ * Is this award ours? The whole rule, in one place so it can be tested without a database, a network
+ * or a run — `scripts/tender-gate-check.ts` holds it to both arms.
+ *
+ * CPV-or-(buyer AND CPV division 45 or 50), measured before it was written (2026-09-20).
+ *
+ * The main classification decides, as it always has: a school build that lists a scaffolding lot
+ * among twenty codes is a school build, its winners are tilers and landscapers, and the notice does
+ * not say which winner took which lot.
+ *
+ * ...and a buyer whose work is always ours keeps an award the codes alone would drop — but only while
+ * the MAIN classification still says the contract is WORK. The 42 trade codes keep about 1% of award
+ * notices in every country, because a mixed contract gets filed under a generic parent: Denmark's 46
+ * awards under the bare 45000000 held Ørsted Bioenergy & Thermal Power, Energinet Eltransmission
+ * three times, a 60/10 kV substation and a pipeline relay, every one dropped.
+ *
+ * Both halves are load-bearing. The buyer alone is too loose — it rescues Energinet's group life
+ * insurance (66522000), its helicopters (60424120) and its consultants (71000000), because a
+ * buyer-only rule takes everything that buyer purchases; measured, 35 -> 121 awards of which most
+ * were not work at all. Division 45 or 50 alone is far too loose the other way: the same generic
+ * 45000000 carries Trondheim kommune's schools. Together: 35 -> 61 over 60 days across six
+ * countries, and all twenty additions were read one by one.
+ */
+export function awardDecision(a: Pick<Award, 'mainCpv' | 'buyers'>) {
+  const hits = tradeCpvFor(a.mainCpv);
+  let buyerHit: TradeBuyer | undefined;
+  for (const name of a.buyers) {
+    const found = tradeBuyerFor(name);
+    if (found) { buyerHit = found; break; }
+  }
+  // Reads a.mainCpv and nothing else, for the same reason the line above does.
+  const mainIsWork = a.mainCpv.some((c) => /^(45|50)/.test(String(c)));
+  // ONE verdict, not two overlapping booleans. An award can satisfy both halves, and an earlier
+  // version returned `keptByBuyer: true` for it — true in the sense "the buyer rule would also keep
+  // this", false in the sense every caller wanted. `by` says which rule actually decided, so a
+  // counter cannot double-count and a sector cannot be taken from the wrong place.
+  const by: 'cpv' | 'buyer' | null = hits.length ? 'cpv' : (buyerHit && mainIsWork) ? 'buyer' : null;
+  return { hits, buyerHit, by, mainIsWork };
+}
+
 export async function ingestTedAwards(db: SupabaseClient, opts: IngestOptions) {
   if (opts.ignoreCpv && !(opts.dryRun && opts.notices?.length)) throw new Error('ignoreCpv is only allowed on a dry run of named notices');
   const started = Date.now();
@@ -98,6 +139,11 @@ export async function ingestTedAwards(db: SupabaseClient, opts: IngestOptions) {
     noticesChecked: 0,
     alreadyStored: 0,
     outsideTradeCpv: 0,
+    // Kept because the buyer is on the list and the main code is work, where the codes alone said no.
+    keptByBuyer: 0,
+    // How many notices each search returned, and how many answered both.
+    byQuery: {} as Record<string, number>,
+    seenInBothSearches: 0,
     noWinner: 0,
     awardsMatched: 0,
     bySector: {} as Record<string, number>,
@@ -123,14 +169,39 @@ export async function ingestTedAwards(db: SupabaseClient, opts: IngestOptions) {
   const created = new Set<string>();
   const matched = new Set<string>();
 
-  const query = (opts.notices?.length
-    ? [`publication-number IN (${opts.notices.join(' ')})`]
+  /**
+   * TWO searches on the date-window path, because one cannot reach both halves of the rule.
+   *
+   * The CPV search is the original: notices carrying one of the 42 trade codes anywhere. It is also
+   * a wall — an award filed under a generic parent like 45000000 carries none of them, so it is
+   * never returned, never reaches `handle()`, and no gate written there could keep it. Measured on
+   * 2026-09-20 over the same 60-day window: of 23 awards the buyer rule should keep, that search
+   * returns 3, and the three it does return only pass because they happen to carry a trade code as
+   * an ADDITIONAL classification. Widening it is not an option — this query has no country filter,
+   * so dropping the CPV clause pulls the whole European award feed into a 300 s budget.
+   *
+   * So the allowlisted buyers get their own narrow search. `buyer-name~"…"` was confirmed against
+   * the live API on 2026-09-21: whole-word, diacritic-folding, and `LIKE` rejected outright. All 18
+   * terms in one OR is 497 characters and TED accepts it; over 60 days it returns 156 notices, and
+   * over a 3-day daily window, one.
+   *
+   * The search deliberately over-fetches and `tradeBuyerFor` decides: the term for Kredsløb also
+   * returns Kredsløb A/S, and the term for Jönköping Energi also returns Hälsohögskolan i Jönköping,
+   * both of which the gate then rejects. A net, and a filter — fetching a few extra notices costs
+   * nothing, keeping them would be the bug.
+   */
+  const windowClauses = [
+    `notice-type IN (${AWARD_NOTICE_TYPES.join(' ')})`,
+    `publication-date>=${ymd(opts.from)}`,
+    `publication-date<=${ymd(opts.to)}`,
+  ];
+  const buyerTerms = TRADE_BUYERS.map((b) => `buyer-name~"${b.search ?? b.match}"`).join(' OR ');
+  const queries: { why: string; q: string }[] = opts.notices?.length
+    ? [{ why: 'named notices', q: `publication-number IN (${opts.notices.join(' ')})` }]
     : [
-      `notice-type IN (${AWARD_NOTICE_TYPES.join(' ')})`,
-      `publication-date>=${ymd(opts.from)}`,
-      `publication-date<=${ymd(opts.to)}`,
-      `classification-cpv IN (${TRADE_CPV.map((e) => e.code).join(' ')})`,
-    ]).join(' AND ');
+      { why: 'trade CPV codes', q: [...windowClauses, `classification-cpv IN (${TRADE_CPV.map((e) => e.code).join(' ')})`].join(' AND ') },
+      { why: 'allowlisted buyers', q: [...windowClauses, `(${buyerTerms})`].join(' AND ') },
+    ];
 
   const { data: runRow } = opts.dryRun
     ? { data: null }
@@ -142,15 +213,19 @@ export async function ingestTedAwards(db: SupabaseClient, opts: IngestOptions) {
     // The procedure's main classification decides. A school build that lists a scaffolding lot
     // among twenty codes is a school build: its winners are tilers and landscapers, and the
     // notice does not say which winner took which lot.
-    const hits = tradeCpvFor(a.mainCpv);
-    if (!hits.length && !opts.ignoreCpv) {
+    const { hits, buyerHit, by } = awardDecision(a);
+
+    if (by === null && !opts.ignoreCpv) {
       report.outsideTradeCpv++;
       const additional = tradeCpvFor(a.cpv).map((h) => h.code);
-      reject(additional.length
-        ? `main classification ${a.mainCpv.join(', ') || 'not stated'} is not trade work; trade codes only as additional classifications (${additional.join(', ')})`
-        : `no CPV code on the notice is in the trade list (main ${a.mainCpv.join(', ') || 'not stated'})`);
+      reject(buyerHit
+        ? `${buyerHit.label} is on the buyer list, but the main classification ${a.mainCpv.join(', ') || 'not stated'} is neither construction (45) nor repair (50)`
+        : additional.length
+          ? `main classification ${a.mainCpv.join(', ') || 'not stated'} is not trade work; trade codes only as additional classifications (${additional.join(', ')})`
+          : `no CPV code on the notice is in the trade list (main ${a.mainCpv.join(', ') || 'not stated'})`);
       return;
     }
+    if (by === 'buyer') report.keptByBuyer++;
 
     const { data: stored } = await db.from('articles').select('id').eq('url', a.url).maybeSingle();
     if (stored && !opts.dryRun && !opts.reprocess) { report.alreadyStored++; return; }
@@ -175,7 +250,12 @@ export async function ingestTedAwards(db: SupabaseClient, opts: IngestOptions) {
     // Stored either way — it was read — but a notice that names no winner has no company to call.
     if (!a.winners.length) { report.noWinner++; reject('the notice names no winning company'); return; }
     report.awardsMatched++;
-    for (const sector of new Set(hits.map((h) => h.sector))) report.bySector[sector] = (report.bySector[sector] ?? 0) + 1;
+    // A buyer-kept award has no CPV hit to take a sector from, so it takes the buyer's own kind
+    // (KIND_SECTOR) — otherwise the lead would be filed under nothing at all.
+    const sectors = by === 'cpv'
+      ? new Set(hits.map((h) => h.sector))
+      : new Set(buyerHit ? [KIND_SECTOR[buyerHit.kind]] : []);
+    for (const sector of sectors) report.bySector[sector] = (report.bySector[sector] ?? 0) + 1;
 
     // Trades from what the CPV codes describe, plus any the title and scope spell out.
     const { trades } = inferTrades(hits.flatMap((h) => h.trades), a.title, a.description);
@@ -267,22 +347,34 @@ export async function ingestTedAwards(db: SupabaseClient, opts: IngestOptions) {
 
   let failure: string | null = null;
   try {
-    for (let page = 1; ; page++) {
-      if (Date.now() > opts.deadlineAt) { report.stoppedEarly = true; report.nextPage = page; break; }
-      const res = await searchTed({ query, fields: AWARD_FIELDS, limit: PAGE, page });
-      report.noticesInWindow = res.totalNoticeCount;
-      for (const record of res.notices) {
+    // A notice can answer both searches — an award whose buyer is on the list and which also carries
+    // a trade code. Deduped here rather than left to `handle()`: it would be caught there by the
+    // already-stored check, but only after a database round trip, and it would count as
+    // `alreadyStored` when it is nothing of the kind.
+    const seenNotices = new Set<string>();
+    for (const { why, q } of queries) {
+      if (report.stoppedEarly) break;
+      for (let page = 1; ; page++) {
         if (Date.now() > opts.deadlineAt) { report.stoppedEarly = true; report.nextPage = page; break; }
-        report.noticesChecked++;
-        try {
-          await handle(record);
-        } catch (e: any) {
-          // One notice that will not store must not cost the rest of the day's awards.
-          report.errors++;
-          report.rejected.push({ notice: String(record['publication-number']), why: `error: ${String(e?.message ?? e).slice(0, 300)}` });
+        const res = await searchTed({ query: q, fields: AWARD_FIELDS, limit: PAGE, page });
+        report.noticesInWindow += res.totalNoticeCount;
+        report.byQuery[why] = (report.byQuery[why] ?? 0) + res.notices.length;
+        for (const record of res.notices) {
+          if (Date.now() > opts.deadlineAt) { report.stoppedEarly = true; report.nextPage = page; break; }
+          const number = String(record['publication-number']);
+          if (seenNotices.has(number)) { report.seenInBothSearches++; continue; }
+          seenNotices.add(number);
+          report.noticesChecked++;
+          try {
+            await handle(record);
+          } catch (e: any) {
+            // One notice that will not store must not cost the rest of the day's awards.
+            report.errors++;
+            report.rejected.push({ notice: number, why: `error: ${String(e?.message ?? e).slice(0, 300)}` });
+          }
         }
+        if (report.stoppedEarly || res.notices.length < PAGE || page * PAGE >= res.totalNoticeCount) break;
       }
-      if (report.stoppedEarly || res.notices.length < PAGE || page * PAGE >= res.totalNoticeCount) break;
     }
   } catch (e: any) {
     failure = String(e?.message ?? e).slice(0, 500);

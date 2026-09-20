@@ -54,6 +54,11 @@ step scorecard npx tsx scripts/scorecard-check.ts
 step screening npx tsx scripts/screening-check.ts
 step visit npx tsx scripts/visit-check.ts
 step cert-schemes npx tsx scripts/cert-schemes-check.ts
+# Item 12's award gate: CPV-or-(buyer AND CPV division 45/50). Both arms — the Energinet-shaped awards
+# it must now keep, and the town councils, roads, rail and Energinet's own insurance it must still
+# reject. Pure rules against fixed records: no database, no network, no model call.
+step trade-buyers npx tsx scripts/trade-buyers-check.ts
+step tender-gate npx tsx scripts/tender-gate-check.ts
 step scorecard-rls npx tsx --env-file=.env.local scripts/scorecard-rls-probe.ts
 step screening-rls npx tsx --env-file=.env.local scripts/screening-rls-probe.ts
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts
