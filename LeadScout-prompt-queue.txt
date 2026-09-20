@@ -547,7 +547,7 @@ RULES THAT KEEP IT FROM LEAKING
 
 -------------------------------------------------------------------------------
 20a. PRODUCT DIRECTION — LeadScout as a standalone product for industrial/
-     offshore staffing recruiters (owner's decision, 2026-09-XX)
+     offshore staffing recruiters (owner's decision, 2026-09-21)
 -------------------------------------------------------------------------------
 Status: stated goal, not started. Item 20's shared-pool design is the
 technical foundation this depends on; still design-only until the owner
