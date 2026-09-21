@@ -123,6 +123,31 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
   // Item 17 on Hiring now: a company whose only advert was posted 70 days ago (ageing), and one whose
   // "Smoke Rigger" role was advertised on three days inside 180 — re-advertised twice, so raised.
   const dayAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+  /**
+   * How old a seeded date reads AT ASSERT TIME, in whole UTC days.
+   *
+   * WHY THIS EXISTS. `dayAgo(70)` freezes a yyyy-mm-dd at SEED time, while `lead-age.ts#daysSince`
+   * measures to TODAY's UTC midnight — so a run that seeds before UTC midnight and asserts after it
+   * reads every age one day higher, and the literals 70 / 100 / 0 stop matching. That is not a flake:
+   * it is deterministic for any gate crossing 00:00 UTC (01:00 or 02:00 local, depending on the
+   * season), and on 2026-09-21 it failed four checks with "ageing · 71 days", "1 day old" and "stale
+   * signal · 101 days" — every one of them reading exactly like a regression in lead-age.
+   *
+   * So the expectation is COUNTED FROM THE SEEDED DATE when the assertion runs, the same principle
+   * queue-ids-probe already follows by counting from its constants rather than writing "3 of 5".
+   *
+   * Deliberately NOT `daysSince` imported from lead-age: that is the function under test here, and a
+   * check that computes its expectation with the code it is checking agrees with that code however
+   * wrong both are. This is the same arithmetic written independently, so the two must agree.
+   */
+  const daysOldNow = (seeded: string) => {
+    const n = new Date();
+    const todayUtc = Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate());
+    return Math.max(0, Math.floor((todayUtc - Date.parse(`${seeded.slice(0, 10)}T00:00:00Z`)) / 86_400_000));
+  };
+  // Captured, not recomputed later: calling dayAgo(70) again at assert time would hand back a
+  // different day once midnight has passed, which is the very fault this is fixing.
+  const agedAdvertOn = dayAgo(70);
   const { data: agedCo } = await admin.from('companies').insert({ workspace_id: workspace, name: 'Smoke Aged Hiring AS', employer_type: 'end_client', country: 'NO' }).select().single();
   const { data: readvertCo } = await admin.from('companies').insert({ workspace_id: workspace, name: 'Smoke Readvert AS', employer_type: 'end_client', country: 'NO' }).select().single();
   await markTest(admin, 'companies', [agedCo!.id, readvertCo!.id]);
@@ -132,7 +157,7 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     first_seen_at: new Date().toISOString(), last_seen_at: new Date().toISOString(), is_test: true,
   });
   const { error: ageJobErr } = await admin.from('job_posts').insert([
-    agePosting(agedCo!.id, 'Smoke Scaffolder', dayAgo(70), 1),
+    agePosting(agedCo!.id, 'Smoke Scaffolder', agedAdvertOn, 1),
     agePosting(readvertCo!.id, 'Smoke Rigger', dayAgo(100), 2),
     agePosting(readvertCo!.id, 'Smoke Rigger', dayAgo(50), 3),
     agePosting(readvertCo!.id, 'Smoke Rigger', dayAgo(5), 4),
@@ -158,13 +183,17 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
   // A posting anchored on the COMPANY and not on a lead — the shape every careers-page and job
   // board posting has. Hiring now was empty for every user for days because RLS still keyed on
   // lead_id, and nothing here noticed: an RLS denial is an empty result, not an error.
+  const freshSeenOn = new Date().toISOString();
   const { error: jpErr } = await admin.from('job_posts').insert({
     company_id: co!.id, source_url: `https://example.invalid/smoke-job-${Date.now()}`,
     title: 'Smoke Welder', role: 'Smoke Welder', trades: ['welder'],
     location: 'Esbjerg, DK', country: 'DK', status: 'open', via: 'http',
     // Marked like every other seeded row: until 2026-09-14 this one alone was is_test false, so a count of
     // real postings taken while smoke ran included it.
-    is_trade: true, first_seen_at: new Date().toISOString(), last_seen_at: new Date().toISOString(), is_test: true,
+    // Captured so the "first seen today is fresh" check can count from the day this row really got,
+    // rather than assuming the assertion runs on the same UTC day as the seed. This posting carries no
+    // posted_at, so postingAge dates it from first_seen_at.
+    is_trade: true, first_seen_at: freshSeenOn, last_seen_at: freshSeenOn, is_test: true,
   });
   if (jpErr) console.log(`  ...  could not seed a job posting: ${jpErr.message}`);
 
@@ -307,8 +336,9 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     })));
     const staleAt = ageRows.findIndex((r) => r.name.includes('Smoke Offshore AS'));
     const unknownAt = ageRows.findIndex((r) => r.name.includes('Smoke Tender Winner AS'));
-    check(staleAt >= 0 && ageRows[staleAt].age === 'stale' && /stale signal · 100 days/.test(ageRows[staleAt].label) && ageRows[staleAt].opacity === '0.6',
-      'a news lead whose article is 100 days old reads "stale signal" and is dimmed', JSON.stringify(ageRows[staleAt] ?? 'row not found'));
+    const staleDays = daysOldNow(agedOn);
+    check(staleAt >= 0 && ageRows[staleAt].age === 'stale' && ageRows[staleAt].label.includes(`stale signal · ${staleDays} days`) && ageRows[staleAt].opacity === '0.6',
+      `a news lead whose article is ${staleDays} days old reads "stale signal" and is dimmed`, JSON.stringify(ageRows[staleAt] ?? 'row not found'));
     check(unknownAt >= 0 && ageRows[unknownAt].age === 'unknown' && ageRows[unknownAt].label === 'age unknown' && ageRows[unknownAt].opacity === '1',
       'an undated lead says "age unknown" and is not dimmed', JSON.stringify(ageRows[unknownAt] ?? 'row not found'));
     check(unknownAt >= 0 && staleAt > unknownAt, 'the stale lead sorts below the undated one despite a higher fit', `undated at ${unknownAt}, stale at ${staleAt}`);
@@ -551,10 +581,13 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     check(rowAt('Smoke Readvert AS') === 0 && !!raisedRow?.boosted && /re-advertised 2× — priority raised/.test(raisedRow.badge) && raisedRow.opacity === '1',
       'a role advertised on three days inside 180 is raised to the top and badged', JSON.stringify({ index: rowAt('Smoke Readvert AS'), row: raisedRow ?? 'not found' }));
     const agedRow = hiringRows[rowAt('Smoke Aged Hiring AS')];
-    check(agedRow?.age === 'flagged' && /ageing · 70 days/.test(agedRow.label) && agedRow.opacity === '0.8' && rowAt('Smoke Aged Hiring AS') === hiringRows.length - 1,
-      'a company whose newest advert is 70 days old reads "ageing", is dimmed and sorts last', JSON.stringify({ index: rowAt('Smoke Aged Hiring AS'), of: hiringRows.length, row: agedRow ?? 'not found' }));
+    const agedDays = daysOldNow(agedAdvertOn);
+    check(agedRow?.age === 'flagged' && agedRow.label.includes(`ageing · ${agedDays} days`) && agedRow.opacity === '0.8' && rowAt('Smoke Aged Hiring AS') === hiringRows.length - 1,
+      `a company whose newest advert is ${agedDays} days old reads "ageing", is dimmed and sorts last`, JSON.stringify({ index: rowAt('Smoke Aged Hiring AS'), of: hiringRows.length, row: agedRow ?? 'not found' }));
     const freshRow = hiringRows[rowAt('Smoke Offshore AS')];
-    check(freshRow?.age === 'fresh' && freshRow.opacity === '1' && /0 days old/.test(freshRow.label), 'a company first seen today is fresh and not dimmed', JSON.stringify(freshRow ?? 'not found'));
+    const freshDays = daysOldNow(freshSeenOn);
+    check(freshRow?.age === 'fresh' && freshRow.opacity === '1' && freshRow.label.includes(`${freshDays} day${freshDays === 1 ? '' : 's'} old`),
+      'a company first seen today is fresh and not dimmed', JSON.stringify(freshRow ?? 'not found'));
 
     // Item 19 on Hiring now: Smoke Compound AS has one advert (low pressure) and a tender award today, so its pressure goes
     // one step up to medium with the signals named on the row. Smoke Readvert AS re-advertised a role twice and has nothing
@@ -709,14 +742,16 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       heading: (document.querySelector('h1') as HTMLElement | null)?.innerText ?? '',
       text: (document.querySelector('main') ?? document.body)?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 200) ?? '',
     })).then((w) => ` · ${agedNav} · at ${w.url} · heading "${w.heading}" · page: ${w.text}`, () => ` · ${agedNav} · the page could not be read`);
-    check(/ageing · 70 days · posted \d{4}-\d{2}-\d{2}/.test(advertAge), 'the Hiring now drawer dates each advert and marks an ageing one', advertAge || `no age line; the drawer read: ${agedDrawer.replace(/\s+/g, ' ').slice(0, 300)}${agedWhere}`);
+    check(new RegExp(`ageing · ${daysOldNow(agedAdvertOn)} days · posted \\d{4}-\\d{2}-\\d{2}`).test(advertAge), 'the Hiring now drawer dates each advert and marks an ageing one', advertAge || `no age line; the drawer read: ${agedDrawer.replace(/\s+/g, ' ').slice(0, 300)}${agedWhere}`);
 
     // 5 — lead drawer: one tool, end to end
     await page.goto(`${BASE}/app/radar?lead=${lead!.id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForTimeout(2000);
     check(await page.locator('aside').first().isVisible().catch(() => false), 'lead drawer opens');
     const ageLine = await page.locator('aside [data-age]').first().innerText().catch(() => '');
-    check(/stale signal · 100 days — Article published \d{4}-\d{2}-\d{2}, 100 days ago/.test(ageLine), 'lead drawer states the age and the date it is measured from', ageLine || 'no age line');
+    const drawerDays = daysOldNow(agedOn);
+    check(new RegExp(`stale signal · ${drawerDays} days — Article published \\d{4}-\\d{2}-\\d{2}, ${drawerDays} days ago`).test(ageLine),
+      'lead drawer states the age and the date it is measured from', ageLine || 'no age line');
     const jd = page.locator('aside button.btn-primary:has-text("Write JD")').first();
     if (await jd.count()) {
       await jd.click();

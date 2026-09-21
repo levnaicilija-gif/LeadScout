@@ -116,6 +116,11 @@ async function signIn(p: Page, a: { email: string; password: string }) {
   const { error: noLastSeen } = await admin.from('users').select('last_seen_at').limit(1);
   const { error: noFollowups } = await admin.from('followup_resolutions').select('id').limit(1);
   const applied = !noLastSeen && !noFollowups;
+  // 0043 splits the visit stamp in two, which changes what the queue's heading can honestly say: with
+  // it the boundary survives a reload and the heading names it, without it the page falls back to the
+  // full queue. The assertion below branches on this rather than accepting either wording.
+  const { error: noPrevVisit } = await admin.from('users').select('previous_visit_at').limit(1);
+  const twoStamps = !noPrevVisit;
   console.log(applied
     ? 'migration 0042 IS applied — checking the visit split and the follow-up list'
     : `migration 0042 is NOT applied — checking only the guarded shape, which is all that can honestly be checked (last_seen_at: ${noLastSeen ? 'absent' : 'present'}, followup_resolutions: ${noFollowups ? 'absent' : 'present'})`);
@@ -370,7 +375,26 @@ async function signIn(p: Page, a: { email: string; password: string }) {
         // (2026-09-17). Still requires the count and the clock — loosened for case, not for content.
         const outCount = flat(await p.locator('[data-today-card]').innerText());
         check(/while you were out\s+\d/i.test(outCount), 'the out window carries a count', outCount.slice(0, 90));
-        check(/since\s+\d\d:\d\d/i.test(outCount), 'and the live window counts from when they arrived', outCount.slice(0, 160));
+        // WHAT THIS USED TO CHECK, AND WHY IT WAS WRONG (2026-09-21). It was `/since\s+\d\d:\d\d/i`
+        // for "the live window counts from when they arrived" — a heading that no longer exists:
+        // Priority's queue now names the window it actually filtered on ("Since your last visit ·
+        // HH:MM", or "The queue" when there is no honest boundary). Worse, it had been passing for the
+        // wrong reason. With 0042 alone the stamp advanced on the probe's own sign-in load, so by the
+        // assertion load `since` had collapsed to the arrival, the out window was EMPTY, and the
+        // string it matched was the empty state — "Nothing new since 09:23". A check that only matches
+        // when the feature finds nothing is the shape this repo keeps meeting; 0043 filling the out
+        // window with its three real rows is what finally exposed it.
+        if (twoStamps) {
+          // The boundary was seeded two days back and 0043 keeps it across the reload, so the heading
+          // must name it. Requiring the clock too, so a bare label cannot satisfy this.
+          check(/since your last visit\s*·\s*\d\d:\d\d/i.test(outCount),
+            'and the queue names the boundary it filtered on, which survives the reload (0043)', outCount.slice(0, 200));
+        } else {
+          // Without the second column the boundary is consumed by the first load, so the queue widens
+          // to the full list and says so. It must NOT claim a window it no longer has.
+          check(/the queue/i.test(outCount) && !/since your last visit/i.test(outCount),
+            'and without 0043 the queue falls back to the full list rather than claiming a shrunken window', outCount.slice(0, 200));
+        }
         check(await p.locator('[data-live-refresh]').count() === 1, 'the live window says it is checking while they are here');
       }
 
