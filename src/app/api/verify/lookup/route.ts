@@ -2,7 +2,20 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { runLookup, ADAPTERS } from '@/lib/verify/adapters';
 import { loadCertBody, stateFor, issuerEmail, STATE_LABEL, type CertState } from '@/lib/verify/routes';
+import { printedDate } from '@/lib/printed-date';
 export const maxDuration = 120;
+
+/**
+ * The printed expiry as a real date, or null.
+ *
+ * `verifications.valid_until` is a Postgres `date`, and this used to hand it `ext.expiry` — the string
+ * the model copied off the document — leaving Postgres to parse it in MDY. A European ISO 9606
+ * qualification printed 03.09.2028 and was stored as 2028-03-09: six months early, on the column every
+ * expiry alert reads. `printedDate` returns a date only where the text forces one reading and refuses
+ * otherwise, and nothing is lost by a refusal — the printed string stays in documents.extracted.expiry
+ * for a recruiter to confirm.
+ */
+const expiryOf = (printed: unknown) => printedDate(printed).date;
 
 /**
  * STEP 2 of the certificate check: take the route the issuing body actually offers, and record
@@ -35,7 +48,7 @@ export async function POST(req: Request) {
       // An unknown body is a task for a senior, not a dead end.
       const { data: v } = await db.from('verifications').insert({
         document_id: doc.id, method: 'manual', result: 'not_supported', route: 'unsupported', state: 'unsupported',
-        valid_until: ext.expiry ?? null,
+        valid_until: expiryOf(ext.expiry),
         notes: `No confirmation route recorded for "${ext.cert_body ?? 'this body'}" — a senior can add one in cert_bodies.`,
       }).select().single();
       await db.from('documents').update({ cert_state: 'unsupported' }).eq('id', doc.id);
@@ -58,7 +71,7 @@ export async function POST(req: Request) {
       }
       const { data: v } = await db.from('verifications').insert({
         document_id: doc.id, method: state === 'pending_issuer' ? 'issuer_email' : 'test_report',
-        result, route: cb.route, state, valid_until: ext.expiry ?? null, notes: note,
+        result, route: cb.route, state, valid_until: expiryOf(ext.expiry), notes: note,
       }).select().single();
       await db.from('documents').update({ cert_state: state }).eq('id', doc.id);
       return NextResponse.json({
@@ -74,7 +87,7 @@ export async function POST(req: Request) {
       const { data: v } = await db.from('verifications').insert({
         document_id: doc.id, method: state === 'pending_issuer' ? 'issuer_email' : 'manual',
         result: state === 'pending_issuer' ? 'pending' : 'not_supported',
-        route: cb.route, state, checked_where: cb.url, valid_until: ext.expiry ?? null, notes: cb.instructions,
+        route: cb.route, state, checked_where: cb.url, valid_until: expiryOf(ext.expiry), notes: cb.instructions,
       }).select().single();
       await db.from('documents').update({ cert_state: state }).eq('id', doc.id);
       return NextResponse.json({
@@ -119,7 +132,9 @@ export async function POST(req: Request) {
 
     const { data: v, error } = await db.from('verifications').insert({
       document_id: doc.id, method: 'browser_lookup', checked_where: r.checkedWhere || cb.url, checked_at: r.checkedAt,
-      result: r.result, route: cb.route, state, valid_until: r.validUntil ?? ext.expiry ?? null,
+      // The register's own answer first — already a real date — then the printed text, read rather
+      // than handed to Postgres to parse.
+      result: r.result, route: cb.route, state, valid_until: r.validUntil ?? expiryOf(ext.expiry),
       holder_on_source: r.holderOnSource, screenshot_path: shot, source_rows: r.certificates ?? [],
       notes: [r.notes, ...notes].filter(Boolean).join(' · '),
     }).select().single();

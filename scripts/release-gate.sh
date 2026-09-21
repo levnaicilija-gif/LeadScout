@@ -64,6 +64,11 @@ step tender-gate npx tsx scripts/tender-gate-check.ts
 # news and stored 92 of their pages as articles, while the board pipeline itself was scheduled by
 # nothing at all. Source-reading only: no database, no network, no model call.
 step source-routing npx tsx scripts/source-routing-check.ts
+# A printed expiry becomes the right date or no date at all, never a plausible wrong one.
+# verifications.valid_until is a Postgres date and the lookup route used to hand it the string copied
+# off the document, so Postgres parsed it MDY: a European certificate printed 03.09.2028 was stored as
+# 2028-03-09, six months early, on the column every expiry alert reads. Pure, no database.
+step printed-date npx tsx scripts/printed-date-check.ts
 step scorecard-rls npx tsx --env-file=.env.local scripts/scorecard-rls-probe.ts
 step screening-rls npx tsx --env-file=.env.local scripts/screening-rls-probe.ts
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts
