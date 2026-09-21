@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { currentUser, supabaseAdmin } from '@/lib/supabase/server';
-import { hasLastSeen } from '@/lib/schema-features';
+import { hasLastSeen, hasPreviousVisit } from '@/lib/schema-features';
 import { visitWindow } from '@/lib/visit';
 
 /**
@@ -34,18 +34,32 @@ export async function POST() {
   const db = supabaseAdmin();
   if (!(await hasLastSeen(db))) return NextResponse.json({ error: 'Visit tracking needs migration 0042.' }, { status: 503 });
 
-  const { data: row, error } = await db.from('users').select('id, last_seen_at').eq('id', user.id).single();
+  // 0043 may not be applied; naming a column that does not exist fails the WHOLE query rather than
+  // omitting the field, which has taken three screens down in this codebase before.
+  const twoStamps = await hasPreviousVisit(db);
+  const cols = `id, last_seen_at${twoStamps ? ', previous_visit_at' : ''}`;
+  const { data: row, error } = await db.from('users').select(cols).eq('id', user.id).single();
   if (error || !row) return NextResponse.json({ error: `Your account could not be read: ${error?.message ?? 'no row'}` }, { status: 500 });
 
   const now = new Date();
-  const visit = visitWindow((row as any).last_seen_at, now);
-  // Still inside the same visit: the boundary stays exactly where it is. Writing here is what would
+  const wasSeen = (row as any).last_seen_at as string | null;
+  const visit = visitWindow(wasSeen, now, twoStamps ? ((row as any).previous_visit_at ?? null) : undefined);
+  // Still inside the same visit: both stamps stay exactly where they are. Writing here is what would
   // collapse "while you were out" into the last few minutes on every reload.
   if (!visit.advance) return NextResponse.json({ ok: true, advanced: false, since: visit.since?.toISOString() ?? null });
 
-  const { error: wrote } = await db.from('users').update({ last_seen_at: now.toISOString() }).eq('id', row.id);
+  // A real absence, so the pair moves together and in ONE write: the visit we are leaving behind
+  // becomes the boundary, and this visit becomes the stamp. Two writes could be interrupted between
+  // them and leave a row claiming this visit started now and the previous one did too.
+  //
+  // previous_visit_at takes the OLD last_seen_at, never `now` — on a first-ever visit that is null,
+  // which is correct and is why the column is not backfilled: there was no previous visit to name.
+  const patch = twoStamps
+    ? { last_seen_at: now.toISOString(), previous_visit_at: wasSeen }
+    : { last_seen_at: now.toISOString() };
+  const { error: wrote } = await db.from('users').update(patch).eq('id', (row as any).id);
   // Reported as it came, never re-worded into a success — the whole reason this route exists is that
   // the previous write failed in silence for four days.
   if (wrote) return NextResponse.json({ error: wrote.message }, { status: 500 });
-  return NextResponse.json({ ok: true, advanced: true, since: visit.since?.toISOString() ?? null });
+  return NextResponse.json({ ok: true, advanced: true, since: visit.since?.toISOString() ?? null, boundaryKept: twoStamps });
 }

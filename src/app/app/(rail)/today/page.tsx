@@ -4,7 +4,7 @@ import { followedIndustries } from '@/lib/industry-follow';
 import { Help } from '@/components/Help';
 import { todayItems, whenLabel, last24h, type TodayItem, type Last24Row } from '@/lib/today';
 import { planFor, needsReview } from '@/lib/onboarding';
-import { hasScorecards, hasSendsCreatedAt, hasLastSeen, hasFollowupResolutions } from '@/lib/schema-features';
+import { hasScorecards, hasSendsCreatedAt, hasLastSeen, hasPreviousVisit, hasFollowupResolutions } from '@/lib/schema-features';
 import { ScorecardAfter } from '@/components/ScorecardAfter';
 import { LiveRefresh } from '@/components/LiveRefresh';
 import { visitWindow, lastHereLabel, clock, whileOut } from '@/lib/visit';
@@ -39,7 +39,14 @@ export default async function Today({ searchParams }: { searchParams: { view?: s
 
   // When were they last here? Guarded: 0042 may not be applied, and then there is no split to make.
   const lastSeenOn = await hasLastSeen(sb);
-  const visit = visitWindow(lastSeenOn ? (me as any)?.last_seen_at ?? null : null, now);
+  // 0043 keeps the previous visit's start in its own column, so the boundary survives every reload of
+  // this visit. Undefined where it is not applied, which visitWindow treats as its pre-0043 self.
+  const twoStamps = lastSeenOn && await hasPreviousVisit(sb);
+  const visit = visitWindow(
+    lastSeenOn ? (me as any)?.last_seen_at ?? null : null,
+    now,
+    twoStamps ? ((me as any)?.previous_visit_at ?? null) : undefined,
+  );
   // Stamped on Today's own load and only after a real absence, so the boundary holds still while they
   // work. Never in currentUser(), which every screen calls on every render (src/lib/visit.ts).
   //
@@ -56,7 +63,11 @@ export default async function Today({ searchParams }: { searchParams: { view?: s
   // than the fixed 7 days it used to assume. Deliberately NOT visit.since on its own: last_seen_at
   // holds ONE timestamp, so the moment it advances the previous boundary is gone, and windowing a
   // mid-visit reload on it would empty Priority for the rest of the working day.
-  const windowSince = lastSeenOn && visit.since && visit.advance ? visit.since : null;
+  // The window holds for the WHOLE visit once 0043 is applied, because visit.since then comes from
+  // previous_visit_at and a reload no longer consumes it. Without 0043 the boundary is only honest on
+  // the first load of a visit (visit.advance), and every later load falls back to the full open queue
+  // rather than to a window that has quietly shrunk to the last few minutes.
+  const windowSince = visit.since && (visit.advance || twoStamps) ? visit.since : null;
 
   const scorecardsOn = await hasScorecards(sb);
   const followupsOn = await hasFollowupResolutions(sb);

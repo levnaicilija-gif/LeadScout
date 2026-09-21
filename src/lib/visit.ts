@@ -26,10 +26,22 @@ export type Visit = {
 };
 
 /**
- * @param lastSeen  users.last_seen_at as stored, or null on a first visit
- * @param now       the clock, passed in so this can be tested
+ * @param lastSeen      users.last_seen_at as stored — when THIS visit began — or null on a first visit
+ * @param now           the clock, passed in so this can be tested
+ * @param previousVisit users.previous_visit_at (0043): when the visit BEFORE this one began.
+ *
+ * The third argument distinguishes three states, and the difference between the last two is the whole
+ * reason 0043 exists:
+ *
+ *   undefined  the column is not there (0043 unapplied). Behave exactly as before it: a reload inside
+ *              a visit reads its own arrival as the boundary. Every screen passes `undefined` through
+ *              hasPreviousVisit, so this migration not being applied changes nothing.
+ *   null       the column IS there and holds nothing — this account has had one visit and no previous
+ *              one. There is no boundary, and inventing their own arrival as one would put a brand-new
+ *              recruiter's second page load behind an empty window.
+ *   a date     the boundary, and it survives every reload of this visit.
  */
-export function visitWindow(lastSeen: string | Date | null | undefined, now: Date): Visit {
+export function visitWindow(lastSeen: string | Date | null | undefined, now: Date, previousVisit?: string | Date | null): Visit {
   const prev = lastSeen ? new Date(lastSeen) : null;
   if (!prev || Number.isNaN(prev.getTime())) {
     // Never been here before: there is no "while you were out", and the stamp is set from now on.
@@ -37,12 +49,20 @@ export function visitWindow(lastSeen: string | Date | null | undefined, now: Dat
   }
   const away = now.getTime() - prev.getTime();
   if (away > VISIT_GAP_MS) {
-    // A real absence. The boundary is where they left, and this visit becomes the new boundary.
+    // A real absence. The boundary is where they left — which is the stamp about to be replaced, and
+    // exactly what the route copies into previous_visit_at as it advances.
     return { since: prev, advance: true, arrived: now };
   }
-  // Still the same visit. Keep the boundary exactly where it was — this is what stops a reload
-  // wiping the window — and write nothing.
-  return { since: prev, advance: false, arrived: prev };
+  // Still the same visit. `arrived` stays where it was, which is what keeps "Since 08:00" from
+  // creeping to "Since 08:20" on a reload, and nothing is written.
+  //
+  // The boundary comes from previous_visit_at, because last_seen_at now holds THIS visit's arrival:
+  // reading it here is what made the window collapse to the last few minutes on every reload, and
+  // with LiveRefresh on Today that was one every five minutes.
+  if (previousVisit === undefined) return { since: prev, advance: false, arrived: prev };
+  const before = previousVisit === null ? null : new Date(previousVisit);
+  const usable = before && !Number.isNaN(before.getTime()) ? before : null;
+  return { since: usable, advance: false, arrived: prev };
 }
 
 /** "08:00", in the reader's own locale. The label on the live window. */

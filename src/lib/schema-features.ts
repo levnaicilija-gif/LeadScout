@@ -107,3 +107,9 @@ export const hasScreeningCalls = (sb: SupabaseClient) => hasTable(sb, 'screening
 /** 0042: when you were last here, and the follow-ups you have dealt with. */
 export const hasLastSeen = (sb: SupabaseClient) => hasColumn(sb, 'users', 'last_seen_at');
 export const hasFollowupResolutions = (sb: SupabaseClient) => hasTable(sb, 'followup_resolutions');
+/**
+ * 0043: when the visit BEFORE this one began. Until it is applied every caller passes `undefined` to
+ * visitWindow, which then behaves exactly as it did on 0042 alone — the window is narrower than it
+ * should be on a reload, never wrong in a way that hides work.
+ */
+export const hasPreviousVisit = (sb: SupabaseClient) => hasColumn(sb, 'users', 'previous_visit_at');

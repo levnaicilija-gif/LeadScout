@@ -105,6 +105,12 @@ const settled = (p: Page) => p.waitForFunction(
 (async () => {
   const { error: noLastSeen } = await admin.from('users').select('last_seen_at').limit(1);
   if (noLastSeen) { console.log(`migration 0042 is NOT applied (${noLastSeen.message}) — there is no visit window to check`); process.exit(2); }
+  // Say which path this run covered, so a pass names what it actually proved (today-probe's rule).
+  const { error: noPrev } = await admin.from('users').select('previous_visit_at').limit(1);
+  const twoStamps = !noPrev;
+  console.log(twoStamps
+    ? '0043 IS applied — the boundary is expected to survive a reload'
+    : '0043 is NOT applied — checking the documented fallback instead: a reload widens to the full queue and must never empty Priority');
 
   // A previous run killed by Windows leaves the account behind whatever its own handlers did.
   const { data: old } = await admin.from('users').select('id, workspace_id').like('name', 'Priority Window Probe%');
@@ -199,6 +205,36 @@ const settled = (p: Page) => p.waitForFunction(
     const { data: after } = await admin.from('users').select('last_seen_at').eq('id', who.uid).single();
     const moved = after?.last_seen_at ? Date.parse(after.last_seen_at) - boundary.getTime() : -1;
     check(moved > VISIT_MS / 2, 'users.last_seen_at really moved in the database', after?.last_seen_at ? `now ${after.last_seen_at}` : 'still NULL — the write did not land');
+
+    // ---- 4b — THE BOUNDARY SURVIVES A RELOAD (0043)
+    //
+    // This is the case the whole migration exists for, and it is checked on BOTH arms rather than
+    // skipped on one. Today runs <LiveRefresh minutes={5} />, so a reload is not an edge case: it is
+    // what the page does to itself all day. With one column, last_seen_at had just been advanced by
+    // the load above, so the reload read the recruiter's own arrival as the boundary and the window
+    // shrank to the last few seconds. With 0043 the boundary lives in previous_visit_at and holds.
+    await page.goto(`${BASE}/app/today`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await hydrated(page);
+    await settled(page);
+    const reloadBody = flat(await page.locator('body').innerText());
+    const reloadRows = await page.locator('[data-queue-list] [data-queue-item]').count();
+    const reloadStamp = await page.locator('[data-visit-stamp]').first().getAttribute('data-visit-stamp').catch(() => null);
+    check(reloadStamp === 'same', 'a reload inside the visit writes nothing', `stamp says "${reloadStamp}"`);
+    if (twoStamps) {
+      check(!reloadBody.includes(before), 'the boundary SURVIVES the reload — the decoy is still excluded', before);
+      check(reloadRows === rows, 'and the same rows are still there', `${reloadRows} after the reload against ${rows} before it`);
+      const { data: row } = await admin.from('users').select('last_seen_at, previous_visit_at').eq('id', who.uid).single();
+      const kept = (row as any)?.previous_visit_at;
+      check(!!kept && Math.abs(Date.parse(kept) - boundary.getTime()) < 2000,
+        'previous_visit_at holds the visit that was left behind, not this one', `previous_visit_at ${kept}, last_seen_at ${(row as any)?.last_seen_at}`);
+    } else {
+      // The documented fallback, asserted rather than assumed: with no second column there is no
+      // honest boundary left, so Priority widens to the whole open queue. It must never EMPTY — that
+      // would take a recruiter's working list away for the rest of the day.
+      check(reloadRows >= rows, 'without 0043 the reload widens to the full queue rather than emptying Priority',
+        `${reloadRows} after the reload against ${rows} inside the window`);
+      check(reloadBody.includes(before), 'and the decoy reappears, because the window is gone rather than narrowed', before);
+    }
 
     // ---- 5 — "Last 24 hours" is untouched
     await setVisit();

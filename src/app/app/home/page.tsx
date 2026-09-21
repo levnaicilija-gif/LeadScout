@@ -9,7 +9,7 @@ import { Logo } from '@/components/Logo';
 import { CvDropZone } from '@/components/CvDropZone';
 import { canSee } from '@/lib/onboarding';
 import { DAILY_BUDGET_EUR, spentTodaySplit } from '@/lib/cost';
-import { hasHealthChecks, hasScorecards, hasLastSeen } from '@/lib/schema-features';
+import { hasHealthChecks, hasScorecards, hasLastSeen, hasPreviousVisit } from '@/lib/schema-features';
 import { visitWindow } from '@/lib/visit';
 import { Scorecard } from '@/components/Scorecard';
 export const dynamic = 'force-dynamic';
@@ -38,8 +38,19 @@ export default async function Home() {
   // do" while Today lists five is worse than no count at all (src/lib/today.ts). It only READS the
   // stamp: the advance belongs to Today's own load and nowhere else (src/lib/visit.ts).
   const lastSeenOn = await hasLastSeen(sb);
-  const visit = visitWindow(lastSeenOn ? (me as any)?.last_seen_at ?? null : null, new Date());
-  const windowSince = lastSeenOn && visit.since && visit.advance ? visit.since : null;
+  // 0043 keeps the previous visit's start in its own column, so the boundary survives every reload of
+  // this visit. Undefined where it is not applied, which visitWindow treats as its pre-0043 self.
+  const twoStamps = lastSeenOn && await hasPreviousVisit(sb);
+  const visit = visitWindow(
+    lastSeenOn ? (me as any)?.last_seen_at ?? null : null,
+    new Date(),
+    twoStamps ? ((me as any)?.previous_visit_at ?? null) : undefined,
+  );
+  // The window holds for the WHOLE visit once 0043 is applied, because visit.since then comes from
+  // previous_visit_at and a reload no longer consumes it. Without 0043 the boundary is only honest on
+  // the first load of a visit (visit.advance), and every later load falls back to the full open queue
+  // rather than to a window that has quietly shrunk to the last few minutes.
+  const windowSince = visit.since && (visit.advance || twoStamps) ? visit.since : null;
 
   const [
     items, wonWork, hiringNow, weekOk, weekBad, pool, expiring,

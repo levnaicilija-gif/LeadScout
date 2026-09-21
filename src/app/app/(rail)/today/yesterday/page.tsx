@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { supabaseServer, currentUser } from '@/lib/supabase/server';
 import { followedIndustries } from '@/lib/industry-follow';
 import { todayItems, whenLabel } from '@/lib/today';
-import { hasScorecards, hasSendsCreatedAt, hasFollowupResolutions, hasLastSeen } from '@/lib/schema-features';
+import { hasScorecards, hasSendsCreatedAt, hasFollowupResolutions, hasLastSeen, hasPreviousVisit } from '@/lib/schema-features';
 import { countsFor, LABELS, type CountKey } from '@/lib/scorecard';
 import { followups } from '@/lib/followups';
 import { FollowupList } from '@/components/FollowupList';
@@ -31,8 +31,19 @@ export default async function YesterdayAndQueue() {
   // Read once so the guard is warm for the queue below — and used, so this page windows its queue
   // exactly as Today and Home do rather than quietly showing a different list.
   const lastSeenOn = await hasLastSeen(sb);
-  const visit = visitWindow(lastSeenOn ? (me as any)?.last_seen_at ?? null : null, new Date());
-  const windowSince = lastSeenOn && visit.since && visit.advance ? visit.since : null;
+  // 0043 keeps the previous visit's start in its own column, so the boundary survives every reload of
+  // this visit. Undefined where it is not applied, which visitWindow treats as its pre-0043 self.
+  const twoStamps = lastSeenOn && await hasPreviousVisit(sb);
+  const visit = visitWindow(
+    lastSeenOn ? (me as any)?.last_seen_at ?? null : null,
+    now,
+    twoStamps ? ((me as any)?.previous_visit_at ?? null) : undefined,
+  );
+  // The window holds for the WHOLE visit once 0043 is applied, because visit.since then comes from
+  // previous_visit_at and a reload no longer consumes it. Without 0043 the boundary is only honest on
+  // the first load of a visit (visit.advance), and every later load falls back to the full open queue
+  // rather than to a window that has quietly shrunk to the last few minutes.
+  const windowSince = visit.since && (visit.advance || twoStamps) ? visit.since : null;
 
   const [items, state, counts] = await Promise.all([
     todayItems(sb, followedIndustries((me as any)?.industry_follow), windowSince),
