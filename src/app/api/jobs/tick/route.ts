@@ -12,7 +12,9 @@ export const maxDuration = 300;
  *   ?unit=job-posts      only that crawl        ?force=1  one batch even when it is not due
  *   ?max=1               at most that many batches          ?wait=1  answer with the result
  */
-const UNITS: TickUnit[] = ['radar', 'discovery', 'job-posts'];
+// Every unit the tick knows. A name missing here is silently ignored by `UNITS.find` below and the
+// tick then runs EVERYTHING — so ?unit=job-boards would have quietly meant "the whole schedule".
+const UNITS: TickUnit[] = ['radar', 'discovery', 'job-posts', 'job-boards'];
 
 export const GET = (req: Request) => {
   if (!cronAuthorised(req)) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });

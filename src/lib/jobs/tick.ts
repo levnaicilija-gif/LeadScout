@@ -4,6 +4,7 @@ import { watchedBoards } from '@/lib/watchlist';
 import { runRadarBatch } from './radar-batch';
 import { runJobPostsBatch } from './job-posts-batch';
 import { runCareersDiscoveryBatch } from './careers-discovery-batch';
+import { runJobBoardsBatch } from './job-boards-batch';
 
 /**
  * The schedule for the three crawls. Supabase pg_cron calls /api/jobs/tick every five minutes (0029), and
@@ -19,12 +20,18 @@ import { runCareersDiscoveryBatch } from './careers-discovery-batch';
  *   radar       from 04:00 UTC until today's run has read its last source or stopped at the cap
  *   discovery   while a company with a domain has never been checked
  *   job-posts   while a company with a board has not been crawled since 00:00 UTC
+ *   job-boards  while an enabled job_board source has not been crawled since 00:00 UTC
+ *
+ * job-boards is LAST on purpose. The three before it are the primary signal — a company's own careers
+ * page is unambiguous about who is hiring — and a board is the secondary read (see job-boards-batch).
+ * It is also the only unit whose work is optional on any given day, so it yields the tick's time to
+ * the others rather than taking it.
  *
  * One tick at a time: job_ticks allows a single unfinished row (0029), and a tick that cannot insert one
  * exits. Before 0029 is applied the tick still runs, unrecorded and unguarded.
  */
 
-export type TickUnit = 'radar' | 'discovery' | 'job-posts';
+export type TickUnit = 'radar' | 'discovery' | 'job-posts' | 'job-boards';
 export type TickSource = 'pg_cron' | 'vercel_cron' | 'manual';
 export type TickOptions = { source: TickSource; origin: string; dryRun?: boolean; unit?: TickUnit; force?: boolean; maxBatches?: number };
 
@@ -32,7 +39,10 @@ export type TickOptions = { source: TickSource; origin: string; dryRun?: boolean
 // 300 s. Measured 2026-09-14 on production, one batch at a time: Radar batches of 5 sources took 163 s
 // (40 new articles), 30 s (none) and 268 s (32) — one source is the Radar batch here for that reason.
 const START_BATCH_BEFORE_MS = 120_000;
-const BATCH: Record<TickUnit, number> = { radar: 1, discovery: 25, 'job-posts': 4 };
+// job-boards: one board a batch, for the same reason radar takes one source — a board is an index
+// fetch plus up to perBoard link reads, each with its own model call, and one board is what reliably
+// finishes inside the 180 s a batch has left after START_BATCH_BEFORE_MS.
+const BATCH: Record<TickUnit, number> = { radar: 1, discovery: 25, 'job-posts': 4, 'job-boards': 1 };
 const RADAR_HOUR_UTC = 4;
 // An unfinished tick older than the route's 300 s maxDuration (plus margin) was killed.
 const KILLED_AFTER_MS = 330_000;
@@ -70,6 +80,36 @@ async function discoveryDue(db: SupabaseClient, force: boolean): Promise<Due | s
   return count ? due(`${count} companies never checked`) : 'every company with a domain has been checked';
 }
 
+/**
+ * Job boards, the secondary source — due while an enabled board has not been read since 00:00 UTC.
+ *
+ * This unit exists because the pipeline it starts had NEVER RUN (found 2026-09-21). /api/jobs/job-boards
+ * was scheduled by nothing: the Vercel crons are the tick and the recheck, and the tick had three units,
+ * none of them this one. Nothing in src/ or scripts/ called the route either. So POSTING_SYSTEM,
+ * is_trade_vacancy and via='board' had never executed once in production — 0 "board advert" calls in
+ * cost_log, €0.00, and no job_posts row has ever carried via='board'.
+ *
+ * Meanwhile the boards WERE being read, by the wrong pipeline: radar-batch selects every enabled source
+ * with no type filter, so the nine enabled job_board rows were crawled as news and their pages stored as
+ * articles — 92 of them, 6.5% of the article table, backing not one lead. Excluding them from radar is a
+ * separate step, deliberately, so that this unit can be proved to work while radar still reads them and
+ * neither change hides the other.
+ *
+ * Counted the same way jobPostsDue counts careers boards: last_crawled_at is stamped at the END of each
+ * board's own block in the batch, so a board that was read and yielded nothing is still "done today" and
+ * the tick moves on rather than reading it again on the next tick.
+ */
+async function jobBoardsDue(db: SupabaseClient, now: Date, force: boolean): Promise<Due | string> {
+  const due = (why: string): Due => ({ unit: 'job-boards', path: `/api/jobs/job-boards?batch=${BATCH['job-boards']}`, why });
+  if (force) return due('forced');
+  const { count, error } = await db.from('sources').select('id', { count: 'exact', head: true })
+    .eq('type', 'job_board').eq('enabled', true)
+    .or(`last_crawled_at.is.null,last_crawled_at.lt."${day(now)}T00:00:00Z"`);
+  if (error) throw new Error(`job-board sources could not be counted: ${error.message}`);
+  if (count) return due(`${count} job board${count === 1 ? '' : 's'} not read today`);
+  return 'every job board has been read today';
+}
+
 async function jobPostsDue(db: SupabaseClient, now: Date, force: boolean): Promise<Due | string> {
   const due = (why: string): Due => ({ unit: 'job-posts', path: `/api/jobs/job-posts?batch=${BATCH['job-posts']}`, why });
   if (force) return due('forced');
@@ -92,7 +132,10 @@ async function runBatch(due: Due, origin: string): Promise<Note> {
   const secs = () => Math.round((Date.now() - started) / 1000);
   const req = new Request(`${origin}${due.path}`, { method: 'POST', headers: { 'x-cron-secret': process.env.CRON_SECRET ?? '' } });
   try {
-    const res = due.unit === 'radar' ? await runRadarBatch(req) : due.unit === 'discovery' ? await runCareersDiscoveryBatch(req) : await runJobPostsBatch(req);
+    const res = due.unit === 'radar' ? await runRadarBatch(req)
+      : due.unit === 'discovery' ? await runCareersDiscoveryBatch(req)
+      : due.unit === 'job-boards' ? await runJobBoardsBatch(req)
+      : await runJobPostsBatch(req);
     const text = await res.text();
     let j: any;
     try { j = JSON.parse(text); } catch { return { unit: due.unit, secs: secs(), error: `HTTP ${res.status}, not JSON: ${text.slice(0, 160)}` }; }
@@ -106,6 +149,12 @@ async function runBatch(due: Due, origin: string): Promise<Note> {
       };
     }
     if (due.unit === 'discovery') return { unit: 'discovery', secs: secs(), ...(j.stats ?? {}), remaining: j.remaining };
+    // The board batch reports the same shape as job-posts: its own stats, whether the cap stopped it,
+    // and the spend. `kept` being zero while `linksSeen` is not is the signal worth watching here —
+    // it is how "the boards are being read but nothing is a vacancy" would show on a tick.
+    if (due.unit === 'job-boards') {
+      return { unit: 'job-boards', secs: secs(), ...(j.stats ?? {}), stopped: j.stopped, spentToday: j.spentToday, capped: !!j.stopped, problems: (j.problems ?? []).slice(0, 3) };
+    }
     return { unit: 'job-posts', secs: secs(), ...(j.stats ?? {}), stopped: j.stopped, spentToday: j.spentToday, capped: !!j.stopped || Number(j.budgetLeft) <= 0 };
   } catch (e: any) {
     return { unit: due.unit, secs: secs(), error: String(e?.message ?? e).slice(0, 200) };
@@ -147,6 +196,7 @@ export async function runTick(db: SupabaseClient, o: TickOptions) {
       ['radar', () => radarDue(db, now)],
       ['discovery', () => discoveryDue(db, !!o.force)],
       ['job-posts', () => jobPostsDue(db, now, !!o.force)],
+      ['job-boards', () => jobBoardsDue(db, now, !!o.force)],
     ];
     for (const [unit, check] of checks) {
       if ((o.unit && o.unit !== unit) || skip.has(unit)) continue;
