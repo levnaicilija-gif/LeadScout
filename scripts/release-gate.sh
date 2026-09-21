@@ -59,6 +59,11 @@ step cert-schemes npx tsx scripts/cert-schemes-check.ts
 # reject. Pure rules against fixed records: no database, no network, no model call.
 step trade-buyers npx tsx scripts/trade-buyers-check.ts
 step tender-gate npx tsx scripts/tender-gate-check.ts
+# Every source type is read by exactly one pipeline. A missing .neq() is one forgotten clause that
+# reads as harmless and breaks nothing loudly: for weeks radar crawled the nine enabled job boards as
+# news and stored 92 of their pages as articles, while the board pipeline itself was scheduled by
+# nothing at all. Source-reading only: no database, no network, no model call.
+step source-routing npx tsx scripts/source-routing-check.ts
 step scorecard-rls npx tsx --env-file=.env.local scripts/scorecard-rls-probe.ts
 step screening-rls npx tsx --env-file=.env.local scripts/screening-rls-probe.ts
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts

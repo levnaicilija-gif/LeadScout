@@ -87,7 +87,14 @@ async function run(req: Request) {
   const tier = p.get('tier');
   const only = p.get('only');
 
-  let q = db.from('sources').select('id, name, url, link_rule, tier').eq('enabled', true).order('id');
+  // Job boards are excluded for the same reason radar-batch excludes them, and this half matters just
+  // as much: the test below is "does a newsroom on this site carry article links", and a source that
+  // fails it is SWITCHED OFF with that sentence written onto its row. That is a sound test of a news
+  // source and a meaningless one for a job board, which carries vacancies and no newsroom at all. It
+  // is what disabled six of the seven sources found classified priority-but-disabled on 2026-09-21,
+  // two of them job boards. Without this line, wiring up the board pipeline would simply hand the
+  // boards back to a repair pass that turns them off again, with a reason about newsrooms.
+  let q = db.from('sources').select('id, name, url, link_rule, tier').eq('enabled', true).neq('type', 'job_board').order('id');
   if (tier) q = q.eq('tier', tier);
   if (only) {
     const terms = only.split(',').map((t) => t.trim()).filter(Boolean);

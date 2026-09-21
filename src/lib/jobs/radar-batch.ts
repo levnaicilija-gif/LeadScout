@@ -43,7 +43,18 @@ export async function runRadarBatch(req: Request) {
   if (!authorised(req)) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
   const db = supabaseAdmin();
   const params = new URL(req.url).searchParams;
-  let q = db.from('sources').select('*').eq('enabled', true);
+  // JOB BOARDS ARE NOT RADAR'S (2026-09-21). This query had no type filter, so the nine enabled
+  // job_board rows were crawled here as if they were news: their pages went through extractLead and
+  // were stored as articles — 92 of them, 6.5% of the article table, backing not one lead. rigzone's
+  // news section and subsea.org's "list-of-oil-and-gas-companies-in-<place>" pages are not stories,
+  // and no amount of reading them was ever going to produce a vacancy. They belong to
+  // job-boards-batch, which since the commit before this one is the tick's fourth unit.
+  //
+  // `neq` rather than an allow-list of the three types that DO belong here: an allow-list silently
+  // drops any type added later, and this very query already goes out of its way not to do that —
+  // the standard sweep deliberately includes sources with no tier, because "unread is not a reason
+  // to ignore a source forever". neq fails open, `in` fails closed.
+  let q = db.from('sources').select('*').eq('enabled', true).neq('type', 'job_board');
   // Which sources this run covers, in order of precedence:
   //
   //   only=<substrings>  an explicit list, for tuning Stage 1 on the sources that matter
