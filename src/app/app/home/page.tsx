@@ -9,7 +9,8 @@ import { Logo } from '@/components/Logo';
 import { CvDropZone } from '@/components/CvDropZone';
 import { canSee } from '@/lib/onboarding';
 import { DAILY_BUDGET_EUR, spentTodaySplit } from '@/lib/cost';
-import { hasHealthChecks, hasScorecards } from '@/lib/schema-features';
+import { hasHealthChecks, hasScorecards, hasLastSeen } from '@/lib/schema-features';
+import { visitWindow } from '@/lib/visit';
 import { Scorecard } from '@/components/Scorecard';
 export const dynamic = 'force-dynamic';
 
@@ -33,12 +34,18 @@ export default async function Home() {
   // 0039 keeps the scorecard. Until it is applied, Home carries nothing for it.
   const scorecardReady = await hasScorecards(sb);
   const yesterday = date(-1);
+  // Home renders the SAME queue Today does, so it reads the same window — a home screen saying "7 to
+  // do" while Today lists five is worse than no count at all (src/lib/today.ts). It only READS the
+  // stamp: the advance belongs to Today's own load and nowhere else (src/lib/visit.ts).
+  const lastSeenOn = await hasLastSeen(sb);
+  const visit = visitWindow(lastSeenOn ? (me as any)?.last_seen_at ?? null : null, new Date());
+  const windowSince = lastSeenOn && visit.since && visit.advance ? visit.since : null;
 
   const [
     items, wonWork, hiringNow, weekOk, weekBad, pool, expiring,
     availableNow, freeSoon, prioritySources, spend, radar, lastSweep,
   ] = await Promise.all([
-    todayItems(sb, followedIndustries((me as any)?.industry_follow)),
+    todayItems(sb, followedIndustries((me as any)?.industry_follow), windowSince),
     sb.from('leads').select('id', { count: 'exact', head: true }).eq('kind', 'won_work').eq('status', 'new'),
     sb.from('job_posts').select('id', { count: 'exact', head: true }).eq('status', 'open'),
     sb.from('verifications').select('id', { count: 'exact', head: true }).eq('result', 'valid').gte('checked_at', iso(-7)),

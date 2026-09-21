@@ -6,6 +6,7 @@ import { hasScorecards, hasSendsCreatedAt, hasFollowupResolutions, hasLastSeen }
 import { countsFor, LABELS, type CountKey } from '@/lib/scorecard';
 import { followups } from '@/lib/followups';
 import { FollowupList } from '@/components/FollowupList';
+import { visitWindow } from '@/lib/visit';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -27,10 +28,14 @@ export default async function YesterdayAndQueue() {
   const scorecardsOn = await hasScorecards(sb);
   const followupsOn = await hasFollowupResolutions(sb);
   const sendsDated = await hasSendsCreatedAt(sb);
-  await hasLastSeen(sb); // read once so the guard is warm for the queue below
+  // Read once so the guard is warm for the queue below — and used, so this page windows its queue
+  // exactly as Today and Home do rather than quietly showing a different list.
+  const lastSeenOn = await hasLastSeen(sb);
+  const visit = visitWindow(lastSeenOn ? (me as any)?.last_seen_at ?? null : null, new Date());
+  const windowSince = lastSeenOn && visit.since && visit.advance ? visit.since : null;
 
   const [items, state, counts] = await Promise.all([
-    todayItems(sb, followedIndustries((me as any)?.industry_follow)),
+    todayItems(sb, followedIndustries((me as any)?.industry_follow), windowSince),
     followups(sb, { resolutionsReady: followupsOn }),
     scorecardsOn && me
       ? countsFor(sb, { workspaceId: me.workspace_id, userId: me.id, day: yesterday, sendsHasCreatedAt: sendsDated })

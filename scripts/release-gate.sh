@@ -85,6 +85,18 @@ else
   # covers was verified by running it by hand, so a regression on Today would have reached production with a
   # green gate behind it. It says which path it ran (0042 applied or not), so a pass names what it covered.
   step today npx tsx --env-file=.env.local scripts/today-probe.ts "$BASE"
+  # Priority since 2026-09-21: the window is the reader's own last visit, one row per lead, no cap.
+  # Decoys both ways — a lead two minutes inside the boundary must show, one two minutes before it
+  # must not, and it carries the HIGHEST fit of the set so a surviving cap keeps it and fails loudly.
+  # It also drives /api/me/visit for real and reads users.last_seen_at back: that write had answered
+  # 42501 permission denied on every load since 0042 and nothing could see it, because today-probe
+  # seeds the stamp with the service role. Exit 2 means 0042 is not applied: nothing to judge.
+  echo "=== priority-window" | tee -a "$LOG"
+  npx tsx --env-file=.env.local scripts/priority-window-probe.ts "$BASE" >> "$LOG" 2>&1
+  code=$?
+  if [ "$code" -eq 0 ]; then echo "    pass" | tee -a "$LOG"
+  elif [ "$code" -eq 2 ]; then echo "    not judged (0042 not applied)" | tee -a "$LOG"
+  else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("priority-window"); fi
   # Certificate check: one drop zone, certificates only, nobody created or touched — and Verify unchanged.
   # It drops a real CV to prove the refusal, so one classification call per gate run is spent on purpose; the
   # probe's workspace is marked is_test, so that spend is logged and not counted against the daily cap.

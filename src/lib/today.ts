@@ -7,9 +7,15 @@ import { leadSource, primaryArticle } from './lead-source';
 import { articlesByLead } from './lead-articles';
 import { compoundByCompany } from './compound-signals-load';
 import { boostedFit, boostedPressure, type Pressure } from './compound-signals';
+import { allRows } from './all-rows';
 
 /**
  * The day, in order. Six queries in a fixed priority — no model chooses any of this.
+ *
+ * Since 2026-09-21 the new-lead rows are windowed on the reader's own last visit and are NOT capped:
+ * one row per lead and one per hiring-now company, however many that is. Home renders the same list,
+ * which is why the window is a parameter rather than a constant in here — a home screen that says
+ * "7 to do" while Today lists five is worse than no count at all.
  *
  * Home and Today both render it, so it lives here rather than in either page: a home screen
  * that says "7 to do" while Today lists five is worse than no count at all.
@@ -38,7 +44,15 @@ export type TodayItem = {
 
 const day = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
 
-export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'all' = 'all'): Promise<TodayItem[]> {
+/**
+ * @param since  The boundary Priority reads from: every new lead after it, uncapped (2026-09-21).
+ *
+ * Null means "no honest window", and then EVERY open new lead is returned rather than a guessed one.
+ * Two cases reach it and they are the same case: a first-ever visit, where there is no previous visit
+ * to count from, and a reload inside a visit that has already been counted from. Both used to be a
+ * silent 7-day window, which is a boundary nobody chose shown as though somebody had.
+ */
+export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'all' = 'all', since: Date | null = null): Promise<TodayItem[]> {
   // Item 18: what the reader follows comes first — a lead or company in those industries, then the rest. Nothing is dropped.
   const industriesOn = await hasIndustries(sb);
   const followedFirst = (industries: string[] | null | undefined) => (followed !== 'all' && (industries ?? []).some((i) => (followed as string[]).includes(i)) ? 0 : 1);
@@ -47,7 +61,15 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
   const [pending, noReply, newLeads, expiring, missingDocs, hiring] = await Promise.all([
     sb.from('verifications').select('id, issuer_email_sent_at, documents(candidate_id, extracted, candidates!candidate_id(reference_code))').eq('result', 'pending'),
     sb.from('outreach').select('id, sent_at, leads(project_name, companies(name))').eq('status', 'sent').is('reply_at', null).lte('sent_at', day(-3)),
-    sb.from('leads').select(`id, kind, company_id, country, project_name, fit_score, trades_inferred, source_url, created_at, companies(name)${industriesOn ? ', industries' : ''}`).eq('status', 'new').gte('created_at', day(-7)).order('fit_score', { ascending: false }).limit(20),
+    // Uncapped, and windowed on the recruiter's own last visit rather than a fixed 7 days (2026-09-21).
+    // The old .limit(20) fed a .slice(0, 6), so at most six of twenty leads could ever be on screen and
+    // the fourteen in between were fetched and thrown away. Read through allRows because with no window
+    // at all this is every open new lead, and PostgREST stops at 1,000 rows without saying so; ordering
+    // is by id here because the ranking below re-sorts every row in memory anyway.
+    allRows((from, to) => {
+      const q = sb.from('leads').select(`id, kind, company_id, country, project_name, fit_score, trades_inferred, source_url, created_at, companies(name)${industriesOn ? ', industries' : ''}`).eq('status', 'new');
+      return (since ? q.gte('created_at', since.toISOString()) : q).order('id').range(from, to);
+    }),
     sb.from('verifications').select('id, valid_until, documents(cert_body, candidates!candidate_id(id, reference_code))').eq('result', 'valid').lte('valid_until', day(60).slice(0, 10)),
     campaignsMissingDocs(sb),
     hiringWorthCalling(sb, industriesOn, followedFirst),
@@ -57,9 +79,9 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
 
   // 4 · New leads, by fit then timing. Read before anything is chased.
   //
-  // Won work and hiring now are one item, because they are one job: read what came in and
-  // decide who to call. Each company is labelled with which it is, so a recruiter can see at a
-  // glance whether the reason to call is a contract award or an open advert.
+  // Won work and hiring now are one JOB — read what came in and decide who to call — but no longer
+  // one item: each lead and each company is its own row, labelled with which it is, so a recruiter
+  // can see at a glance whether the reason to call is a contract award or an open advert.
   // Item 17: the six shown are chosen fresh-first, and an ageing or stale signal says so. Nothing is
   // dropped for its age alone; age unknown counts as fresh.
   // Articles are read with the service role for these leads only — no read policy until 0025. If that
@@ -77,45 +99,51 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
     const signals = leadSignals.get(l.company_id);
     const lifted = signals && signals.factor > 1 ? boostedFit(l.fit_score ?? 0, signals, l.country) : null;
     return { l, age, fit: lifted?.fit ?? l.fit_score ?? 0, boosted: !!lifted };
-  }).sort((x, y) => (followedFirst(x.l.industries) - followedFirst(y.l.industries)) || (ageSink(x.age.state) - ageSink(y.age.state)) || (y.fit - x.fit)).slice(0, 6);
-  const leadNames = aged
-    .map(({ l, age, boosted }) => {
-      const notes = [age.state === 'stale' ? 'stale signal' : age.state === 'flagged' ? 'ageing' : '', boosted ? 'boosted' : ''].filter(Boolean);
-      return l.companies?.name && `${l.companies.name}${notes.length ? ` (${notes.join(', ')})` : ''}`;
-    })
-    .filter(Boolean) as string[];
-  const hiringNames = hiring.map((h) => `${h.name} (hiring now${h.ageing ? ', ageing' : ''})`);
-  const allNames = [...leadNames, ...hiringNames];
-  if (allNames.length) {
-    const n = aged.length + hiring.length;
-    // The newest thing in this one combined item is its timestamp: it is the moment that makes the
-    // item worth reading now, and the only honest stamp for a row that stands for several leads.
-    const newest = [...aged.map(({ l }) => l.created_at), ...hiring.map((h) => h.newest)]
-      .filter(Boolean).map(String).sort().pop() ?? null;
-    // The item names these companies, so its link must show THESE and nothing else (2026-09-17). It used
-    // to open the whole unfiltered list — 165 leads — which turned a named eleven into a suggestion to go
-    // looking rather than somewhere to arrive. The two halves are different tables on different tabs: six
-    // won-work leads by lead id, five hiring-now companies by company id. Each tab carries its own `ids`
-    // and `also` names the other set, which is what lets the filtered view offer "+5 hiring now" without
-    // recomputing a ranking that would have moved on by the time the recruiter clicked.
-    const leadIds = aged.map(({ l }) => String(l.id)).filter(Boolean);
-    const companyIds = hiring.map((h) => String(h.id)).filter(Boolean);
+  }).sort((x, y) => (followedFirst(x.l.industries) - followedFirst(y.l.industries)) || (ageSink(x.age.state) - ageSink(y.age.state)) || (y.fit - x.fit));
+
+  // ONE ROW PER LEAD, uncapped (owner's decision, 2026-09-21). Until now these were folded into a
+  // single item — "Read 11 new leads — Peene-Werft first", every company in its sub-line, every id in
+  // its href — which is why removing .slice(0, 6) on its own would not have produced a list: it would
+  // have produced one row reading "Read 173 new leads" with a 173-name subtitle. The sort above is
+  // untouched: followed industries first, then fresh before ageing, then fit with item 19's boost.
+  //
+  // Each row opens ITS OWN lead (?tab=won&ids=<id>), so the click lands on the thing the row names
+  // rather than on a set that has since been re-ranked. The combined item's `also=` cross-link went
+  // with it — a row standing for one lead has no other half to point at.
+  for (const { l, age, fit, boosted } of aged) {
+    const tender = leadSource(l.source_url) === 'tender';
+    // The same two labels the combined item carried, in the same words, because smoke and the screen
+    // both read them: "(stale signal)", "(ageing)", "(boosted)".
+    const notes = [age.state === 'stale' ? 'stale signal' : age.state === 'flagged' ? 'ageing' : '', boosted ? 'boosted' : ''].filter(Boolean);
     items.push({
       dot: '',
-      when: newest,
-      title: `Read ${n} new lead${n === 1 ? '' : 's'}${allNames[0] ? ` — ${allNames[0]} first` : ''}`,
-      sub: allNames.join(', '),
-      href: leadIds.length
-        ? `/app/radar?tab=won&ids=${leadIds.join(',')}${companyIds.length ? `&also=${companyIds.join(',')}` : ''}`
-        : companyIds.length ? `/app/radar?tab=hiring&ids=${companyIds.join(',')}` : '/app/radar',
-      why: hiring.length
-        ? 'Contract awards are demand months before a job is posted; an open advert is demand today.'
-        : 'Contract awards are demand months before a job is posted.',
-      from: hiring.length
-        ? 'leads with status = new in the last 7 days (fresh signals first, then fit — boosted where the company has an award, a story or an open advert together inside 60 days), plus hiring-now companies under high pressure (an award or a story beside the adverts lifts pressure one step), naming a contact or re-advertising a role'
-        : 'leads with status = new in the last 7 days, fresh signals first, then by fit — boosted where the company has an award, a story or an open advert together inside 60 days',
+      // When the lead arrived, which is also what the window above filtered on — so a row cannot be
+      // inside Priority's window and outside the visit split that renders it.
+      when: l.created_at ?? null,
+      title: `${l.companies?.name ?? 'a company'}${notes.length ? ` (${notes.join(', ')})` : ''}`,
+      sub: `${tender ? 'Tender award' : 'News'}${l.project_name ? ` · ${l.project_name}` : ''} · fit ${Math.round(fit)}${boosted ? ` (was ${l.fit_score ?? 0})` : ''}`,
+      href: `/app/radar?tab=won&ids=${l.id}`,
+      why: 'Contract awards are demand months before a job is posted.',
+      from: since
+        ? 'leads with status = new since your last visit, fresh signals first, then by fit — boosted where the company has an award, a story or an open advert together inside 60 days'
+        : 'every lead with status = new — no visit to count from, so nothing is hidden behind a window nobody chose',
     });
   }
+
+  // Hiring now, one row per COMPANY for the same reason the 24-hour view uses one: three adverts from
+  // one yard is one company to call, and ?ids= on that tab takes company ids.
+  for (const h of hiring) {
+    items.push({
+      dot: '',
+      when: h.newest,
+      title: `${h.name} (hiring now${h.ageing ? ', ageing' : ''})`,
+      sub: h.why,
+      href: `/app/radar?tab=hiring&ids=${h.id}`,
+      why: 'An open advert is demand today.',
+      from: 'hiring-now companies under high pressure (an award or a story beside the adverts lifts pressure one step), naming a contact or re-advertising a role',
+    });
+  }
+
 
   // 2 · Verifications blocking a pack.
   for (const v of pending.data ?? []) {
@@ -307,7 +335,10 @@ async function hiringWorthCalling(sb: SupabaseClient, industriesOn = false, foll
       first: followedFirst(ps[0].companies?.industries),
     });
   }
-  return out.sort((a, b) => (a.first - b.first) || (a.sink - b.sink)).slice(0, 5);
+  // Uncapped since 2026-09-21, with the leads beside it: the .slice(0, 5) here and the .slice(0, 6)
+  // on the leads were the two halves of one combined item, and a cap on either was a cap on what a
+  // recruiter could see at all. Today's card scrolls instead, the same as the 24-hour view.
+  return out.sort((a, b) => (a.first - b.first) || (a.sink - b.sink));
 }
 
 /** Which of the three things a 24-hour row is. The key is also the `data-source-group` on screen. */

@@ -7,7 +7,8 @@ import { planFor, needsReview } from '@/lib/onboarding';
 import { hasScorecards, hasSendsCreatedAt, hasLastSeen, hasFollowupResolutions } from '@/lib/schema-features';
 import { ScorecardAfter } from '@/components/ScorecardAfter';
 import { LiveRefresh } from '@/components/LiveRefresh';
-import { visitWindow, lastHereLabel, clock, whileOut, sinceArrived } from '@/lib/visit';
+import { visitWindow, lastHereLabel, clock, whileOut } from '@/lib/visit';
+import { VisitStamp } from '@/components/VisitStamp';
 import { countsFor, LABELS, type CountKey } from '@/lib/scorecard';
 import { followups } from '@/lib/followups';
 import { searchableCount } from '@/lib/verify/adapters';
@@ -39,17 +40,29 @@ export default async function Today({ searchParams }: { searchParams: { view?: s
   // When were they last here? Guarded: 0042 may not be applied, and then there is no split to make.
   const lastSeenOn = await hasLastSeen(sb);
   const visit = visitWindow(lastSeenOn ? (me as any)?.last_seen_at ?? null : null, now);
-  // Stamped on Today's own load and only after a real absence, so the boundary holds still while
-  // they work. Never in currentUser(), which every screen calls on every render (src/lib/visit.ts).
-  if (lastSeenOn && visit.advance && me?.id) {
-    await sb.from('users').update({ last_seen_at: now.toISOString() }).eq('id', me.id);
-  }
+  // Stamped on Today's own load and only after a real absence, so the boundary holds still while they
+  // work. Never in currentUser(), which every screen calls on every render (src/lib/visit.ts).
+  //
+  // The write itself is <VisitStamp />, below, posting to /api/me/visit AFTER this page has rendered.
+  // It used to be right here, inline, with `sb` — the SIGNED-IN USER's client — and it had never once
+  // succeeded: 0028 revoked update on users from authenticated, 0042 added last_seen_at and granted
+  // nothing back, and the answer (42501 permission denied for table users) was discarded unread. Both
+  // real accounts read NULL. The order is not incidental either: this page must read the OLD stamp to
+  // know what arrived while they were out, so the advance cannot happen before the read.
+
+  // Priority's window (owner's decision, 2026-09-21): every new lead since the last visit, uncapped.
+  // Null when there is no honest boundary to name — a first-ever visit, or a reload inside a visit
+  // whose boundary has already been consumed — and todayItems then returns every open new lead rather
+  // than the fixed 7 days it used to assume. Deliberately NOT visit.since on its own: last_seen_at
+  // holds ONE timestamp, so the moment it advances the previous boundary is gone, and windowing a
+  // mid-visit reload on it would empty Priority for the rest of the working day.
+  const windowSince = lastSeenOn && visit.since && visit.advance ? visit.since : null;
 
   const scorecardsOn = await hasScorecards(sb);
   const followupsOn = await hasFollowupResolutions(sb);
 
   const [items, wonCount, hiringCount, pool, expiring, availableNow, checkedToday, bullets, recentWon, recentHiring, followupState] = await Promise.all([
-    todayItems(sb, followedIndustries((me as any)?.industry_follow)),
+    todayItems(sb, followedIndustries((me as any)?.industry_follow), windowSince),
     sb.from('leads').select('id', { count: 'exact', head: true }).eq('kind', 'won_work').not('status', 'in', '("stale","not_for_us")'),
     sb.from('job_posts').select('id', { count: 'exact', head: true }).eq('status', 'open'),
     sb.from('candidates').select('id', { count: 'exact', head: true }),
@@ -67,7 +80,6 @@ export default async function Today({ searchParams }: { searchParams: { view?: s
   const schemes = new Set(CERT_TABLE.map((e) => e.body)).size;
 
   const out = whileOut(items, visit.since, visit.arrived);
-  const live = sinceArrived(items, visit.arrived);
   // Anything with no event time of its own — an expiring certificate, a campaign short of documents —
   // sits in neither window and belongs to the day as a whole (src/lib/visit.ts).
   const standing = items.filter((i) => !i.when);
@@ -147,6 +159,9 @@ export default async function Today({ searchParams }: { searchParams: { view?: s
   };
 
   return (<>
+    {/* Advances users.last_seen_at through /api/me/visit, after this page has already read it. Only
+        Today does this — never currentUser(), which every screen calls on every render. */}
+    {lastSeenOn && <VisitStamp />}
     {onPlan && (
       <div className="mb-3 rounded-card border border-line bg-panel px-4 py-3">
         <div className="text-[12px] text-ink3">Day {plan.day} of your first fortnight</div>
@@ -210,13 +225,22 @@ export default async function Today({ searchParams }: { searchParams: { view?: s
           </div>
         )}
 
+        {/* The queue itself — everything in the window, NOT capped (owner's decision, 2026-09-21).
+            It used to be .slice(0, 3) over the items that arrived since you sat down, which on the one
+            load that has a real window is close to none of them. The card scrolls instead, exactly as
+            the 24-hour view does, and the heading names the boundary it actually filtered on so a list
+            reaching back to yesterday can never sit under a label saying "since 08:00".
+            Every row is a Link inside this DIV, never inside the heading's anchor — an <a> in an <a>
+            is what took this card down at 390px (React #418). */}
         {!view24h && (
           <div>
             <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-[#8FA1B5]">
-              {lastSeenOn && visit.since ? `Since ${clock(visit.arrived)}` : 'The queue'} <span className="rounded-[10px] bg-white/10 px-1.5 text-white">{lastSeenOn && visit.since ? live.length : items.length}</span>
+              {windowSince ? `Since your last visit · ${clock(windowSince)}` : 'The queue'} <span data-queue-count={items.length} className="rounded-[10px] bg-white/10 px-1.5 text-white">{items.length}</span>
             </div>
-            {(lastSeenOn && visit.since ? live : items).slice(0, 3).map((it, i) => <Item key={i} it={it} n={lastSeenOn && visit.since ? '•' : String(i + 1)} live={!!(lastSeenOn && visit.since)} />)}
-            {lastSeenOn && visit.since && live.length === 0 && <div className="text-[11.5px] text-[#AEBBCC]">Nothing yet since you arrived.</div>}
+            <div data-queue-list className="max-h-[420px] overflow-y-auto pr-1">
+              {items.map((it, i) => <Item key={i} it={it} n={String(i + 1)} />)}
+            </div>
+            {items.length === 0 && <div className="text-[11.5px] text-[#AEBBCC]">{windowSince ? `Nothing new since ${clock(windowSince)}.` : 'Nothing waiting.'}</div>}
             {standing.length > 0 && <div className="mt-2 text-[11px] text-[#8FA1B5]">{standing.length} standing item{standing.length === 1 ? '' : 's'} with no time of their own — see the full queue</div>}
           </div>
         )}

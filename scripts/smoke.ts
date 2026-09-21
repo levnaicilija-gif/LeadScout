@@ -239,13 +239,22 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     const today = await bodyOf(page);
     // The error page since 2026-09-15 says "Something went wrong — reload the page", not Next's "Application error".
     check(!/Application error|Something went wrong — reload the page/.test(today) && today.length > 60, 'Today renders');
+    // Priority is ONE ROW PER LEAD since 2026-09-21, so these seeded companies are their own rows
+    // rather than names inside a single "Read N new leads — X first" sentence. What each check asserts
+    // is unchanged; where it reads it from is, and so is the detail, which used to quote that sentence
+    // and would now quote nothing. It lists the seeded rows in the order they render, which is what the
+    // first of the three is actually about.
+    const queued = today.match(/Smoke [^\n]*/g)?.slice(0, 6).join(' | ') ?? 'no seeded row on Today';
     // Item 17: fresh-first. The news lead's article is 100 days old and its fit is higher (75); the
-    // award lead has no date (age unknown, fit 70). The award lead is named first, the other labelled.
-    check(/Smoke Tender Winner AS first/.test(today) && /Smoke Offshore AS \(stale signal\)/.test(today),
-      'Today names an undated lead before a stale signal and labels the stale one', today.match(/Read \d+ new leads?[^\n]*/)?.[0] ?? 'no new-leads item on Today');
-    check(/Smoke Readvert AS \(hiring now\)/.test(today), 'Today lists a hiring-now company for a re-advertised role', today.match(/Read \d+ new leads?[^\n]*\n?[^\n]*/)?.[0] ?? 'no new-leads item on Today');
+    // award lead has no date (age unknown, fit 70). The award lead ranks above the other, which is
+    // labelled — an ORDER now, where the combined item stated it in words ("… — X first").
+    const undatedAt = today.indexOf('Smoke Tender Winner AS');
+    const staleRowAt = today.indexOf('Smoke Offshore AS (stale signal)');
+    check(undatedAt >= 0 && staleRowAt >= 0 && undatedAt < staleRowAt,
+      'Today ranks an undated lead above a stale signal and labels the stale one', queued);
+    check(/Smoke Readvert AS \(hiring now\)/.test(today), 'Today lists a hiring-now company for a re-advertised role', queued);
     // Item 19: a new lead whose company has a tender award and an open posting is labelled boosted on Today too.
-    check(/Smoke Compound AS \(boosted\)/.test(today), 'item 19: Today labels a lead whose company has two signal types "boosted"', today.match(/Read \d+ new leads?[^\n]*\n?[^\n]*/)?.[0] ?? 'no new-leads item on Today');
+    check(/Smoke Compound AS \(boosted\)/.test(today), 'item 19: Today labels a lead whose company has two signal types "boosted"', queued);
 
     // 3b — Certificate check, as a SIGNED-IN user, against whatever is actually deployed.
     //
