@@ -58,15 +58,14 @@ export default async function Today({ searchParams }: { searchParams: { view?: s
   // know what arrived while they were out, so the advance cannot happen before the read.
 
   // Priority's window (owner's decision, 2026-09-21): every new lead since the last visit, uncapped.
-  // Null when there is no honest boundary to name — a first-ever visit, or a reload inside a visit
-  // whose boundary has already been consumed — and todayItems then returns every open new lead rather
-  // than the fixed 7 days it used to assume. Deliberately NOT visit.since on its own: last_seen_at
-  // holds ONE timestamp, so the moment it advances the previous boundary is gone, and windowing a
-  // mid-visit reload on it would empty Priority for the rest of the working day.
-  // The window holds for the WHOLE visit once 0043 is applied, because visit.since then comes from
-  // previous_visit_at and a reload no longer consumes it. Without 0043 the boundary is only honest on
-  // the first load of a visit (visit.advance), and every later load falls back to the full open queue
-  // rather than to a window that has quietly shrunk to the last few minutes.
+  // Null when there is no honest boundary to name, and todayItems then returns every open new lead
+  // rather than the fixed 7 days it used to assume.
+  //
+  // With 0043 the boundary lives in previous_visit_at, so visit.since survives every reload and the
+  // window holds for the whole session. Without it, last_seen_at is the only stamp there is and it has
+  // just been advanced by this load, so the boundary is honest ONLY on the first load of a visit
+  // (visit.advance) — every later load falls back to the full open queue rather than to a window that
+  // has quietly shrunk to the last few minutes. Falling back WIDENS; it must never empty Priority.
   const windowSince = visit.since && (visit.advance || twoStamps) ? visit.since : null;
 
   const scorecardsOn = await hasScorecards(sb);
