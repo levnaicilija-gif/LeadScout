@@ -69,6 +69,11 @@ step source-routing npx tsx scripts/source-routing-check.ts
 # off the document, so Postgres parsed it MDY: a European certificate printed 03.09.2028 was stored as
 # 2028-03-09, six months early, on the column every expiry alert reads. Pure, no database.
 step printed-date npx tsx scripts/printed-date-check.ts
+# Item 8: received / verified / missing / expired, per document TYPE, because they are not the same
+# states. Only a certificate has a register behind it, so only a certificate can be verified; a
+# passport has nothing to check against and received is its ceiling. Making a passport verifiable
+# would block every campaign that requires one, for ever — which is the mutation this was proved by.
+step campaign-docs npx tsx scripts/campaign-docs-check.ts
 step scorecard-rls npx tsx --env-file=.env.local scripts/scorecard-rls-probe.ts
 step screening-rls npx tsx --env-file=.env.local scripts/screening-rls-probe.ts
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts
