@@ -5,9 +5,15 @@ import { useRouter } from 'next/navigation';
 /**
  * Campaigns, and what each person on one still owes.
  *
- * A document counts as held only when a file of that type is on the candidate. Nothing here can
+ * A document counts as received only when a file of that type is on the candidate. Nothing here can
  * be ticked by hand: the whole point is that "he says he has a medical" and "there is a medical
  * on file" are different facts, and only the second one puts somebody on a plane.
+ *
+ * Since 2026-09-21 a cell says more than held-or-not, and NOT the same states for every type — only a
+ * certificate has an issuer's register behind it, so only a certificate can read verified or expired.
+ * A passport says "received · no register", which is the whole truth about a passport: there is
+ * nowhere to check it. The states and the ready-to-send rule are computed in src/lib/campaign-docs.ts
+ * and passed in; this file renders them and decides nothing.
  */
 const DOC_LABEL: Record<string, string> = {
   passport: 'Passport', medical: 'Medical', certificate: 'Certificate', a1: 'A1',
@@ -24,11 +30,26 @@ type Campaign = {
 
 const day = (s?: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : null);
 
-export function CampaignsClient({ campaigns, candidates, companies, held, senior }: {
+/** One required document for one person, as src/lib/campaign-docs.ts computed it. */
+type DocStatus = { type: string; state: 'missing' | 'received' | 'verified' | 'expired'; verifiable: boolean; why: string; expiresOn: string | null };
+type Cell = { statuses: DocStatus[]; ready: boolean; blockers: string[] };
+
+/**
+ * How a state reads. ok/warn/bad say how a fact STANDS — never which tool it belongs to
+ * (CLAUDE.md) — so verified is ok, a gap is bad, and "received, and that is as far as this type
+ * goes" is deliberately neutral rather than a warning about something nobody can fix.
+ */
+const STATE_TONE: Record<DocStatus['state'], string> = {
+  verified: 'text-ok', received: 'text-ink2', missing: 'text-bad', expired: 'text-bad',
+};
+const stateWord = (s: DocStatus) => (s.state === 'received' && !s.verifiable ? 'received' : s.state);
+
+export function CampaignsClient({ campaigns, candidates, companies, cells, readyBy, senior }: {
   campaigns: Campaign[];
   candidates: any[];
   companies: { id: string; name: string }[];
-  held: Record<string, string[]>;
+  cells: Record<string, Cell>;
+  readyBy: Record<string, number>;
   senior?: boolean;
 }) {
   const r = useRouter();
@@ -108,10 +129,12 @@ export function CampaignsClient({ campaigns, candidates, companies, held, senior
         const required = c.required_docs ?? [];
         const people = (c.campaign_candidates ?? []).map((cc) => cc.candidates).filter(Boolean);
         const startsIn = c.starts_on ? Math.ceil((Date.parse(c.starts_on) - Date.now()) / 86400000) : null;
-        const short = people.filter((p: any) => required.some((d) => !(held[p.id] ?? []).includes(d)));
+        const cellFor = (pid: string): Cell => cells[`${c.id}:${pid}`] ?? { statuses: [], ready: false, blockers: ['not read'] };
+        const short = people.filter((p: any) => !cellFor(p.id).ready);
+        const readyCount = readyBy[c.id] ?? 0;
 
         return (
-          <div key={c.id} className="bg-panel border border-line rounded-card">
+          <div key={c.id} className="bg-panel border border-line rounded-card min-w-0">
             <div className="px-4 py-3 border-b border-line2 flex items-baseline justify-between flex-wrap gap-2">
               <div>
                 <b className="text-[15px] font-semibold">{c.name}</b>
@@ -120,10 +143,20 @@ export function CampaignsClient({ campaigns, candidates, companies, held, senior
                   {c.starts_on && <> · starts {day(c.starts_on)}{startsIn !== null && startsIn >= 0 ? ` (in ${startsIn} day${startsIn === 1 ? '' : 's'})` : ''}</>}
                 </div>
               </div>
-              <div className="text-[13px]">
-                {short.length === 0
-                  ? <span className="text-ok">{people.length ? 'Everyone has their documents' : 'Nobody on this campaign yet'}</span>
-                  : <span className={startsIn !== null && startsIn <= 21 ? 'text-bad' : 'text-warn'}>{short.length} of {people.length} short of a document</span>}
+              <div className="text-[13px] text-right">
+                {people.length === 0
+                  ? <span className="text-ok">Nobody on this campaign yet</span>
+                  : <>
+                      {/* The count a recruiter acts on: how many packs could go today. */}
+                      <div data-ready-count={readyCount} data-people-count={people.length}>
+                        <span className={readyCount === people.length ? 'text-ok' : 'text-ink2'}><b>{readyCount}</b> of {people.length} ready to send</span>
+                      </div>
+                      {short.length > 0 && (
+                        <div className={`text-[12px] ${startsIn !== null && startsIn <= 21 ? 'text-bad' : 'text-warn'}`}>
+                          {short.length} short of something
+                        </div>
+                      )}
+                    </>}
               </div>
             </div>
 
@@ -131,21 +164,48 @@ export function CampaignsClient({ campaigns, candidates, companies, held, senior
               Required: {required.map((d) => DOC_LABEL[d] ?? d).join(', ') || 'nothing set'}
             </div>
 
+            {/* One column per required document, so this table grows with the campaign and no longer
+                fits a phone. Scrolled inside its own card, the way the Candidates table already is,
+                rather than dropping columns: on a 390px screen a recruiter still needs to see WHICH
+                document is the one missing, and a hidden column would answer "somebody is short"
+                with nothing about what. */}
             {people.length > 0 && (
+              <div className="overflow-x-auto">
               <table className="tbl w-full">
-                <thead><tr><th>Candidate</th><th>Trade</th><th>Free from</th><th>Missing</th><th /></tr></thead>
+                <thead>
+                  <tr>
+                    <th>Candidate</th><th>Trade</th><th>Free from</th>
+                    {required.map((d) => <th key={d}>{DOC_LABEL[d] ?? d}</th>)}
+                    <th>Pack</th><th />
+                  </tr>
+                </thead>
                 <tbody>
                   {people.map((p: any) => {
-                    const missing = required.filter((d) => !(held[p.id] ?? []).includes(d));
+                    const cell = cellFor(p.id);
+                    const byType = new Map(cell.statuses.map((s) => [s.type, s]));
                     return (
-                      <tr key={p.id}>
+                      <tr key={p.id} data-campaign-row={p.id} data-pack-ready={cell.ready ? 'true' : 'false'}>
                         <td><b className="font-medium">{p.reference_code}</b><div className="text-ink3 text-[12px]">{p.full_name}</div></td>
                         <td className="text-[13px]">{p.trade ?? '—'}</td>
                         <td className="text-[13px]">{p.availability_from ? day(p.availability_from) : 'now'}</td>
+                        {required.map((d) => {
+                          const s = byType.get(d);
+                          if (!s) return <td key={d} className="text-[13px] text-ink3">—</td>;
+                          return (
+                            // The reason is on the cell itself: a recruiter hovering a blank "verified"
+                            // column should read why there is nothing there, not guess at a failure.
+                            <td key={d} className={`text-[13px] ${STATE_TONE[s.state]}`} data-doc-type={d} data-doc-state={s.state} title={s.why}>
+                              {stateWord(s)}
+                              {s.state === 'expired' && s.expiresOn && <div className="text-[11px] text-ink3">{day(s.expiresOn)}</div>}
+                              {s.state === 'verified' && s.expiresOn && <div className="text-[11px] text-ink3">to {day(s.expiresOn)}</div>}
+                              {s.state === 'received' && !s.verifiable && <div className="text-[11px] text-ink3">no register</div>}
+                            </td>
+                          );
+                        })}
                         <td className="text-[13px]">
-                          {missing.length === 0
-                            ? <span className="text-ok">all on file</span>
-                            : <span className="text-warn">{missing.map((d) => DOC_LABEL[d] ?? d).join(', ')}</span>}
+                          {cell.ready
+                            ? <span className="text-ok">ready</span>
+                            : <span className="text-ink2" title={cell.blockers.join('; ')}>{cell.blockers.length} to clear</span>}
                         </td>
                         <td className="text-right">
                           <button className="btn text-[12px]" disabled={!!busy} onClick={() => call({ action: 'remove', campaign_id: c.id, candidate_id: p.id }, `rm-${p.id}`)}>Remove</button>
@@ -155,6 +215,7 @@ export function CampaignsClient({ campaigns, candidates, companies, held, senior
                   })}
                 </tbody>
               </table>
+              </div>
             )}
 
             <div className="px-4 py-2.5 border-t border-line2">

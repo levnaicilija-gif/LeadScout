@@ -116,6 +116,13 @@ else
   # It drops a real CV to prove the refusal, so one classification call per gate run is spent on purpose; the
   # probe's workspace is marked is_test, so that spend is logged and not counted against the daily cap.
   step certificate npx tsx --env-file=.env.local scripts/certificate-probe.ts "$BASE"
+  # Item 8: the campaign table shows the state each required document is actually in, and counts who
+  # could go. Every state is SEEDED, because none exists in the real data - candidates, campaigns and
+  # sends are all empty and the documents on file are attached to nobody, so a probe reading
+  # production here would assert nothing and pass. Six people, one per state, including the two a
+  # careless implementation gets wrong: an expired certificate beside a valid one, and an expiry that
+  # was never normalised into a real date.
+  step campaign-probe npx tsx --env-file=.env.local scripts/campaign-docs-probe.ts "$BASE"
   # Item 18: the industry entitlement is enforced by the server — by the session, the routes and 0032's trigger —
   # tried with throwaway accounts. Exit 2 means 0032 is not applied: nothing to enforce yet, reported, not passed.
   echo "=== industry-follow" | tee -a "$LOG"
