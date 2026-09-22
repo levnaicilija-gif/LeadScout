@@ -215,9 +215,25 @@ export async function runJobBoardsBatch(req: Request) {
         found.push({ role, employer: x.employer ?? '(not named)', poster: x.poster ?? '(not named)', agency: posterIsAgency, where: x.location ?? country, duplicate: !!duplicateOf });
       }
 
-      await db.from('sources').update({ last_crawled_at: new Date().toISOString() }).eq('id', src.id);
     } catch (e: any) {
       problems.push(`${src.url}: ${String(e?.message ?? e).slice(0, 100)}`);
+    } finally {
+      // STAMPED WHATEVER HAPPENED, and `finally` because `continue` above must not skip it.
+      //
+      // The stamp used to sit at the end of the try, so a board whose index could not be fetched was
+      // never marked read — and the batch picks the least recently crawled first, nullsFirst. On
+      // 2026-09-22 that made the unit a permanent no-op within hours of going live:
+      // oiljobfinder.com's index failed to open through the browser, the `continue` skipped the
+      // stamp, it stayed first in the queue, and it was picked again on the very next tick. SIXTY
+      // batches in one day, every one of them the same dead board, read=0 kept=0, while the eight
+      // boards behind it were never touched and no posting ever arrived via='board'.
+      //
+      // A board that cannot be fetched should cost one attempt a day, not every attempt for ever.
+      // The problem is still reported, so a board failing every day is visible in the tick's own
+      // notes rather than silently skipped — this changes when it is retried, not whether the
+      // failure is recorded.
+      const { error: stampError } = await db.from('sources').update({ last_crawled_at: new Date().toISOString() }).eq('id', src.id);
+      if (stampError) problems.push(`${src.url}: could not be marked as read (${stampError.message}) — it will be picked again next tick`);
     }
   }
 

@@ -64,6 +64,11 @@ step tender-gate npx tsx scripts/tender-gate-check.ts
 # news and stored 92 of their pages as articles, while the board pipeline itself was scheduled by
 # nothing at all. Source-reading only: no database, no network, no model call.
 step source-routing npx tsx scripts/source-routing-check.ts
+# A board that cannot be read costs ONE attempt a day, not every attempt for ever. The stamp used to
+# sit at the end of the try, so an unreadable index hit continue, was never marked read, stayed first
+# in the nullsFirst queue and was picked again next tick: sixty batches in one day, all the same dead
+# board, while the eight behind it were never touched. Source-reading only, no database.
+step board-rotation npx tsx scripts/board-rotation-check.ts
 # A printed expiry becomes the right date or no date at all, never a plausible wrong one.
 # verifications.valid_until is a Postgres date and the lookup route used to hand it the string copied
 # off the document, so Postgres parsed it MDY: a European certificate printed 03.09.2028 was stored as
