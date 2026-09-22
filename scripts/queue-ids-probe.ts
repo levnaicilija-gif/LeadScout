@@ -161,6 +161,13 @@ async function signIn(p: Page, a: { email: string; password: string }) {
         await page.goto(`${BASE}${path}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
         await hydrated(page);
         const item = page.locator('[data-queue-item]').first();
+        // `count()` does NOT auto-wait — the trap CLAUDE.md already records — so without this the
+        // check reads a card that is still being fetched and reports "plain text" for a link that
+        // is about to appear. It cost the 2026-09-22 gate exactly that way, at 390px on Home only,
+        // while the same check passed at 1500px and the step passed clean on an isolated re-run.
+        // The wait is swallowed deliberately: on a real absence the assertion below is the one that
+        // must fail, with its own wording, rather than a timeout landing on an unrelated line.
+        await item.waitFor({ state: 'attached', timeout: 30000 }).catch(() => {});
         const there = await item.count() > 0;
         check(there, `${screen}: the queue item is a link, not plain text`);
         if (there) {
