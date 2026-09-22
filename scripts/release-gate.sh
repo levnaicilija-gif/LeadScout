@@ -95,6 +95,11 @@ step cert-availability npx tsx scripts/cert-availability-check.ts
 # A filter that quietly keeps everything does not fail loudly, it spends the budget on the first CV
 # of the morning, so the checks are about what is DROPPED. Pure, no database, no model call.
 step job-shortlist npx tsx scripts/job-shortlist-check.ts
+# Item 25: scoring the shortlist concurrently, inside the cap. The comparison and the job text are
+# both INJECTED, so what this asserts - what is skipped, what order answers come back in, that a
+# blocked job never outranks one the candidate can take, that the budget is asked before EVERY call
+# rather than once - costs nothing, where the real thing is EUR 0.01535 a job. Pure, no database.
+step job-matches npx tsx scripts/job-matches-check.ts
 step scorecard-rls npx tsx --env-file=.env.local scripts/scorecard-rls-probe.ts
 step screening-rls npx tsx --env-file=.env.local scripts/screening-rls-probe.ts
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts
