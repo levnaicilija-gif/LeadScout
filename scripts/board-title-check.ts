@@ -32,6 +32,19 @@ check(cleanTitle('Vacature windturbine monteur in Zeeland') === 'Vacature windtu
 check(cleanTitle('Lead Welder 3G/4G') === 'Lead Welder 3G/4G', 'a title with codes in it is still a title');
 check(cleanTitle('Read more') === null, 'a button is still not a title');
 
+// Navigation with a verb in front of it. "Browse job offers" was a real stored role on the real
+// board and reached the job shortlist; the rest are the phrasings the same link takes elsewhere.
+check(cleanTitle('Browse job offers') === null, 'and neither is "Browse job offers" — the row that started this');
+check(cleanTitle('Search jobs') === null, 'nor "Search jobs"');
+check(cleanTitle('See all vacancies') === null, 'nor "See all vacancies"');
+check(cleanTitle('Se alle stillinger') === null, 'nor the Norwegian one');
+check(cleanTitle('Bekijk alle vacatures') === null, 'nor the Dutch one (BUTTON already held the bare "Bekijk vacatures" — this is the phrasing only NAV catches)');
+check(cleanTitle('View open positions') === null, 'nor "View open positions"');
+// The rule has to be narrow, or it eats real titles: the noun must be the generic word for work.
+check(cleanTitle('Find welders') === 'Find welders', 'a title asking for a TRADE survives the same verb');
+check(cleanTitle('Search engineer') === 'Search engineer', 'and so does a role whose name begins with one');
+check(cleanTitle('Browse Industries Technician') === 'Browse Industries Technician', 'a verb followed by anything but the generic noun is still a title');
+
 // Name guesses say what they are
 const guess = detectEmployerType('EnBW Offshore Wind Norway');
 check(guess.employerType === 'epc_contractor' && /offshore/.test(guess.reason), 'a name with "offshore" in it is guessed a contractor — and the reason says it came from the name', guess);

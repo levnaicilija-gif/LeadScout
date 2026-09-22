@@ -12,6 +12,19 @@ import * as cheerio from 'cheerio';
  */
 const BUTTON = /^(bekijk( deze)?( vacature| vacatures)?|lees meer|meer( info(rmatie)?)?|solliciteer( direct| nu)?|read more|more( info| details)?|view( job| vacancy| details)?|see( job| more| details)?|apply( now| here)?|details|se stilling(en)?|les mer|søk( på stillingen)?| ?ansøg( nu)?|læs mere|mer info|ansök|hae|lisätiedot|weiterlesen|mehr erfahren|jetzt bewerben|postuler|en savoir plus|vacature|vacatures|vacancy|vacancies|job|jobs|stilling|stillinger|trade role|open position|position)$/i;
 
+/**
+ * The same instruction with a verb in front of it — "Browse job offers", "Se alle stillinger".
+ *
+ * BUTTON is anchored, which is right, but it only holds the bare phrase: "jobs" is refused and
+ * "Browse job offers" was not, so it was stored as a role and sat on Hiring now as a vacancy. It
+ * reached the job shortlist on 2026-09-22 and would have been suggested to a candidate as a match,
+ * which is what this exists to stop. The noun list is BUTTON's own; only the verb is new.
+ *
+ * Deliberately narrow: the noun has to be the generic word for work, so "Find welders" and
+ * "Search engineer" are titles and stay. Measured against all 55 open postings — it matched one.
+ */
+const NAV = /^(browse|search|find|see|view|explore|all|alle|se|bekijk|zoek|voir|ver)\s+(alle\s+|all\s+|ledige\s+|our\s+|current\s+|open\s+|available\s+)?(job offers?|jobs?|vacature|vacatures|vacancy|vacancies|positions?|openings?|opportunities|stilling|stillinger|stillingar|ledige stillinger|offres?( d'emploi)?|empleos?)$/i;
+
 /** A reference, not a role: a few letters and a number — "REQ-20931", "JR 104522", "ID1924855". */
 const REFERENCE = /^[A-Za-z]{1,5}[\s#:._-]*\d{3,}$/;
 
@@ -24,9 +37,9 @@ const SUFFIX = /\s*[-–—|]\s*(careers?|jobs?|vacatures?|werken bij|stillinger
 export function cleanTitle(raw?: string | null): string | null {
   const t = (raw ?? '').replace(/\s+/g, ' ').trim();
   if (!t) return null;
-  if (BUTTON.test(t)) return null;
+  if (BUTTON.test(t) || NAV.test(t)) return null;
   const stripped = t.replace(PREFIX, '').replace(SUFFIX, '').trim();
-  if (!stripped || BUTTON.test(stripped)) return null;
+  if (!stripped || BUTTON.test(stripped) || NAV.test(stripped)) return null;
   // A title has to say something. One long word is fine — "Serviceelektriker" is a real title.
   if (stripped.length < 4) return null;
   // A number is a reference, not a role: DOF's advert was stored as "1924855", the job id at the end of its address.

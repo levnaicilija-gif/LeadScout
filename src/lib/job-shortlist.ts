@@ -1,4 +1,5 @@
 import { RFBT_TRADE_LIST, inferTrades, type Trade } from '@/lib/trades';
+import { cleanTitle } from '@/lib/job-title';
 import { CERT_TABLE } from '@/lib/certs/tables';
 import { checkRightToWork, type Rtw } from '@/lib/right-to-work';
 import { isEuropean } from '@/lib/geo';
@@ -107,8 +108,11 @@ export function jobTrades(j: ShortlistJob): Trade[] {
 /**
  * Build the shortlist.
  *
- * Three gates, each already written down elsewhere, applied cheapest first:
+ * Four gates, each already written down elsewhere, applied cheapest first:
  *
+ *   0. IS IT A VACANCY — cleanTitle, the crawl's own rule, asked again at READ time. It runs at
+ *               crawl time already, but a row stored before it was tightened keeps whatever it was
+ *               given, and the rule is pure string work costing nothing to re-ask.
  *   1. TRADE  — the job and the candidate must share one. This is the filter that actually narrows:
  *               a welder is not a plausible scaffolder, however good the CV.
  *   2. RIGHT TO WORK — checkRightToWork against the JOB's country, unchanged. A blocker here is a
@@ -120,6 +124,14 @@ export function jobTrades(j: ShortlistJob): Trade[] {
  * evidence against a job, and the shortlist errs towards paying for one more comparison rather than
  * hiding work from a recruiter. It says so in `why`, so an unreadable advert is visible rather than
  * quietly promoted.
+ *
+ * WITH ONE EXCEPTION, added 2026-09-22 after measuring the real board. That rule is right when the
+ * CANDIDATE's trade is known — it errs towards showing a recruiter one more advert. It is not right
+ * when neither side states a trade: there is then no evidence anywhere, and what survives is not a
+ * cautious keep but every unreadable row on the board. On the 55 open postings the three rows with
+ * no readable trade were "Browse job offers", "Bliv Lærling & Praktikant" and "AF Anlegg - Lærling
+ * 2027" — so a certificate-only candidate, which is exactly the record item 25 creates, would have
+ * been shown those three and nothing else. Nothing is a better suggestion than noise.
  */
 export function shortlistJobs(candidate: ShortlistCandidate, jobs: ShortlistJob[], limit = 12): ShortlistResult {
   const mine = candidateTrades(candidate);
@@ -127,6 +139,14 @@ export function shortlistJobs(candidate: ShortlistCandidate, jobs: ShortlistJob[
   const dropped: { id: string; why: string }[] = [];
 
   for (const job of jobs) {
+    // Gate 0. The advert has to be an advert. A stored role of "Browse job offers" is a link to a
+    // listing page, and it is the crawl's own cleanTitle that says so — asked here rather than
+    // trusted from storage, because these rows were written before the rule covered them.
+    const printed = [job.role, job.title].map((s) => String(s ?? '').trim()).find(Boolean) ?? '';
+    if (printed && !cleanTitle(printed)) {
+      dropped.push({ id: job.id, why: `"${printed}" is not a job title — navigation or a reference, not a vacancy` });
+      continue;
+    }
     if (job.country && !isEuropean(job.country)) {
       dropped.push({ id: job.id, why: `outside Europe (${job.country}) — scoring caps these at 25 anyway` });
       continue;
@@ -139,6 +159,12 @@ export function shortlistJobs(candidate: ShortlistCandidate, jobs: ShortlistJob[
 
     const wants = jobTrades(job);
     if (!wants.length) {
+      // Silence from the crawl is not evidence against a job — but only where there is something on
+      // the other side to have been silent about.
+      if (!mine.trades.length) {
+        dropped.push({ id: job.id, why: 'neither the advert nor the candidate states a trade — nothing on either side to match on' });
+        continue;
+      }
       keep.push({ job, trades: [], why: 'the advert states no trade this crawl can read — kept rather than hidden' });
       continue;
     }

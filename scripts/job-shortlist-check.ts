@@ -45,6 +45,10 @@ const BOARD: ShortlistJob[] = [
   { id: 'welder-us', trades: ['welder'], country: 'US', role: 'Welder', postedAt: '2026-09-21' },
   { id: 'welder-sg', trades: ['welder'], country: 'SG', role: 'Welder', postedAt: '2026-09-21' },
   { id: 'wind-dk', trades: ['wind technician'], country: 'DK', role: 'Wind turbine technician', postedAt: '2026-09-14' },
+  // Navigation, stored as a role — the real row off the real board on 2026-09-22. It is given the
+  // candidate's OWN trade and the newest date on the board, so it would come back first of all if
+  // the title gate did not run before the trade gate.
+  { id: 'nav-dk', trades: ['welder'], country: 'DK', role: 'Browse job offers', postedAt: '2026-09-22' },
 ];
 
 console.log('--- what the candidate can cover ---');
@@ -65,7 +69,7 @@ check(jobTrades({ id: 'x', trades: ['welder'], role: 'Scaffolder' }).join() === 
 console.log('\n--- the shortlist narrows, and says why it dropped each one ---');
 const r = shortlistJobs(welder, BOARD);
 const kept = r.keep.map((k) => k.job.id).sort();
-check(kept.length === 4, 'four of twelve survive — it is a filter, not a pass-through', `${kept.length}: ${kept.join(', ')}`);
+check(kept.length === 4, 'four of thirteen survive — it is a filter, not a pass-through', `${kept.length}: ${kept.join(', ')}`);
 check(JSON.stringify(kept) === JSON.stringify(['ndt-nl', 'unreadable-de', 'welder-dk', 'welder-no']),
   'and they are exactly the four expected', kept.join(', '));
 
@@ -78,7 +82,9 @@ check(/wants wind technician/.test(why('wind-dk')), 'and a wind technician job',
 check(/right to work/i.test(why('welder-uk')), 'a UK welding job is dropped on right to work, not trade', why('welder-uk'));
 check(/outside Europe/.test(why('welder-us')) && /outside Europe/.test(why('welder-sg')),
   'and work outside Europe is dropped before anything is spent on it', why('welder-us'));
-check(r.dropped.length === 8, 'every job that did not survive is accounted for', `${r.dropped.length} dropped, ${kept.length} kept, ${BOARD.length} in`);
+check(/not a job title/.test(why('nav-dk')), 'a navigation link is dropped for not being a vacancy — BEFORE the trade it claims is read', why('nav-dk'));
+check(!kept.includes('nav-dk'), 'so the newest row on the board, carrying the candidate\'s own trade, never reaches the model');
+check(r.dropped.length === 9, 'every job that did not survive is accounted for', `${r.dropped.length} dropped, ${kept.length} kept, ${BOARD.length} in`);
 
 console.log('\n--- an advert nobody can read is kept, not hidden ---');
 const unreadable = r.keep.find((k) => k.job.id === 'unreadable-de');
@@ -93,11 +99,19 @@ check(capped.dropped.filter((d) => /past the shortlist limit/.test(d.why)).lengt
   'and everything past it is reported, never silently cut', `${capped.dropped.length} dropped`);
 check(String(capped.keep[0].job.postedAt) > String(capped.keep[11].job.postedAt), 'the newest adverts are the ones kept');
 
-console.log('\n--- a candidate we know nothing about ---');
+console.log('\n--- a candidate we know nothing about gets NOTHING, not the residue ---');
+// The degenerate case behind this whole gate. "Kept rather than hidden" is a cautious rule when the
+// candidate's trade is known; with no trade on either side it stops being cautious and becomes the
+// only thing that survives — on the real board, three navigation and apprenticeship rows and
+// nothing else. That is the first thing a certificate-only candidate would have been shown.
 const blank = shortlistJobs({}, BOARD);
-check(blank.keep.length === 1 && blank.keep[0].job.id === 'unreadable-de',
-  'somebody with no trade and no certificates matches only the advert that states no trade', JSON.stringify(blank.keep.map((k) => k.job.id)));
-check(blank.keep.length < BOARD.length, 'and is emphatically not shortlisted for everything');
+check(blank.keep.length === 0,
+  'somebody with no trade and no certificates is shortlisted for nothing at all', JSON.stringify(blank.keep.map((k) => k.job.id)));
+check(/nothing on either side/.test(blank.dropped.find((d) => d.id === 'unreadable-de')?.why ?? ''),
+  'and the unreadable advert says why it was not kept for them', blank.dropped.find((d) => d.id === 'unreadable-de')?.why ?? '');
+check(blank.dropped.length === BOARD.length, 'every row is accounted for, none silently lost', `${blank.dropped.length} of ${BOARD.length}`);
+// The rule it does NOT weaken: the same advert still survives for somebody whose trade is known.
+check(r.keep.some((k) => k.job.id === 'unreadable-de'), 'the unreadable advert is still kept for a candidate who HAS a trade — the rule is narrowed, not removed');
 
 console.log(failures ? `\njob shortlist: ${failures} FAILED` : '\njob shortlist: all checks passed');
 process.exitCode = failures ? 1 : 0;
