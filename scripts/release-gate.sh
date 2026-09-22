@@ -89,6 +89,12 @@ step cert-renewal npx tsx scripts/cert-renewal-check.ts
 # computed and never stored, like lead age; and LAPSED is not NEVER HELD - somebody who never had a
 # CSWIP is missing it, not unavailable, and treating the two alike flags everybody. Pure, no database.
 step cert-availability npx tsx scripts/cert-availability-check.ts
+# Item 25: the cheap pre-filter that decides which jobs are worth paying to score a candidate
+# against. The comparison it feeds is claude-sonnet-5 at EUR 0.01535 and 12.8 s A JOB, measured -
+# EUR 3.75 to score one dropped CV against every open lead and posting, nearly twice the daily cap.
+# A filter that quietly keeps everything does not fail loudly, it spends the budget on the first CV
+# of the morning, so the checks are about what is DROPPED. Pure, no database, no model call.
+step job-shortlist npx tsx scripts/job-shortlist-check.ts
 step scorecard-rls npx tsx --env-file=.env.local scripts/scorecard-rls-probe.ts
 step screening-rls npx tsx --env-file=.env.local scripts/screening-rls-probe.ts
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts
