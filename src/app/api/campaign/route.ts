@@ -54,6 +54,34 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, added: allowed.length });
       }
 
+      /**
+       * Which deployment group somebody travels in — campaign_candidates.group_no.
+       *
+       * The column has existed since 0001 and nothing has ever written it. "Group numbers" is the one
+       * thing in item 8's wording that could have meant several things — a headcount per group, a
+       * count of groups — and the schema settles it: it is an int on the MEMBERSHIP, so it is the
+       * group a given person is in, not a property of the campaign. Read rather than interpreted.
+       *
+       * 1..99, or null to take somebody out of a group. Anything else is refused by name rather than
+       * coerced, because a silently-rounded group number puts a welder on the wrong flight.
+       */
+      case 'group': {
+        if (!b.campaign_id || !b.candidate_id) return NextResponse.json({ error: 'campaign_id and candidate_id are required' }, { status: 400 });
+        const raw = b.group_no;
+        const clear = raw === null || raw === '' || raw === undefined;
+        const n = clear ? null : Number(raw);
+        if (!clear && (!Number.isInteger(n) || (n as number) < 1 || (n as number) > 99)) {
+          return NextResponse.json({ error: 'a group is a whole number from 1 to 99, or empty for none' }, { status: 400 });
+        }
+        // Scoped through the campaign's workspace: campaign_candidates carries none of its own.
+        const { data: camp } = await db.from('campaigns').select('id').eq('id', b.campaign_id).eq('workspace_id', me.workspace_id).maybeSingle();
+        if (!camp) return NextResponse.json({ error: 'campaign not found in this workspace' }, { status: 404 });
+        const { error } = await db.from('campaign_candidates').update({ group_no: n })
+          .eq('campaign_id', b.campaign_id).eq('candidate_id', b.candidate_id);
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ ok: true, group_no: n });
+      }
+
       case 'remove': {
         const { error } = await db.from('campaign_candidates').delete()
           .eq('campaign_id', b.campaign_id).eq('candidate_id', b.candidate_id);

@@ -196,6 +196,55 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     const title = await page.locator(`[data-campaign-row="${cands.ready}"] [data-doc-type="passport"]`).first().getAttribute('title');
     check(!!title && /no register/i.test(title), 'and carries the full reason', String(title).slice(0, 80));
 
+    console.log('\n--- group numbers ---');
+    // group_no has existed on campaign_candidates since 0001 and nothing had ever written it. Two
+    // people go in group 1 — one the campaign cleared and one it did not — so a per-group count that
+    // simply repeats the campaign's total fails here rather than passing.
+    /**
+     * Type a group, leave the field, and WAIT FOR THE WRITE — not for the input to hold what was just
+     * typed into it. `fill` sets that value instantly, before any request is made, so waiting on it
+     * asserts nothing and the database read that follows runs too early: the first version of this
+     * reported all three group numbers null while the reloaded page showed the groups correctly.
+     * Waiting on the thing itself (CLAUDE.md: wait for the thing, never on a timer).
+     */
+    const setGroup = async (key: string, value: string) => {
+      const box = page.locator(`[data-group-for="${cands[key]}"]`).first();
+      await box.fill(value);
+      await box.blur();
+      const want = value === '' ? null : Number(value);
+      for (let i = 0; i < 40; i++) {
+        const { data } = await admin.from('campaign_candidates').select('group_no').eq('campaign_id', camp!.id).eq('candidate_id', cands[key]).maybeSingle();
+        if ((data as any)?.group_no === want) return;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      throw new Error(`the group number for ${key} was never written (wanted ${want})`);
+    };
+    await setGroup('ready', '1');
+    await setGroup('noPassport', '1');
+    await setGroup('twoCerts', '2');
+
+    const { data: memberships } = await admin.from('campaign_candidates').select('candidate_id, group_no').eq('campaign_id', camp!.id);
+    const groupOf = new Map((memberships ?? []).map((m: any) => [m.candidate_id, m.group_no]));
+    check(groupOf.get(cands.ready) === 1 && groupOf.get(cands.noPassport) === 1 && groupOf.get(cands.twoCerts) === 2,
+      'a group number is stored on the membership, not on the candidate',
+      `ready=${groupOf.get(cands.ready)}, noPassport=${groupOf.get(cands.noPassport)}, twoCerts=${groupOf.get(cands.twoCerts)}`);
+    check(groupOf.get(cands.printedOnly) == null, 'and somebody never grouped stays ungrouped', String(groupOf.get(cands.printedOnly)));
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await hydrated(page);
+    const g1 = flat(await page.locator('[data-group="1"]').first().innerText().catch(() => ''));
+    const g2 = flat(await page.locator('[data-group="2"]').first().innerText().catch(() => ''));
+    const gNone = flat(await page.locator('[data-group="none"]').first().innerText().catch(() => ''));
+    check(/Group 1: 1 of 2 ready/.test(g1), 'a group counts only its own people — one of the two in group 1 is short', g1);
+    check(/Group 2: 1 of 1 ready/.test(g2), 'and a whole group says so', g2);
+    check(/No group: \d+ of 3 ready/.test(gNone), 'the ungrouped are counted too, and named as ungrouped', gNone);
+
+    // Travel order: group 1, then 2, then the ungrouped last.
+    const order = await page.locator('[data-campaign-row]').evaluateAll((els) => els.map((e) => e.getAttribute('data-campaign-row')));
+    check(order[0] === cands.noPassport || order[0] === cands.ready, 'group 1 is at the top of the table', `first row is ${order[0] === cands.ready ? 'ready' : order[0] === cands.noPassport ? 'noPassport' : 'someone else'}`);
+    check(order[order.length - 1] !== cands.ready && groupOf.get(order[order.length - 1] as string) == null,
+      'and the ungrouped sort last, because an unplaced person is an open question');
+
     console.log('\n--- Send N packs ---');
     // The button offers exactly the people the campaign cleared, and nothing is emailed by it.
     const sendBtn = page.locator('[data-send-packs]').first();

@@ -25,7 +25,7 @@ type Campaign = {
   id: string; name: string; site: string | null; country: string | null;
   starts_on: string | null; ends_on: string | null; required_docs: string[] | null; status: string;
   companies: { name: string } | null;
-  campaign_candidates: { candidate_id: string; candidates: any }[];
+  campaign_candidates: { candidate_id: string; group_no: number | null; candidates: any }[];
 };
 
 const day = (s?: string | null) => (s ? new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : null);
@@ -162,11 +162,32 @@ export function CampaignsClient({ campaigns, candidates, companies, cells, ready
     <div className="grid gap-3">
       {campaigns.map((c) => {
         const required = c.required_docs ?? [];
-        const people = (c.campaign_candidates ?? []).map((cc) => cc.candidates).filter(Boolean);
+        // The membership row is kept, not discarded for the candidate inside it: group_no lives on the
+        // membership, because which group somebody travels in belongs to this campaign and not to them.
+        // Ordered by group so a mobilisation reads down the table in the order people actually leave;
+        // anybody not yet in a group sorts last rather than first, since an unplaced person is an open
+        // question and open questions belong at the bottom of a list you are working through.
+        const people = (c.campaign_candidates ?? [])
+          .filter((cc) => cc.candidates)
+          .map((cc) => ({ ...cc.candidates, group_no: cc.group_no ?? null }))
+          .sort((a: any, b: any) => (a.group_no ?? 1e9) - (b.group_no ?? 1e9) || String(a.reference_code).localeCompare(String(b.reference_code)));
         const startsIn = c.starts_on ? Math.ceil((Date.parse(c.starts_on) - Date.now()) / 86400000) : null;
         const cellFor = (pid: string): Cell => cells[`${c.id}:${pid}`] ?? { statuses: [], ready: false, blockers: ['not read'] };
         const short = people.filter((p: any) => !cellFor(p.id).ready);
         const readyCount = readyBy[c.id] ?? 0;
+        // One row per group that actually has somebody in it, in travel order, with the ungrouped last.
+        const groups = (() => {
+          const seen = new Map<number | null, { no: number | null; ready: number; total: number }>();
+          for (const p of people as any[]) {
+            const key = p.group_no ?? null;
+            const g = seen.get(key) ?? { no: key, ready: 0, total: 0 };
+            g.total++;
+            if (cellFor(p.id).ready) g.ready++;
+            seen.set(key, g);
+          }
+          const all = [...seen.values()].sort((a, b) => (a.no ?? 1e9) - (b.no ?? 1e9));
+          return all.length === 1 && all[0].no === null ? [] : all;
+        })();
 
         return (
           <div key={c.id} className="bg-panel border border-line rounded-card min-w-0">
@@ -197,6 +218,19 @@ export function CampaignsClient({ campaigns, candidates, companies, cells, ready
 
             <div className="px-4 py-2 text-[12px] text-ink3 border-b border-line2">
               Required: {required.map((d) => DOC_LABEL[d] ?? d).join(', ') || 'nothing set'}
+              {/* A campaign travels a group at a time, so the count that matters is per group: group 1
+                  being whole is what lets it leave, whatever the rest of the campaign still owes.
+                  Shown only once somebody has actually been grouped — a single "ungrouped: 6 of 6"
+                  line on every campaign would be noise dressed as information. */}
+              {groups.length > 0 && (
+                <div className="mt-1 flex gap-x-3 gap-y-1 flex-wrap" data-group-summary>
+                  {groups.map(({ no, ready, total }) => (
+                    <span key={String(no)} data-group={String(no ?? 'none')} className={ready === total ? 'text-ok' : 'text-ink2'}>
+                      {no === null ? 'No group' : `Group ${no}`}: {ready} of {total} ready
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* One column per required document, so this table grows with the campaign and no longer
@@ -209,7 +243,7 @@ export function CampaignsClient({ campaigns, candidates, companies, cells, ready
               <table className="tbl w-full">
                 <thead>
                   <tr>
-                    <th>Candidate</th><th>Trade</th><th>Free from</th>
+                    <th>Candidate</th><th>Group</th><th>Trade</th><th>Free from</th>
                     {required.map((d) => <th key={d}>{DOC_LABEL[d] ?? d}</th>)}
                     <th>Pack</th><th />
                   </tr>
@@ -221,6 +255,24 @@ export function CampaignsClient({ campaigns, candidates, companies, cells, ready
                     return (
                       <tr key={p.id} data-campaign-row={p.id} data-pack-ready={cell.ready ? 'true' : 'false'}>
                         <td><b className="font-medium">{p.reference_code}</b><div className="text-ink3 text-[12px]">{p.full_name}</div></td>
+                        <td>
+                          {/* Saved on blur, not on every keystroke: a recruiter typing "12" would
+                              otherwise put somebody in group 1 on the way to group 12. Empty takes
+                              them out of a group, which is a real answer and not a failed one. */}
+                          <input
+                            type="number" min={1} max={99}
+                            className="w-[56px] border border-line rounded px-1 py-0.5 text-[13px]"
+                            data-group-for={p.id}
+                            defaultValue={p.group_no ?? ''}
+                            disabled={busy === `group-${p.id}`}
+                            onBlur={(e) => {
+                              const v = e.target.value.trim();
+                              const now = v === '' ? null : Number(v);
+                              if (now === (p.group_no ?? null)) return;
+                              call({ action: 'group', campaign_id: c.id, candidate_id: p.id, group_no: now }, `group-${p.id}`);
+                            }}
+                          />
+                        </td>
                         <td className="text-[13px]">{p.trade ?? '—'}</td>
                         <td className="text-[13px]">{p.availability_from ? day(p.availability_from) : 'now'}</td>
                         {required.map((d) => {

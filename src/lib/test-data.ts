@@ -33,10 +33,33 @@ export async function markTest(db: SupabaseClient, table: TestTable, ids: string
   return !error;
 }
 
-/** Everything a probe made under one workspace, in one call. */
+/**
+ * Everything a probe made under one workspace, in one call.
+ *
+ * THE MARK ON THE WORKSPACE IS READ, AND A FAILURE TO SET IT THROWS (2026-09-22). It used to be
+ * `await db.from('workspaces').update(...)` with the result discarded, and the function returned true
+ * regardless — so a write that failed left the workspace unmarked, the probe ran on happily, and
+ * removeProbe then REFUSED to delete it at the end precisely because it was not marked. A silent
+ * failure at setup became a stranded workspace at teardown, and the next run inherited it: smoke left
+ * "Smoke Test Agency" behind at 08:35 UTC holding eight cost_log rows, and the gate four hours later
+ * failed on it. Exactly the same shape as the last_seen_at write that sat unread for four days.
+ *
+ * Throwing is right rather than harsh: a probe that cannot mark its workspace MUST NOT PROCEED,
+ * because everything it creates from that point on is unremovable by its own cleanup. Better to fail
+ * loudly in setup, where the message names the cause, than quietly in teardown, where it names a
+ * workspace id and leaves somebody to work out why.
+ *
+ * The per-table marks below are still best-effort on purpose: a table that cannot be stamped is a
+ * row that shows in a count somewhere, not an object nobody can delete.
+ */
 export async function markWorkspaceTest(db: SupabaseClient, workspaceId: string) {
   if (!(await haveFlag(db))) return false;
-  await db.from('workspaces').update({ is_test: true }).eq('id', workspaceId);
+  const { error } = await db.from('workspaces').update({ is_test: true }).eq('id', workspaceId);
+  if (error) throw new Error(`workspace ${workspaceId} could not be marked is_test (${error.code ?? '?'} ${error.message}) — refusing to seed into a workspace that cleanup would not be allowed to remove`);
+  // Read back: an update that matched no row answers without an error, and an unmarked workspace is
+  // exactly as unremovable as one whose update failed.
+  const { data: back } = await db.from('workspaces').select('is_test').eq('id', workspaceId).maybeSingle();
+  if (!back?.is_test) throw new Error(`workspace ${workspaceId} is still not marked is_test after the update — refusing to seed into it`);
   for (const t of ['companies', 'leads', 'candidates', 'documents', 'contacts', 'outreach'] as const) {
     await db.from(t).update({ is_test: true }).eq('workspace_id', workspaceId);
   }

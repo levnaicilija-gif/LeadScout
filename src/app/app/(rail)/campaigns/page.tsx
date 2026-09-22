@@ -28,7 +28,7 @@ export default async function Campaigns() {
 
   const [{ data: campaigns }, { data: candidates }, { data: companies }] = await Promise.all([
     sb.from('campaigns')
-      .select('id, name, site, country, starts_on, ends_on, required_docs, status, companies(name), campaign_candidates(candidate_id, candidates(id, reference_code, full_name, trade, availability_from))')
+      .select('id, name, site, country, starts_on, ends_on, required_docs, status, companies(name), campaign_candidates(candidate_id, group_no, candidates(id, reference_code, full_name, trade, availability_from))')
       .order('starts_on', { ascending: true, nullsFirst: false }),
     sb.from('candidates').select('id, reference_code, full_name, trade, availability_from').order('reference_code'),
     sb.from('companies').select('id, name').not('domain', 'is', null).order('name').limit(300),
