@@ -215,7 +215,12 @@ export const anonymize = (p: Profile) => {
     trade: p.trade, trades: p.trades, certificates: p.certificates_claimed,
     // employer dropped — and scrubbed out of the text the model wrote, which is the part that
     // actually reaches a client.
-    projects: p.projects.map(({ years, type, country, rotation, scope }: any) => ({
+    // `?? []` for the same reason the line above it has one: a profile with no projects is real.
+    // The certificate-only candidate item 25 creates has no CV behind it at all, so it has no
+    // projects, and this line threw "Cannot read properties of undefined (reading 'map')" as a bare
+    // 500 — the anonymiser is reached by Verify, enrich and every scoring path, so the crash landed
+    // nowhere near the thing that caused it.
+    projects: (p.projects ?? []).map(({ years, type, country, rotation, scope }: any) => ({
       years, country, rotation,
       type: scrubEmployers(type, employers),
       scope: scrubEmployers(scope, employers),

@@ -47,7 +47,29 @@ function callText(s: string, at: number): string {
 
 (async () => {
   console.log('Static: where the model is called');
-  const toolRoutes = files.filter(({ f, s }) => f.startsWith('src/app/api/') && /from '@\/lib\/ai\/documents'/.test(s) && /\b(extractDocument|parseCv|transcribeCv|buildBullets|clientSummary|scoreAgainstJob|scoreWithRightToWork|piiModelReview|jdFromLead|screeningQuestions|candidateScreening|draftOutreachChecked|draftOutreach|checkDraft|checkBullets|clientBullets)\(/.test(s));
+  const TOOL_FN = /\b(extractDocument|parseCv|transcribeCv|buildBullets|clientSummary|scoreAgainstJob|scoreWithRightToWork|piiModelReview|jdFromLead|screeningQuestions|candidateScreening|draftOutreachChecked|draftOutreach|checkDraft|checkBullets|clientBullets)\(/;
+  // A route can reach the model ONE HOP AWAY — /api/candidate/suggest calls scoreAgainstJob through
+  // job-matches.ts and imports documents.ts nowhere. Matching only on a direct import would have let
+  // that route go unmetered while this check still passed, which is the "a rule that cannot see the
+  // thing it governs" failure recorded in CLAUDE.md. So the libs that call the model are resolved
+  // first, and a route importing one of them is judged exactly like a route calling it itself.
+  // A lib is judged on the NAME it imports, not on how it calls it: job-matches.ts takes the
+  // comparison as an injectable default (`opts.score ?? scoreAgainstJob`), so the name is never
+  // followed by "(" and a call-shaped regex finds nothing.
+  const TOOL_NAME = /\b(extractDocument|parseCv|transcribeCv|buildBullets|clientSummary|scoreAgainstJob|scoreWithRightToWork|piiModelReview|jdFromLead|screeningQuestions|candidateScreening|draftOutreachChecked|draftOutreach|checkDraft|checkBullets|clientBullets)\b/;
+  // Read the IMPORT CLAUSE, not the file: job-suggest.ts only imports anonymize, and matched on a
+  // sentence in its own comment explaining what scoreAgainstJob asks for. Over-including is the safe
+  // direction here — it can only demand that more routes are metered — but a rule that fires on prose
+  // is not a rule, and the next person would not be able to tell which files it really covers.
+  const importedFrom = (s: string) => (s.match(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*'@\/lib\/ai\/documents'/g) ?? []).join(' ');
+  const modelLibs = files
+    .filter(({ f, s }) => f.startsWith('src/lib/') && TOOL_NAME.test(importedFrom(s)))
+    .map(({ f }) => f.replace('src/lib/', '@/lib/').replace(/\.ts$/, ''));
+  const reachesModel = (s: string) =>
+    (/from '@\/lib\/ai\/documents'/.test(s) && TOOL_FN.test(s)) ||
+    modelLibs.some((lib) => s.includes(`from '${lib}'`));
+  const toolRoutes = files.filter(({ f, s }) => f.startsWith('src/app/api/') && reachesModel(s));
+  check(modelLibs.length > 0, `the libs that reach the model were resolved (${modelLibs.length}: ${modelLibs.join(', ')})`);
   for (const { f, s } of toolRoutes) check(/return meterRecruiter\(me, \(\) => handle\(req, me\)\)/.test(s), `${f} runs the recruiter tools inside meterRecruiter`);
   check(toolRoutes.length >= 7, `the recruiter routes were found (${toolRoutes.length}: ${toolRoutes.map((r) => r.f.replace('src/app/api/', '').replace('/route.ts', '')).join(', ')})`);
 

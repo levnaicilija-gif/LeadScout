@@ -100,6 +100,11 @@ step job-shortlist npx tsx scripts/job-shortlist-check.ts
 # blocked job never outranks one the candidate can take, that the budget is asked before EVERY call
 # rather than once - costs nothing, where the real thing is EUR 0.01535 a job. Pure, no database.
 step job-matches npx tsx scripts/job-matches-check.ts
+# Item 25: which text a posting is scored AGAINST - the one place a suggestion can invent a
+# requirement. 0 of 55 open postings carry a stored description, so every one is re-read from its
+# source_url, and a re-read lands on the board's LISTING page as readily as on the advert. The
+# fixture makes a resolver that trusts any page that loads FAIL. Pure, no network, no model.
+step job-suggest npx tsx scripts/job-suggest-check.ts
 step scorecard-rls npx tsx --env-file=.env.local scripts/scorecard-rls-probe.ts
 step screening-rls npx tsx --env-file=.env.local scripts/screening-rls-probe.ts
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts
@@ -142,6 +147,11 @@ else
   # It drops a real CV to prove the refusal, so one classification call per gate run is spent on purpose; the
   # probe's workspace is marked is_test, so that spend is logged and not counted against the daily cap.
   step certificate npx tsx --env-file=.env.local scripts/certificate-probe.ts "$BASE"
+  # Item 25 end to end through the real route, as a signed-in recruiter: eight postings seeded so that
+  # exactly two are plausible and the other six are each excluded for a different nameable reason, so a
+  # suggestion list that returns everything fails rather than passes. Two jobs reach the model, about
+  # EUR 0.03, logged as test spend.
+  step job-suggest-probe npx tsx --env-file=.env.local scripts/job-suggest-probe.ts "$BASE"
   # Item 8: the campaign table shows the state each required document is actually in, and counts who
   # could go. Every state is SEEDED, because none exists in the real data - candidates, campaigns and
   # sends are all empty and the documents on file are attached to nobody, so a probe reading

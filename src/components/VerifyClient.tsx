@@ -7,6 +7,7 @@ import { PreviewPdf } from './PreviewPdf';
 import { friendlyError } from '@/lib/friendly-error';
 import { AttachChoice } from './AttachChoice';
 import { WhyThisScore } from './WhyThisScore';
+import { JobSuggestions } from './JobSuggestions';
 
 /** Nothing may spin forever: every call is bounded and every failure is shown. */
 const STEP_TIMEOUT_MS = 90_000;
@@ -233,7 +234,9 @@ function FileCard({ f, candidate, senior, job, busy }: { f: any; candidate?: any
   if (f.kind === 'cv') {
     return (
       <div className="px-[18px] py-3.5 grid grid-cols-[1fr_auto] gap-4 border-b border-line2 last:border-b-0">
-        <div>
+        {/* min-w-0: a grid item defaults to min-width:auto, so a long advert URL inside would push
+            the whole card sideways rather than wrap — the trap already recorded for Today's cards. */}
+        <div className="min-w-0">
           <div className="text-[15px] font-semibold flex items-center gap-2">
             <span className={`w-2.5 h-2.5 rounded-full ${dot(f.piiHits?.length ? 'bad' : f.step >= 4 ? "ok" : "none")}`} />
             CV — {f.trade ?? f.profile?.trade ?? 'trade not stated'} · {f.piiHits?.length ? 'blocked by the PII check' : f.step >= 4 ? "anonymized" : "reading"} · {f.reference}
@@ -284,6 +287,10 @@ function FileCard({ f, candidate, senior, job, busy }: { f: any; candidate?: any
               )}
             </div>
           )}
+
+          {/* Item 25: the jobs this person fits, offered without being asked. Only once the CV has
+              actually become a candidate — there is nothing to match a file we could not read. */}
+          {candidate?.id && f.profile && !f.why && <JobSuggestions candidateId={candidate.id} reference={f.reference} />}
 
           <div className="flex gap-2 mt-3 flex-wrap">
             <DownloadPdf candidateId={candidate?.id} kind="client" label="Download client PDF" disabled={!f.piiPassed} />
