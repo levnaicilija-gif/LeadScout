@@ -124,6 +124,23 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     await doc(cands.printedOnly, 'passport');
     await doc(cands.printedOnly, 'certificate', { certState: 'verified_register', validUntil: null, printed: '03.09.2028' });
 
+    // send-pack refuses anybody without a client version that passed the PII check, whatever the
+    // campaign says — the older guardrail, and the right one.
+    //
+    // `unchecked` gets one TOO, and is the reason this fixture is shaped as it is. Give client
+    // versions only to the three the campaign clears and the "nobody uncleared is in the pack" check
+    // passes whatever the button does, because send-pack blocks the other three on the PII rule
+    // regardless — a check passing on somebody else's guard. Proved by mutation: with `unchecked`
+    // holding a client version, a button that offers everyone packs four and the check fails; without
+    // it, the same broken button packs three and the check passes.
+    for (const key of ['ready', 'twoCerts', 'printedOnly', 'unchecked'] as const) {
+      const { error } = await admin.from('anonymized_cvs').insert({
+        candidate_id: cands[key], storage_path: `probe/${stamp}/${key}-client.pdf`,
+        public_slug: `probe-${stamp}-${key}`, pii_check_passed: true,
+      });
+      if (error) throw new Error(`seeding a client version for ${key} failed: ${error.message}`);
+    }
+
     const { data: camp, error: cErr } = await admin.from('campaigns').insert({
       workspace_id: who.workspace, name: `Probe campaign ${stamp}`, starts_on: day(30),
       required_docs: ['passport', 'certificate'], status: 'active',
@@ -178,6 +195,37 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     check(/no register/i.test(passportCell), 'the passport cell names the absence of a register', passportCell.slice(0, 60));
     const title = await page.locator(`[data-campaign-row="${cands.ready}"] [data-doc-type="passport"]`).first().getAttribute('title');
     check(!!title && /no register/i.test(title), 'and carries the full reason', String(title).slice(0, 80));
+
+    console.log('\n--- Send N packs ---');
+    // The button offers exactly the people the campaign cleared, and nothing is emailed by it.
+    const sendBtn = page.locator('[data-send-packs]').first();
+    const offered = await sendBtn.getAttribute('data-send-packs').catch(() => null);
+    check(offered === '3', 'the button offers exactly the three ready people', `offers ${offered}`);
+    const btnText = flat(await sendBtn.innerText().catch(() => ''));
+    check(/Send 3 packs/.test(btnText), 'and says so in words', btnText);
+
+    const sendsBefore = (await admin.from('sends').select('id', { count: 'exact', head: true }).in('candidate_id', Object.values(cands))).count ?? 0;
+    // twoCerts holds an EXPIRED certificate beside its valid one. The campaign cleared them — their
+    // required documents are in order — but send-pack warns on every certificate on file, so the
+    // recruiter is asked before the CV goes. Accepting it here is the point: the warning must be
+    // raised, and it must name the expired one.
+    let asked = '';
+    page.on('dialog', async (d) => { asked = d.message(); await d.accept(); });
+    await sendBtn.click();
+    await page.waitForSelector('[data-packed]', { timeout: 30000 }).catch(() => {});
+    const banner = flat(await page.locator('[data-packed]').first().innerText().catch(() => ''));
+    check(/3 packs prepared/.test(banner), 'three packs are prepared', banner.slice(0, 90));
+    check(/nothing has been emailed/i.test(banner), 'and the screen says nothing was emailed', banner.slice(0, 120));
+    check(/expired/i.test(asked), 'the recruiter was asked about the expired certificate the campaign did not require', flat(asked).slice(0, 110));
+
+    const { data: sends } = await admin.from('sends').select('candidate_id, sent_at, sent_by').in('candidate_id', Object.values(cands));
+    check((sends ?? []).length === sendsBefore + 3, 'three sends rows were written', `${(sends ?? []).length} row(s)`);
+    // Prepared, not sent: sent_at null is what cv-sent-entry reads to tell the two apart.
+    check((sends ?? []).every((s: any) => s.sent_at === null), 'every one is PREPARED, not sent — sent_at is null');
+    check((sends ?? []).every((s: any) => !!s.sent_by), 'and records who prepared it');
+    const sentFor = new Set((sends ?? []).map((s: any) => s.candidate_id));
+    check(!sentFor.has(cands.noPassport) && !sentFor.has(cands.unchecked) && !sentFor.has(cands.expired),
+      'nobody the campaign had not cleared is in the pack', `${sentFor.size} candidate(s) packed`);
 
     check(await page.evaluate(() => document.querySelectorAll('a a').length) === 0, 'no anchor sits inside another anchor');
     check(await sideways(page) <= 0, 'nothing scrolls sideways at 1500px');

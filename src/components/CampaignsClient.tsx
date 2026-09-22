@@ -58,6 +58,7 @@ export function CampaignsClient({ campaigns, candidates, companies, cells, ready
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<any>({ name: '', company_id: '', site: '', starts_on: '', required_docs: ['passport', 'medical', 'certificate', 'a1'] });
   const [adding, setAdding] = useState<string | null>(null);
+  const [packed, setPacked] = useState('');
 
   const call = async (body: any, what: string) => {
     setBusy(what); setErr('');
@@ -77,6 +78,39 @@ export function CampaignsClient({ campaigns, candidates, companies, cells, ready
     } finally { clearTimeout(timer); setBusy(''); }
   };
 
+  /**
+   * Prepare a pack for the people this campaign has cleared.
+   *
+   * send-pack answers 409 with needsAcknowledgement when a candidate carries a certificate that is
+   * unverified, expired or pending — ANY certificate, not only the ones this campaign requires — and
+   * the recruiter has to say they have seen the list before it goes. That acknowledgement is recorded
+   * with the pack. It is asked here rather than suppressed, even though the campaign already called
+   * these people ready: ready means their required documents are in order, not that nothing else on
+   * their file is worth knowing before their CV reaches a client.
+   */
+  const sendPacks = async (c: Campaign, candidateIds: string[], acknowledged = false) => {
+    if (!candidateIds.length) return;
+    setBusy(`pack-${c.id}`); setErr('');
+    try {
+      const res = await fetch('/api/leads/send-pack', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ campaign_id: c.id, candidate_ids: candidateIds, acknowledge_warnings: acknowledged }),
+      });
+      const j = await res.json().catch(() => null);
+      if (res.status === 409 && j?.needsAcknowledgement) {
+        const ok = window.confirm(`Before these go out:\n\n${(j.warnings ?? []).join('\n')}\n\nPrepare ${(j.included ?? []).length} pack(s) anyway?`);
+        if (ok) await sendPacks(c, candidateIds, true);
+        return;
+      }
+      if (!res.ok || !j?.ok) { setErr(j?.error ?? `That did not work (HTTP ${res.status}).`); return; }
+      setErr('');
+      setPacked(`${(j.attached ?? []).length} pack${(j.attached ?? []).length === 1 ? '' : 's'} prepared${j.target?.client ? ` for ${j.target.client}` : ''} — nothing has been emailed. Send them from the lead's outreach.`);
+      r.refresh();
+    } catch {
+      setErr('Could not reach the server.');
+    } finally { setBusy(''); }
+  };
+
   const create = async () => {
     if (!form.name.trim()) { setErr('A campaign needs a name.'); return; }
     const j = await call({ action: 'create', ...form, company_id: form.company_id || null }, 'create');
@@ -85,6 +119,7 @@ export function CampaignsClient({ campaigns, candidates, companies, cells, ready
 
   return (<>
     {err && <div className="text-bad text-[13px] mb-2">{err}</div>}
+    {packed && <div className="text-ok text-[13px] mb-2" data-packed>{packed}</div>}
 
     {senior && (creating ? (
       <div className="bg-panel border border-line rounded-card p-4 mb-4">
@@ -233,7 +268,24 @@ export function CampaignsClient({ campaigns, candidates, companies, cells, ready
                   }}>Add</button>
                   <button className="btn text-[12px]" onClick={() => setAdding(null)}>Done</button>
                 </div>
-              ) : <button className="btn text-[12px]" onClick={() => setAdding(c.id)}>Add a candidate</button>}
+              ) : (
+                <div className="flex gap-2 items-center flex-wrap">
+                  <button className="btn text-[12px]" onClick={() => setAdding(c.id)}>Add a candidate</button>
+                  {/* Only the people this campaign's own requirements have cleared. It prepares the
+                      packs and records who prepared them; nothing is emailed here, or anywhere but
+                      /api/outreach, by a recruiter, to an address attached to a contact. */}
+                  {readyCount > 0 && (
+                    <button
+                      className="btn btn-primary text-[12px]"
+                      data-send-packs={readyCount}
+                      disabled={busy === `pack-${c.id}`}
+                      onClick={() => sendPacks(c, people.filter((p: any) => cellFor(p.id).ready).map((p: any) => p.id))}
+                    >
+                      {busy === `pack-${c.id}` ? 'Preparing…' : `Send ${readyCount} pack${readyCount === 1 ? '' : 's'}${c.companies?.name ? ` to ${c.companies.name}` : ''}`}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         );
