@@ -74,6 +74,11 @@ step printed-date npx tsx scripts/printed-date-check.ts
 # passport has nothing to check against and received is its ceiling. Making a passport verifiable
 # would block every campaign that requires one, for ever — which is the mutation this was proved by.
 step campaign-docs npx tsx scripts/campaign-docs-check.ts
+# Item 8: 60 / 30 / 7 against verifications.valid_until - the only normalised date a certificate has -
+# and a renewal message that is really drafted. Today carried an expiring-certificate item whose
+# sub-line read Renewal message drafted while nothing drafted one: the word renewal appeared nowhere
+# else in src. Pure, no database.
+step cert-renewal npx tsx scripts/cert-renewal-check.ts
 step scorecard-rls npx tsx --env-file=.env.local scripts/scorecard-rls-probe.ts
 step screening-rls npx tsx --env-file=.env.local scripts/screening-rls-probe.ts
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts
@@ -123,6 +128,12 @@ else
   # careless implementation gets wrong: an expired certificate beside a valid one, and an expiry that
   # was never normalised into a real date.
   step campaign-probe npx tsx --env-file=.env.local scripts/campaign-docs-probe.ts "$BASE"
+  # Item 8: certificates raised at 60, 30 and 7 days and once gone, each with the renewal message
+  # actually written out. Five distances are seeded because the real data has none - the candidates
+  # table is empty - plus one whose expiry exists only as printed text, which must raise NOTHING.
+  # That last one is protected twice over: the query cannot match a NULL valid_until, and thresholdFor
+  # refuses text it cannot read. It takes breaking BOTH to make the probe fail, which it does.
+  step cert-expiry npx tsx --env-file=.env.local scripts/cert-expiry-probe.ts "$BASE"
   # Item 18: the industry entitlement is enforced by the server — by the session, the routes and 0032's trigger —
   # tried with throwaway accounts. Exit 2 means 0032 is not applied: nothing to enforce yet, reported, not passed.
   echo "=== industry-follow" | tee -a "$LOG"

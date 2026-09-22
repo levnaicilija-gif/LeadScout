@@ -131,14 +131,33 @@ export default async function Today({ searchParams }: { searchParams: { view?: s
   // todayItems happens to set one today, but `any` meant a future branch could forget and nothing would say
   // so until a queue row rendered with no destination. The type says it instead of the reader remembering.
   const Item = ({ it, n, live: isLive }: { it: TodayItem; n: string; live?: boolean }) => (
-    <Link href={it.href} data-queue-item className="flex gap-3 border-b border-white/10 py-2.5 last:border-0 transition hover:bg-white/[.04]">
-      <span className={`mt-0.5 grid h-5 w-5 flex-shrink-0 place-items-center rounded-full text-[10.5px] font-bold ${isLive ? 'bg-accent text-white' : 'bg-white/10 text-[#C7D2E0]'}`}>{n}</span>
-      <span className="min-w-0">
-        <b className="block text-[13px] font-semibold">{it.title}</b>
-        <span className={`text-[10.5px] font-semibold ${isLive ? 'text-[#6FCBEF]' : 'text-accentsoft'}`}>{it.when ? new Date(it.when).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : whenLabel(it, 1)}</span>
-        <span className="mt-0.5 block text-[11.5px] leading-normal text-[#AEBBCC]">{it.sub}</span>
-      </span>
-    </Link>
+    // A DIV holding the Link, with the draft as its SIBLING rather than its child. The draft has to
+    // be selectable and cannot sit inside an anchor — and an anchor inside an anchor is what took
+    // this card down at 390px (React #418). The border moves to the wrapper so a row with a draft
+    // still reads as one row.
+    <div className="border-b border-white/10 last:border-0" data-today-row>
+      <Link href={it.href} data-queue-item className="flex gap-3 py-2.5 transition hover:bg-white/[.04]">
+        <span className={`mt-0.5 grid h-5 w-5 flex-shrink-0 place-items-center rounded-full text-[10.5px] font-bold ${isLive ? 'bg-accent text-white' : 'bg-white/10 text-[#C7D2E0]'}`}>{n}</span>
+        <span className="min-w-0">
+          <b className="block text-[13px] font-semibold">{it.title}</b>
+          <span className={`text-[10.5px] font-semibold ${isLive ? 'text-[#6FCBEF]' : 'text-accentsoft'}`}>{it.when ? new Date(it.when).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : whenLabel(it, 1)}</span>
+          <span className="mt-0.5 block text-[11.5px] leading-normal text-[#AEBBCC]">{it.sub}</span>
+        </span>
+      </Link>
+      {it.draft && (
+        // Shown, not sent. Nothing leaves this app except through /api/outreach, by a recruiter, to
+        // an address attached to a contact — and a candidate is not a contact, so this is text to
+        // copy. The sub-line above may only claim a draft exists because these are the words.
+        <details data-renewal-draft className="mb-2 ml-8 rounded border border-white/10 bg-white/[.03] px-2.5 py-1.5">
+          <summary className="cursor-pointer text-[11px] font-semibold text-[#AEBBCC]">Renewal message — copy and send it yourself</summary>
+          <div className="mt-1.5 text-[11.5px] leading-normal text-[#C7D2E0]">
+            <div className="font-semibold" data-draft-subject>{it.draft.subject}</div>
+            <pre className="mt-1 whitespace-pre-wrap font-sans" data-draft-body>{it.draft.body}</pre>
+            <div className="mt-1.5 text-[10.5px] text-[#8FA1B5]" data-draft-basis>Written from: {it.draft.basis}</div>
+          </div>
+        </details>
+      )}
+    </div>
   );
 
   const Tool = ({ href, tone, icon, badge, title, body, stats, action }: {

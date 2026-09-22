@@ -8,6 +8,7 @@ import { articlesByLead } from './lead-articles';
 import { compoundByCompany } from './compound-signals-load';
 import { boostedFit, boostedPressure, type Pressure } from './compound-signals';
 import { allRows } from './all-rows';
+import { thresholdFor, daysTo, renewalDraft } from './cert-renewal';
 
 /**
  * The day, in order. Six queries in a fixed priority — no model chooses any of this.
@@ -40,6 +41,14 @@ export type TodayItem = {
    * single morning.
    */
   when?: string | null;
+  /**
+   * A message the recruiter can send, written out in full — never sent by anything (2026-09-22).
+   *
+   * Only the expiring-certificate items carry one. It travels ON the item because the sub-line used
+   * to say "Renewal message drafted" while nothing drafted one: the word "renewal" appeared nowhere
+   * else in src/. A screen may say a draft exists only when it can show the words.
+   */
+  draft?: { subject: string; body: string; basis: string };
 };
 
 const day = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
@@ -58,7 +67,8 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
   const followedFirst = (industries: string[] | null | undefined) => (followed !== 'all' && (industries ?? []).some((i) => (followed as string[]).includes(i)) ? 0 : 1);
   // 0024 gives an award notice its own award date; before it, an award lead ages from the notice's publication.
   const awardCols = (await hasAwardDate(sb)) ? ', award_date, award_date_basis' : '';
-  const [pending, noReply, newLeads, expiring, missingDocs, hiring] = await Promise.all([
+  const now = new Date();
+  const [pending, noReply, newLeads, expiring, workspace, missingDocs, hiring] = await Promise.all([
     sb.from('verifications').select('id, issuer_email_sent_at, documents(candidate_id, extracted, candidates!candidate_id(reference_code))').eq('result', 'pending'),
     sb.from('outreach').select('id, sent_at, leads(project_name, companies(name))').eq('status', 'sent').is('reply_at', null).lte('sent_at', day(-3)),
     // Uncapped, and windowed on the recruiter's own last visit rather than a fixed 7 days (2026-09-21).
@@ -70,7 +80,13 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
       const q = sb.from('leads').select(`id, kind, company_id, country, project_name, fit_score, trades_inferred, source_url, created_at, companies(name)${industriesOn ? ', industries' : ''}`).eq('status', 'new');
       return (since ? q.gte('created_at', since.toISOString()) : q).order('id').range(from, to);
     }),
-    sb.from('verifications').select('id, valid_until, documents(cert_body, candidates!candidate_id(id, reference_code))').eq('result', 'valid').lte('valid_until', day(60).slice(0, 10)),
+    // full_name and the certificate number come along because the renewal draft greets a person and
+    // quotes their certificate; extracted is where intake put the number it read off the document.
+    sb.from('verifications').select('id, valid_until, documents(cert_body, extracted, candidates!candidate_id(id, reference_code, full_name))').eq('result', 'valid').lte('valid_until', day(60).slice(0, 10)),
+    // The agency signs the draft. RLS scopes this to the reader's own workspace, so there is no id to
+    // pass and no way to read somebody else's name; a failed read signs off with nothing rather than
+    // inventing an agency.
+    sb.from('workspaces').select('name').limit(1).maybeSingle(),
     campaignsMissingDocs(sb),
     hiringWorthCalling(sb, industriesOn, followedFirst),
   ]);
@@ -175,22 +191,50 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
     });
   }
 
-  // 5 · Certificates expiring within 60 days — and the ones that have already gone.
-  const today = new Date().toISOString().slice(0, 10);
+  // 5 · Certificates at 60, 30 and 7 days — and the ones that have already gone.
+  //
+  // The thresholds come from the queue item and are measured against verifications.valid_until, the
+  // only normalised date a certificate has: documents.extracted.expiry is the text as PRINTED
+  // ("18.06.2027", "17 Jan 2028"), and handing that to Postgres is what stored a European 03.09.2028
+  // as 9 March, six months early, until dab0828. A certificate with no valid_until raises nothing,
+  // because silence is better than an alert on a date nobody can stand behind.
+  //
+  // Only the TIGHTEST threshold a certificate is inside raises an item, so one expiring in five days
+  // is one 7-day alert rather than three stacked ones saying the same thing.
+  //
+  // The sub-line used to read "Renewal message drafted" and NOTHING DRAFTED ONE — the word "renewal"
+  // appeared nowhere else in src/. It does now (src/lib/cert-renewal.ts), and the draft travels on the
+  // item so the screen can show the words rather than promising them.
+  const agency = (workspace as any)?.data?.name ?? '';
   for (const v of expiring.data ?? []) {
     const doc: any = v.documents;
-    const gone = !!v.valid_until && v.valid_until < today;
-    const days = v.valid_until ? Math.round((Date.parse(v.valid_until) - Date.now()) / 86400000) : null;
+    const band = thresholdFor(v.valid_until, now);
+    if (band === null) continue;
+    const gone = band === 'expired';
+    const days = v.valid_until ? daysTo(v.valid_until, now) : null;
+    const ref = doc?.candidates?.reference_code ?? 'A candidate';
+    const body = doc?.cert_body?.toUpperCase() ?? 'certificate';
+    const draft = v.valid_until
+      ? renewalDraft({
+        candidateName: doc?.candidates?.full_name, reference: doc?.candidates?.reference_code,
+        certBody: doc?.cert_body, number: doc?.extracted?.number, validUntil: v.valid_until, agency, now,
+      })
+      : null;
     items.push({
-      dot: gone ? 'bad' : 'warn',
+      // 7 days and gone are both bad: a week is not enough time to renew most of these.
+      dot: gone || band === 7 ? 'bad' : 'warn',
+      when: null,
       title: gone
-        ? `${doc?.candidates?.reference_code ?? 'A candidate'} · ${doc?.cert_body?.toUpperCase() ?? 'certificate'} EXPIRED ${v.valid_until}`
-        : `${doc?.candidates?.reference_code ?? 'A candidate'} · ${doc?.cert_body?.toUpperCase() ?? 'certificate'} expires ${v.valid_until}${days !== null ? ` — ${days} day${days === 1 ? '' : 's'}` : ''}`,
-      sub: gone ? 'Cannot be sent to a client until it is renewed' : 'Renewal message drafted',
+        ? `${ref} · ${body} EXPIRED ${v.valid_until}`
+        : `${ref} · ${body} expires ${v.valid_until}${days !== null ? ` — ${days} day${days === 1 ? '' : 's'}` : ''}`,
+      sub: gone
+        ? 'Cannot be sent to a client until it is renewed · renewal message drafted below'
+        : `${band}-day notice · renewal message drafted below`,
       // Item 24: the candidate's own page, where the certificate, its expiry and a replacement drop zone are.
       href: doc?.candidates?.id ? `/app/candidates/${doc.candidates.id}` : `/app/candidates?ref=${doc?.candidates?.reference_code ?? ''}`,
       why: 'An expired certificate found on site means a sent-home worker, and a client who stops calling.',
-      from: 'verifications valid_until ≤ 60 days',
+      from: `verifications.valid_until — the issuer's own date, at ${gone ? 'expired' : `${band} days`}`,
+      draft: draft ? { subject: draft.subject, body: draft.body, basis: draft.basis } : undefined,
     });
   }
 
