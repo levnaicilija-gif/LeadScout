@@ -1003,3 +1003,32 @@ two confirmation boxes are worded so that removing the wrong person's certificat
 Step 9 reported and fixed: every CV was already kept, and Read CV and Download used the newest — but the profile the
 client version reads followed whichever CV was attached last, so an older CV attached later could replace a newer
 reading. The profile now follows the newest CV by upload date; older CVs stay as history, listed in the Files card.
+
+-------------------------------------------------------------------------------
+25. AUTO-SUGGEST MATCHING JOBS ON DOCUMENT DROP
+-------------------------------------------------------------------------------
+When a CV finishes verification on Documents/Verify, show the top 3-5 open leads and Hiring now jobs that person actually fits, without the recruiter asking. The CV's own content plus any VERIFIED certificates on that candidate are the signal — a confirmed CSWIP is worth more than a line in a CV claiming one. A certificate dropped on its own that matches an existing candidate re-runs that candidate's matches; one that matches nobody creates a new candidate marked "unconfirmed / certificate-only", which is a real record with a real document and no CV behind it yet, and must read as exactly that everywhere it appears. This does NOT apply to the standalone Certificate Check screen (/app/certificate), which exists to check a certificate and touch nobody — that screen's whole point is that it creates no candidate, and item 25 must not quietly give it one.
+
+MEASURED BEFORE ANY OF IT IS BUILT (2026-09-22), because the obvious implementation is unaffordable:
+
+  one candidate-vs-job comparison   EUR 0.01535   707 in + 1527 out tokens on claude-sonnet-5, 12.8 s
+  a shortlist of 12 jobs            EUR 0.18
+  every open posting (55)           EUR 0.84
+  every open lead + posting (244)   EUR 3.75      nearly TWICE the whole daily cap, for ONE dropped CV
+
+So the expensive comparison (scoreAgainstJob: fits, missing, blockers, reasons) runs on a SHORTLIST and never on the whole board. The shortlist is built by a cheap pre-filter of pure logic that already exists and costs nothing: the candidate's trade against the job's trades (leads.trades_inferred, job_posts.trades, inferTrades in trades.ts); the trades a certificate scheme implies (CERT_TABLE carries trades[] per entry — item 23's decode); geography and right to work (checkRightToWork is already a hard gate and already pure); and fitScore's own weighting for how a job is ranked before anybody has been scored against it. Target 10-15 jobs in, 3-5 shown out, about EUR 0.15-0.23 a drop.
+
+TWO THINGS THAT WILL BITE, both found while costing this:
+
+  Only 2 of 189 open won-work leads have a job_description, and scoring REQUIRES one — score_pool
+  answers "Create the job description first" without it. Writing one costs EUR 0.011 (jdFromLead),
+  so giving every open lead a JD is EUR 2.06, over the daily cap on its own. Decide deliberately
+  whether the suggestion list covers leads at all at first, or only Hiring now postings, which need
+  no JD. Do not quietly generate 187 job descriptions to make a feature work.
+
+  12.8 s per comparison means even a shortlist of 12 run sequentially is over two minutes, and every
+  recruiter component aborts at 60 s while its route allows 120 (the standing separate item). Run the
+  shortlist concurrently and show results as they land, or this feature meets that ceiling on its
+  first real use.
+
+Nothing is auto-attached, auto-sent or auto-confirmed: suggestions are shown, and a recruiter acts. Report cost per drop from cost_log rather than an estimate, and probe with a seeded CV whose trade and certificates make exactly one job a plausible match and the rest implausible, so a suggestion list that returns everything fails rather than passes. Commit after each step, two lines per step.
