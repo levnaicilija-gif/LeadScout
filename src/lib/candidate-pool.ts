@@ -3,6 +3,7 @@ import { fold, matches, parseQuery, type Node } from './candidate-search';
 import { candidateNumber } from './candidate-number';
 import { sendKind, sendSearchText, type SendKind } from './cv-sent-entry';
 import { STAGES, STAGE_LABEL, PREFERENCES, PREFERENCE_LABEL, type Stage, type Preference } from './candidate-stages';
+import { lapsedCerts } from './cert-availability';
 export { STAGES, STAGE_LABEL, PREFERENCES, PREFERENCE_LABEL, type Stage, type Preference } from './candidate-stages';
 
 /**
@@ -24,6 +25,15 @@ export type PoolRow = {
   country: string | null; nationality: string | null; stage: Stage; preference: Preference | null;
   availableFrom: string | null; ownerId: string | null; createdBy: string | null; createdAt: string; notes: string | null;
   certificates: PoolCertificate[];
+  /**
+   * One line per certificate body whose every copy has run out — "CSWIP expired 2026-08-15".
+   *
+   * Computed on read like lead age and compound signals, never stored: candidates.availability_from is
+   * a date meaning "free from", not a flag, and writing a lapsed certificate into it would assert
+   * something different and false and overwrite a real date. Deliberately NOT called "unavailable":
+   * that is only true of a role that asks for the certificate, and no role is in view on this list.
+   */
+  lapsed: string[];
   sentTo: { client: string; sentAt: string | null; kind: SendKind }[];
   placements: { client: string; placedOn: string; endedOn: string | null }[];
   haystack: string;
@@ -74,10 +84,12 @@ export async function loadPool(sb: SupabaseClient, crm: boolean): Promise<{ rows
   const raw = [...cands.data]
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)) || String(a.id).localeCompare(String(b.id)))
     .map((c) => ({ ...c, documents: docsOf.get(c.id) ?? [], sends: sendsOf.get(c.id) ?? [], candidate_placements: placementsOf.get(c.id) ?? [] }));
-  return { rows: raw.map(toRow), error: null, ms: Date.now() - t0 };
+  // `raw.map(toRow)` would hand toRow the array INDEX as its second argument, which is now the clock.
+  const now = new Date();
+  return { rows: raw.map((c) => toRow(c, now)), error: null, ms: Date.now() - t0 };
 }
 
-function toRow(c: any): PoolRow {
+function toRow(c: any, now = new Date()): PoolRow {
   const certificates: PoolCertificate[] = (c.documents ?? []).filter((d: any) => d.type === 'certificate').map((d: any) => {
     const v = [...(d.verifications ?? [])].sort((a: any, b: any) => String(b.checked_at ?? '').localeCompare(String(a.checked_at ?? '')))[0];
     return { body: d.cert_body ?? null, level: d.level ?? null, number: d.number ?? null, validUntil: v?.valid_until ?? null, state: v?.state ?? null };
@@ -87,6 +99,7 @@ function toRow(c: any): PoolRow {
   const stage: Stage = (STAGES as readonly string[]).includes(c.stage) ? c.stage : 'new';
   const preference: Preference | null = (PREFERENCES as readonly string[]).includes(c.employment_preference) ? c.employment_preference : null;
   const number = candidateNumber(c.reference_code);
+  const lapsed = lapsedCerts(certificates, now);
   const haystack = fold([
     number !== null ? `#${number}` : '', c.reference_code, c.full_name, c.trade, c.country, c.nationality,
     STAGE_LABEL[stage], preference ? PREFERENCE_LABEL[preference] : '', c.availability_from ? `available ${c.availability_from}` : '',
@@ -94,6 +107,9 @@ function toRow(c: any): PoolRow {
     // The designation as a recruiter writes it — "CSWIP 3.1", "FROSIO III" — and as the certificate words it ("level 3.1").
     // The first version wrote "cswip level 3.1 3.1", so the phrase "cswip 3.1" matched nobody (candidate-pool-scale, 2,500 candidates).
     ...certificates.map((x) => [x.body && x.level ? `${x.body} ${x.level}` : x.body, x.level ? `level ${x.level}` : '', x.number].filter(Boolean).join(' · ')),
+    // A lapsed certificate is searchable in the words a recruiter would use — "expired", "expired
+    // cswip" — because the reason to look for one is usually that a client has just asked.
+    ...lapsed.map((l) => `${l} expired certificate`),
     ...sentTo.map((s) => sendSearchText(s.client, s.sentAt)),
     ...placements.map((p) => `placed at ${p.client}${p.endedOn ? '' : ` currently placed at ${p.client}`}`),
   ].filter(Boolean).join(' | '));
@@ -101,7 +117,7 @@ function toRow(c: any): PoolRow {
     id: c.id, reference: c.reference_code ?? null, number, name: c.full_name ?? null, trade: c.trade ?? null,
     country: c.country ?? null, nationality: c.nationality ?? null, stage, preference,
     availableFrom: c.availability_from ?? null, ownerId: c.owner_id ?? null, createdBy: c.created_by ?? null, createdAt: c.created_at,
-    notes: c.internal_notes ?? null, certificates, sentTo, placements, haystack,
+    notes: c.internal_notes ?? null, certificates, lapsed, sentTo, placements, haystack,
   };
 }
 

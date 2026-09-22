@@ -79,6 +79,11 @@ step campaign-docs npx tsx scripts/campaign-docs-check.ts
 # sub-line read Renewal message drafted while nothing drafted one: the word renewal appeared nowhere
 # else in src. Pure, no database.
 step cert-renewal npx tsx scripts/cert-renewal-check.ts
+# Item 8: an expired certificate takes somebody off the roles that need it and off nothing else.
+# Per role, because availability_from is a date meaning free from and there is no per-role field;
+# computed and never stored, like lead age; and LAPSED is not NEVER HELD - somebody who never had a
+# CSWIP is missing it, not unavailable, and treating the two alike flags everybody. Pure, no database.
+step cert-availability npx tsx scripts/cert-availability-check.ts
 step scorecard-rls npx tsx --env-file=.env.local scripts/scorecard-rls-probe.ts
 step screening-rls npx tsx --env-file=.env.local scripts/screening-rls-probe.ts
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts

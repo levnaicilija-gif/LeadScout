@@ -42,6 +42,9 @@ export default async function Candidates({ searchParams }: { searchParams: Param
     const s = p.toString();
     return `/app/candidates${s ? `?${s}` : ''}`;
   };
+  // UTC, the same day boundary cert-availability and the expiry alerts use — so a certificate does not
+  // read expired here and in date there for an hour either side of midnight.
+  const todayIso = new Date().toISOString().slice(0, 10);
   const chip = (on: boolean) => `px-2.5 py-1 rounded-full border text-[12.5px] ${on ? 'bg-rail text-white border-rail' : 'bg-panel border-line text-ink2 hover:border-accent'}`;
 
   const current = (r: (typeof found.rows)[number]) => r.placements.find((p) => !p.endedOn)?.client ?? null;
@@ -108,7 +111,23 @@ export default async function Candidates({ searchParams }: { searchParams: Param
                 <td>{r.country ?? (r.nationality ? <span className="text-ink3">{r.nationality} (nationality)</span> : '—')}</td>
                 <td>{crm ? <CandidateTableStage candidate={{ id: r.id, name: r.name, stage: r.stage, placedAt: current(r) }} /> : <span className="text-ink3">—</span>}</td>
                 <td>{r.preference ? PREFERENCE_LABEL[r.preference] : '—'}</td>
-                <td>{r.certificates.length ? r.certificates.map((c, i) => <span key={i} className="st mr-2 text-[12.5px]">{c.body}{c.level ? ` ${c.level}` : ''}{c.validUntil ? ` · ${c.validUntil}` : ''}</span>) : <span className="text-ink3">none on file</span>}</td>
+                {/* A certificate past its issuer date is marked here, because the list is where a
+                    recruiter picks somebody for a call. It says "expired" and names the date, and
+                    NOT "unavailable": without a role in front of you, unavailable is a claim nobody
+                    can check — the same certificate that rules them out of welding to it rules them
+                    out of nothing else (src/lib/cert-availability.ts). */}
+                <td data-lapsed={r.lapsed.length || undefined}>
+                  {r.certificates.length
+                    ? r.certificates.map((c, i) => {
+                      const gone = !!c.validUntil && c.validUntil < todayIso;
+                      return (
+                        <span key={i} className={`st mr-2 text-[12.5px] ${gone ? 'text-bad' : ''}`} title={gone ? 'Expired — cannot be sent to a client until it is renewed' : undefined}>
+                          {c.body}{c.level ? ` ${c.level}` : ''}{c.validUntil ? ` · ${gone ? 'expired ' : ''}${c.validUntil}` : ''}
+                        </span>
+                      );
+                    })
+                    : <span className="text-ink3">none on file</span>}
+                </td>
                 <td>{r.sentTo.filter((s) => s.kind === 'sent').map((s) => s.client).join(', ') || '—'}</td>
                 <td>{current(r) ?? '—'}</td>
                 <td>{r.availableFrom ?? '—'}</td>
