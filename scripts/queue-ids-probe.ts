@@ -350,9 +350,21 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       console.log('\n--- a named company marked "not for us" ---');
       await page.goto(hiringUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await hydrated(page);
+      // Wait for the row count to settle before reading it — the fix sections 5 and 7 already have
+      // and this one never got, although it makes the identical bare `.count()` call. `hydrated()`
+      // resolves on a flag the PREVIOUS page set, so it says nothing about this render having
+      // painted, and `count()` does not auto-wait where `innerText` does. It read 0 rows on a page
+      // that had not drawn yet and failed the 2026-09-23 gate on a screen that was working, taking
+      // the banner check down with it as a cascade. The timeout is NOT swallowed: a wait that gives
+      // up says so on this check rather than letting the count report a timing loss as missing data.
+      const shown = await page.waitForFunction(
+        (n) => document.querySelectorAll('[data-row-href]').length === n,
+        NAMED_COMPANIES - 1, { timeout: 30000 },
+      ).then(() => true).catch(() => false);
       const left = await page.locator('[data-row-href]').count();
       const b = flat(await page.locator('[data-ids-filter]').first().innerText().catch(() => ''));
-      check(left === NAMED_COMPANIES - 1, 'a company marked "not for us" stays out even when the item names it', `${left} row(s)`);
+      check(left === NAMED_COMPANIES - 1, 'a company marked "not for us" stays out even when the item names it',
+        `${left} row(s)${shown ? '' : ' — and the wait for that count timed out, so this is a timing loss rather than a row that should not be there'}`);
       check(new RegExp(`Showing ${NAMED_COMPANIES - 1} compan`).test(b), 'and the banner counts what is actually on screen, not what the URL asked for', b.slice(0, 120));
       await admin.from('companies').update({ hiring_status: 'new' }).eq('id', namedCompanyIds[0]);
     }

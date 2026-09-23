@@ -55,13 +55,25 @@ const dot = (t: 'ok' | 'warn' | 'bad' | 'none') => (t === 'ok' ? 'bg-ok' : t ===
 
 export function VerifyClient({ senior }: { senior?: boolean }) {
   const [over, setOver] = useState(false);
+  /**
+   * `busy` is the WHOLE pipeline and stays that way: six probes read data-verify-busy="false" as
+   * "everything has finished", and clearing it early would have them assert against a half-drawn
+   * page. `reading` is the intake request alone — the only part during which accepting another file
+   * would genuinely conflict.
+   *
+   * They used to be the same thing, so the drop zone was disabled for the entire run: 116 s on a
+   * real drop measured 2026-09-23. A recruiter could not add a second CV for nearly two minutes
+   * while the first one's bullets and questions were still being written, which is most of what
+   * "it takes over a minute" actually felt like.
+   */
   const [busy, setBusy] = useState('');
+  const [reading, setReading] = useState(false);
   const [err, setErr] = useState('');
   const [job, setJob] = useState<JobChoice | null>(null);
   const [res, setRes] = useState<any>(null);
 
   const run = async (fileList: FileList | File[]) => {
-    setErr(''); setRes(null);
+    setErr(''); setRes(null); setReading(true);
     const files = Array.from(fileList);
     try {
       setBusy(`Reading ${files.length} file${files.length > 1 ? 's' : ''}…`);
@@ -98,34 +110,50 @@ export function VerifyClient({ senior }: { senior?: boolean }) {
         const cv = c.files.find((f: any) => f.kind === 'cv');
         if (!cv) continue;
 
-        setBusy(`Preparing the client version for ${c.reference_code}…`);
-        cv.step = 2; refresh();
-        try {
-          Object.assign(cv, await call('/api/anonymize/enrich', {
-            method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ candidate_id: c.id, job: job?.jd || undefined, job_country: job?.country || undefined }),
-          }, 150_000), { step: 4 });
-        } catch (e: any) { cv.enrichError = e.message; cv.failed = true; }
-        refresh();
+        // THE TWO RUN TOGETHER. Measured on a real drop (2026-09-23): the questions call was the
+        // LAST thing to finish, at +116.3 s, purely because this loop awaited enrich before starting
+        // it. It never needed to wait — /api/candidate/questions re-reads the candidate's profile
+        // from the database and anonymises it itself; it touches nothing enrich produces. Firing
+        // both at once takes ~21 s off every CV drop and changes no result.
+        setBusy(`Preparing ${c.reference_code}…`);
+        cv.step = 2; cv.questionsBusy = true; refresh();
 
-        // Questions last: they are useful on their own, so a failure here must not undo the
-        // client version that has already been produced.
-        setBusy(`Writing screening questions for ${c.reference_code}…`);
-        cv.questionsBusy = true; refresh();
-        try {
-          const q = await call('/api/candidate/questions', {
-            method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ candidate_id: c.id, job: job?.jd || undefined, job_country: job?.country || undefined }),
-          }, 120_000);
-          cv.questions = q.questions; cv.questionsBasedOn = q.basedOn;
-          if (q.score && !cv.score) cv.score = q.score;
-          cv.step = 5;
-        } catch (e: any) { cv.questionsError = e.message; }
-        cv.questionsBusy = false; refresh();
+        // The score is settled AFTER both land rather than inside whichever finishes first. Enrich's
+        // score wins where there is one — the old order guaranteed that by accident, and a race must
+        // not decide which number a recruiter sees.
+        let questionScore: any = null;
+
+        await Promise.all([
+          (async () => {
+            try {
+              Object.assign(cv, await call('/api/anonymize/enrich', {
+                method: 'POST', headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ candidate_id: c.id, job: job?.jd || undefined, job_country: job?.country || undefined }),
+              }, 150_000), { step: 4 });
+            } catch (e: any) { cv.enrichError = e.message; cv.failed = true; }
+            refresh();
+          })(),
+          (async () => {
+            // A failure here must not undo the client version, which is why it keeps its own catch.
+            try {
+              const q = await call('/api/candidate/questions', {
+                method: 'POST', headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ candidate_id: c.id, job: job?.jd || undefined, job_country: job?.country || undefined }),
+              }, 120_000);
+              cv.questions = q.questions; cv.questionsBasedOn = q.basedOn;
+              questionScore = q.score ?? null;
+            } catch (e: any) { cv.questionsError = e.message; }
+            cv.questionsBusy = false; refresh();
+          })(),
+        ]);
+
+        if (questionScore && !cv.score) cv.score = questionScore;
+        if (!cv.failed) cv.step = 5;
+        refresh();
       }
     } catch (e: any) {
       setErr(e?.message ?? String(e));
-    } finally { setBusy(''); }
+    } finally { setBusy(''); setReading(false); }
   };
 
   const clear = () => { setRes(null); setErr(''); setBusy(''); };
@@ -139,7 +167,7 @@ export function VerifyClient({ senior }: { senior?: boolean }) {
       <label
         onDragOver={(e) => { e.preventDefault(); setOver(true); }}
         onDragLeave={() => setOver(false)}
-        onDrop={(e) => { e.preventDefault(); setOver(false); if (!busy) run(e.dataTransfer.files); }}
+        onDrop={(e) => { e.preventDefault(); setOver(false); if (!reading) run(e.dataTransfer.files); }}
         className={`block border-2 border-dashed rounded-tile px-6 py-11 text-center cursor-pointer transition-colors ${over ? 'border-tool-verify bg-soft-verify' : 'border-[#C3CCD8] bg-gradient-to-b from-panel to-[#F6FBF8]'}`}
       >
         <span className="w-[58px] h-[58px] rounded-[16px] grid place-items-center bg-soft-verify text-tool-verify mx-auto mb-3">
@@ -147,7 +175,7 @@ export function VerifyClient({ senior }: { senior?: boolean }) {
         </span>
         <b className="block font-display text-[18px] font-bold">Drop any candidate documents here</b>
         <div className="text-ink3 text-[13px] mt-1">CVs, certificates, passport, contract, medical, A1, welding test report · PDF, DOCX or photo · any language · several at once</div>
-        <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.docx,.txt" className="hidden" disabled={!!busy} onChange={(e) => e.target.files && run(e.target.files)} />
+        <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.docx,.txt" className="hidden" disabled={reading} onChange={(e) => e.target.files && run(e.target.files)} />
         {/* data-verify-busy is what scripts wait on. Waiting on the words "Reading / Checking / Preparing / Writing"
             never finished once a certificate card said "Writing or approving procedures — that is level 3". */}
         <div data-verify-busy={busy ? 'true' : 'false'} className="text-tool-verify font-semibold text-[13px] mt-2.5">{busy || 'or click to choose'}</div>

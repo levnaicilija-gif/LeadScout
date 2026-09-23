@@ -65,10 +65,19 @@ async function handle(req: Request, me: SignedIn) {
       v.means = clientLine(e, v.valid_until);
     }
 
-    const { bullets, dropped: droppedBullets } = await buildBullets(anon, verified ?? [], job);
-    // Two lines a client reads before deciding whether to read the rest.
-    const summary = await clientSummary(anon, verified ?? []).then((r) => r.summary).catch(() => [] as string[]);
-    const score = job ? await scoreAgainstJob(anon, verified ?? [], job) : null;
+    // ALL THREE READ THE SAME TWO THINGS AND NONE READS ANOTHER'S OUTPUT, so they run together.
+    // Measured on a real drop (2026-09-23): bullets ran +34.8 s to +87.0 s and the summary did not
+    // start until +92.2 s, purely because it was awaited after. Only the PII review below genuinely
+    // depends on them, because it reviews the text they produce — so it stays where it is.
+    //
+    // Failure behaviour is deliberately unchanged: the summary keeps its own catch and degrades to
+    // no summary, while bullets and the score still fail the whole request, exactly as before.
+    const [{ bullets, dropped: droppedBullets }, summary, score] = await Promise.all([
+      buildBullets(anon, verified ?? [], job),
+      // Two lines a client reads before deciding whether to read the rest.
+      clientSummary(anon, verified ?? []).then((r) => r.summary).catch(() => [] as string[]),
+      job ? scoreAgainstJob(anon, verified ?? [], job) : Promise.resolve(null),
+    ]);
     if (score) await db.from('scores').insert({ candidate_id: candidateId, ...score });
 
     const pdfData = clientCvData(code, profile, anon, verified ?? [], bullets, summary, slug, ws?.name);
