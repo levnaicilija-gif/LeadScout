@@ -1,4 +1,4 @@
-import { documentPath } from '@/lib/storage-path';
+import { documentPath, newDocumentId } from '@/lib/storage-path';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { parseCv, anonymize, transcribeCv } from '@/lib/ai/documents';
@@ -78,11 +78,14 @@ async function handle(req: Request, me: SignedIn) {
         }).select().single();
         if (cErr) { failed.push({ file: f.name, why: `could not create the candidate: ${cErr.code} ${cErr.message}` }); continue; }
 
-        const path = documentPath({ workspaceId: me.workspace_id, type: 'cv', filename: f.name, contentType: f.type, candidateId: cand.id });
+        // The id is made here and used for both the object and the row: the path is unique per
+        // DOCUMENT, so two different files of the same name can never overwrite each other.
+        const docId = newDocumentId();
+        const path = documentPath({ workspaceId: me.workspace_id, type: 'cv', documentId: docId, filename: f.name, contentType: f.type, candidateId: cand.id });
         const up = await db.storage.from('documents').upload(path, bytes, { contentType: f.type || 'application/octet-stream', upsert: true });
         if (up.error) { failed.push({ file: f.name, why: `could not store the file: ${up.error.message}` }); continue; }
         await db.from('documents').insert({
-          workspace_id: me.workspace_id, candidate_id: cand.id, type: 'cv', storage_path: path,
+          id: docId, workspace_id: me.workspace_id, candidate_id: cand.id, type: 'cv', storage_path: path,
           extracted: { text: text.slice(0, 5000) }, uploaded_by: me.id,
         });
 

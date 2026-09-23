@@ -1,4 +1,4 @@
-import { documentPath } from '@/lib/storage-path';
+import { documentPath, newDocumentId } from '@/lib/storage-path';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { extractDocument, parseCv, anonymize, transcribeCv } from '@/lib/ai/documents';
@@ -351,7 +351,12 @@ function mismatchFor(target: any, holder: string | null | undefined, why: string
 }
 
 async function store(db: any, me: any, bytes: Buffer, f: File, type: string, candidateId: string | null, extracted: any) {
-  const path = documentPath({ workspaceId: me.workspace_id, type, filename: f.name, contentType: f.type, candidateId });
+  // The id is made HERE and used for both the object and the row, so the path is unique by
+  // construction and nothing has to be inserted before the upload. `upsert: true` is kept — it is
+  // now harmless, because no other document can ever resolve to this key — and it still makes a
+  // retry of this same call idempotent rather than a duplicate object.
+  const id = newDocumentId();
+  const path = documentPath({ workspaceId: me.workspace_id, type, documentId: id, filename: f.name, contentType: f.type, candidateId });
   const up = await db.storage.from('documents').upload(path, bytes, { contentType: f.type || 'application/octet-stream', upsert: true });
   if (up.error) throw new Error(`could not store the file: ${up.error.message}`);
   // 0044: the hash of the bytes, so "the same file again" is answerable at all. Guarded, because a
@@ -359,7 +364,7 @@ async function store(db: any, me: any, bytes: Buffer, f: File, type: string, can
   // which would take Verify's drop zone down rather than lose one duplicate check.
   const hashed = await hasColumn(db, 'documents', 'content_sha256');
   const { data, error } = await db.from('documents').insert({
-    workspace_id: me.workspace_id, candidate_id: candidateId, type, cert_body: extracted?.cert_body ?? null,
+    id, workspace_id: me.workspace_id, candidate_id: candidateId, type, cert_body: extracted?.cert_body ?? null,
     storage_path: path, extracted, uploaded_by: me.id,
     ...(hashed ? { content_sha256: contentHash(bytes) } : {}),
     status: extracted?.unreadable?.length ? 'needs_retake' : 'received',

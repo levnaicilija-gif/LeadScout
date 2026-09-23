@@ -1,4 +1,4 @@
-import { documentPath } from '@/lib/storage-path';
+import { documentPath, newDocumentId } from '@/lib/storage-path';
 import { NextResponse } from 'next/server';
 import { supabaseServer, supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { extractDocument } from '@/lib/ai/documents';
@@ -45,12 +45,15 @@ async function handle(req: Request, me: SignedIn) {
     const ext = await extractDocument(base64, mediaType);
 
     const db = supabaseAdmin();
-    const path = documentPath({ workspaceId: me.workspace_id, type: ext.doc_type, filename: file.name, contentType: file.type || mediaType, candidateId });
+    // The id is made here and used for both the object and the row: the path is unique per
+    // DOCUMENT, so two different files of the same name can never overwrite each other.
+    const docId = newDocumentId();
+    const path = documentPath({ workspaceId: me.workspace_id, type: ext.doc_type, documentId: docId, filename: file.name, contentType: file.type || mediaType, candidateId });
     const up = await db.storage.from('documents').upload(path, bytes, { contentType: file.type || mediaType, upsert: true });
     if (up.error) return NextResponse.json({ error: `could not store the file: ${up.error.message}` }, { status: 500 });
 
     const { data: doc, error: dErr } = await db.from('documents').insert({
-      workspace_id: me.workspace_id, candidate_id: candidateId, type: ext.doc_type, cert_body: ext.cert_body,
+      id: docId, workspace_id: me.workspace_id, candidate_id: candidateId, type: ext.doc_type, cert_body: ext.cert_body,
       storage_path: path, extracted: ext, uploaded_by: me.id,
       status: ext.unreadable.length ? 'needs_retake' : 'received',
     }).select().single();

@@ -110,6 +110,11 @@ step job-suggest npx tsx scripts/job-suggest-check.ts
 # read - a stored flag needs clearing by whoever later attaches the CV, and the one that is missed
 # leaves a full candidate reading "certificate-only" in front of a client.
 step certificate-only npx tsx scripts/certificate-only-check.ts
+# Two different files with the same name must never land on the same storage key. The leaf used to
+# be digest(FILE NAME), which identifies the name and not the file, so two uploads called "CV.pdf"
+# resolved to one key and upsert destroyed the first - it already happened to three real documents.
+# The fixture turns on two files that share a name and differ in nothing the old path could see.
+step storage-path npx tsx scripts/storage-path-check.ts
 step scorecard-rls npx tsx --env-file=.env.local scripts/scorecard-rls-probe.ts
 step screening-rls npx tsx --env-file=.env.local scripts/screening-rls-probe.ts
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts
@@ -171,6 +176,10 @@ else
   # the pool, and the screen must say why nothing was created. Either mechanism may catch it - the
   # content hash (0044) or item 24's name + date of birth rule - and the probe reports which did.
   step cv-duplicate npx tsx --env-file=.env.local scripts/cv-duplicate-probe.ts "$BASE"
+  # The same thing end to end: two UNATTACHED uploads with the same name and different bytes must both
+  # survive as distinct objects. Unattached is where it bit - no candidate id in the path, so the file
+  # name was the only thing separating them. Two document reads, about EUR 0.02, test spend.
+  step document-path npx tsx --env-file=.env.local scripts/document-path-probe.ts "$BASE"
   # Item 8: the campaign table shows the state each required document is actually in, and counts who
   # could go. Every state is SEEDED, because none exists in the real data - candidates, campaigns and
   # sends are all empty and the documents on file are attached to nobody, so a probe reading
