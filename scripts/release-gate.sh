@@ -113,6 +113,16 @@ step certificate-only npx tsx scripts/certificate-only-check.ts
 step scorecard-rls npx tsx --env-file=.env.local scripts/scorecard-rls-probe.ts
 step screening-rls npx tsx --env-file=.env.local scripts/screening-rls-probe.ts
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts
+# A newer CV updates a record without overwriting what a recruiter typed: the reading always follows
+# the newest CV, an empty field is filled from it, and a field somebody already filled is LEFT ALONE
+# with the disagreement reported. The middle tier is where the damage would be - a re-parsed CV
+# putting back a phone number corrected by hand is silent, plausible and permanent.
+step cv-merge npx tsx scripts/cv-merge-check.ts
+# THE BUG ITSELF: a failed read of the candidate pool must never look like an empty pool. Two
+# records for one person (RFBT-P-0625 and 0626, the same CV byte for byte) came from an unread
+# { error } - judgeDuplicate was asked a question about an empty pool and answered it perfectly.
+# A PARTIAL read is a refusal too: the page that failed is where the duplicate would have been.
+step pool-read npx tsx scripts/pool-read-check.ts
 step candidate-phone npx tsx scripts/candidate-phone-check.ts
 
 if [[ " ${FAILED[*]-} " == *" build "* ]]; then
@@ -157,6 +167,10 @@ else
   # suggestion list that returns everything fails rather than passes. Two jobs reach the model, about
   # EUR 0.03, logged as test spend.
   step job-suggest-probe npx tsx --env-file=.env.local scripts/job-suggest-probe.ts "$BASE"
+  # The real bug of 2026-09-22, as a standing check: one CV dropped twice must leave ONE person in
+  # the pool, and the screen must say why nothing was created. Either mechanism may catch it - the
+  # content hash (0044) or item 24's name + date of birth rule - and the probe reports which did.
+  step cv-duplicate npx tsx --env-file=.env.local scripts/cv-duplicate-probe.ts "$BASE"
   # Item 8: the campaign table shows the state each required document is actually in, and counts who
   # could go. Every state is SEEDED, because none exists in the real data - candidates, campaigns and
   # sends are all empty and the documents on file are attached to nobody, so a probe reading

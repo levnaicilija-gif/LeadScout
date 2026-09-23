@@ -5,6 +5,9 @@ import { hasAttachTrail, hasRightToWork, hasCandidateCrm } from '@/lib/schema-fe
 import { nextReferenceCode } from '@/lib/reference-code';
 import { isEea } from '@/lib/right-to-work';
 import { allRows } from '@/lib/all-rows';
+import { judgeDuplicate } from '@/lib/candidate-dedupe';
+import { mergeFromCv, mergeNote } from '@/lib/cv-merge';
+import { readPoolForMatching, POOL_UNREADABLE } from '@/lib/candidate-pool-read';
 export const maxDuration = 60;
 
 /**
@@ -94,6 +97,22 @@ export async function POST(req: Request) {
       // throw away everything the reading found.
       const cv = ext.profile && mine[0].type === 'cv' ? ext.profile : null;
       const tradeCode = cv?.trade_code ?? guess?.code ?? 'x';
+
+      // WHO THIS WAS OPENED DESPITE. The recruiter reached this button from a card that already told
+      // them somebody looks like a match — item 24's rule — and chose to open a record anyway, which
+      // is a legitimate choice (two real people do share a name). But the record must carry why it
+      // exists, the same way a document attached over a name mismatch says "attached anyway by X
+      // after being told the names differ". Judged HERE, server side, against the pool as it stands:
+      // the browser sends no verdict, so this cannot be spoofed or go stale between the card being
+      // drawn and the button being pressed.
+      const { known, error: poolError } = await readPoolForMatching(db, me.workspace_id);
+      if (poolError) return NextResponse.json({ error: POOL_UNREADABLE, detail: poolError }, { status: 503 });
+      const judged = judgeDuplicate(known, { full_name: holder, email: cv?.pii?.email, phone: cv?.pii?.phone, dob: cv?.pii?.dob });
+      // Only the `ask` verdict carries matches — `create` means nobody looked like this person, and a
+      // record opened then is an ordinary one with nothing to record.
+      const despite = judged.verdict === 'ask'
+        ? judged.matches.map((m) => ({ reference: m.candidate.reference_code, candidate_id: m.candidate.id, strength: m.strength, why: m.why }))
+        : [];
       // Read the call's error, as intake does: a failed call made a reference-less candidate on 2026-09-15.
       const code = await nextReferenceCode(db, tradeCode);
       const crm = await hasCandidateCrm(db);
@@ -108,7 +127,10 @@ export async function POST(req: Request) {
         languages: cv?.languages ?? null,
         created_via: 'verify',
         created_by: me.id,
-        profile: cv ?? { full_name: holder, opened_from: { document: mine[0].id, body: mine[0].cert_body ?? mine[0].type } },
+        profile: {
+          ...(cv ?? { full_name: holder, opened_from: { document: mine[0].id, body: mine[0].cert_body ?? mine[0].type } }),
+          ...(despite.length ? { opened_despite: { at: new Date().toISOString(), by: me.id, matches: despite } } : {}),
+        },
         ...(crm ? { owner_id: me.id } : {}),
       }).select().single();
       if (error) return NextResponse.json({ error: `could not open the record: ${error.message}` }, { status: 500 });
@@ -136,6 +158,8 @@ export async function POST(req: Request) {
     // and Download original do; an older CV attached later is kept as history and changes nothing (owner's decision,
     // 2026-09-15: older CVs stay as history). Until then whichever CV was attached last became the profile, so a CV held
     // back for a decision could replace a newer reading. Intake asks before attaching since item 24, so this is where it lands.
+    let merged: string | null = null;
+    let conflicts: { field: string; current: unknown; fromCv: unknown }[] = [];
     const cvDoc = !b.create
       ? mine.filter((d) => d.type === 'cv' && (d.extracted as any)?.profile).sort((x, y) => String(y.uploaded_at).localeCompare(String(x.uploaded_at)))[0]
       : undefined;
@@ -143,8 +167,15 @@ export async function POST(req: Request) {
       const { data: newer, error: newerError } = await db.from('documents').select('id').eq('candidate_id', candidateId).eq('type', 'cv').gt('uploaded_at', cvDoc.uploaded_at).limit(1);
       if (newerError) return NextResponse.json({ error: `their CVs could not be compared, so nothing was attached: ${newerError.message}` }, { status: 500 });
       if (!(newer ?? []).length) {
-        const p = (cvDoc.extracted as any).profile;
-        await db.from('candidates').update({ profile: p, ...(p.trade ? { trade: p.trade } : {}), ...(p.languages ? { languages: p.languages } : {}) }).eq('id', candidateId);
+        // The three-tier rule (cv-merge.ts), not a blanket overwrite: the reading always follows the
+        // newest CV, an empty field is filled from it, and a field the recruiter already filled is
+        // left alone with the disagreement reported. `isNewest` is already decided above — an older
+        // CV never reaches here — so the merge is asked for the newest case only.
+        const merge = mergeFromCv(cand, (cvDoc.extracted as any).profile, { isNewest: true });
+        const { error: mergeError } = await db.from('candidates').update(merge.patch).eq('id', candidateId);
+        if (mergeError) return NextResponse.json({ error: `the CV was attached but their record could not be updated: ${mergeError.message}` }, { status: 500 });
+        merged = mergeNote(merge);
+        conflicts = merge.conflicts;
       }
     }
 
@@ -188,6 +219,11 @@ export async function POST(req: Request) {
       created: !!created,
       reason,
       trailStored: trail,
+      // What the newer CV changed, and what it was NOT allowed to change. Returned so the card can
+      // say so: an update that silently leaves a disagreement is how a recruiter comes to trust a
+      // stale phone number.
+      merged,
+      conflicts,
     });
   } catch (e: any) {
     return NextResponse.json({ error: String(e?.message ?? e).slice(0, 300) }, { status: 500 });

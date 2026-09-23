@@ -8,10 +8,12 @@ import { fileToBase64 } from '@/lib/files';
 import { appearsIn } from '@/lib/ai/claude';
 import { isEea } from '@/lib/right-to-work';
 import { countriesFromText, norm } from '@/lib/geo';
-import { hasRightToWork, hasCandidateCrm } from '@/lib/schema-features';
+import { hasRightToWork, hasCandidateCrm, hasColumn } from '@/lib/schema-features';
+import { contentHash, sameFileInWorkspace, sameFileNote } from '@/lib/document-hash';
+import { mergeFromCv, mergeNote } from '@/lib/cv-merge';
 import { judgeDuplicate } from '@/lib/candidate-dedupe';
 import { matchName, autoMatch, normName, holderFits } from '@/lib/name-match';
-import { allRows } from '@/lib/all-rows';
+import { readPoolForMatching, POOL_UNREADABLE } from '@/lib/candidate-pool-read';
 export const maxDuration = 300;
 
 /**
@@ -61,8 +63,16 @@ async function handle(req: Request, me: SignedIn) {
 
     // Candidates already in the workspace, for matching a document to a person — by name, and for a CV by a second field
     // too (email, phone, date of birth; item 24).
-    const { data: existing } = await allRows((from, to) => db.from('candidates').select('id, reference_code, full_name, email, phone, profile, availability_from').eq('workspace_id', me.workspace_id).order('id').range(from, to));
-    const known: any[] = (existing ?? []).map((c: any) => ({ ...c, key: normName(c.full_name), dob: c.profile?.pii?.dob ?? null }));
+    //
+    // THE ERROR IS READ, and a failure refuses the whole request rather than continuing with an empty
+    // pool. Until 2026-09-23 this dropped `{ error }`, so a read that failed produced `known = []` —
+    // and an empty pool does not mean "nobody matches", it means "I could not look". judgeDuplicate
+    // then found nothing to compare against and the CV opened a SECOND RECORD for somebody already on
+    // file, silently. That is how RFBT-P-0625 and RFBT-P-0626 came to be the same person, the same CV
+    // byte for byte, 85 seconds apart. Nothing is stored here on a guess: a document the recruiter
+    // still has is recoverable, a duplicate person record is not.
+    const { known, error: poolError } = await readPoolForMatching(db, me.workspace_id);
+    if (poolError) return NextResponse.json({ error: POOL_UNREADABLE, detail: poolError }, { status: 503 });
     const touched = new Map<string, any>();
     const target = targetId ? known.find((c) => c.id === targetId) : null;
     if (targetId && !target) return NextResponse.json({ error: 'no such candidate in your workspace' }, { status: 404 });
@@ -120,7 +130,16 @@ async function handle(req: Request, me: SignedIn) {
               results.push(row);
               continue;
             }
-            await db.from('candidates').update({ profile, ...(profile.trade ? { trade: profile.trade } : {}), ...(profile.languages ? { languages: profile.languages } : {}) }).eq('id', target.id);
+            // Item 24's update path, under the three-tier rule (cv-merge.ts): the reading is always
+            // replaced, an empty field is filled from the CV, and a field the recruiter already
+            // filled is LEFT ALONE with the disagreement reported. This used to overwrite trade and
+            // languages outright whenever the CV stated them, so a trade somebody had refined by
+            // hand went back to whatever the parser said on the next upload.
+            const merge = mergeFromCv(target, profile);
+            const { error: mergeError } = await db.from('candidates').update(merge.patch).eq('id', target.id);
+            if (mergeError) { row.kind = 'unreadable'; row.why = `could not update the candidate: ${mergeError.message}`; results.push(row); continue; }
+            row.merged = mergeNote(merge);
+            row.conflicts = merge.conflicts;
             await store(db, me, bytes, f, 'cv', target.id, { text: cvText.slice(0, 5000), profile, holder: profile.full_name });
             row.candidateId = target.id; row.reference = target.reference_code; row.profile = anonymize(profile); row.trade = profile.trade;
             touched.set(target.id, target);
@@ -132,6 +151,29 @@ async function handle(req: Request, me: SignedIn) {
           // 2026-09-15 an exact name was enough and the CV silently rewrote that candidate's profile, so two welders
           // called Lars Nilsen would have become one. A likely or name-only match is stored and asked about — nothing is
           // created or changed until a recruiter chooses; no match, or a namesake whose details all differ, is a new record.
+          // 0044: THE SAME FILE, BYTE FOR BYTE. Checked before the name rule because it is the one
+          // signal with no judgement in it — not "these look alike" but "you already have this".
+          // RFBT-P-0625 and RFBT-P-0626 are the same 84,293 bytes, and nothing could see it: the
+          // digest in a storage path is of the FILE NAME, never of the content.
+          //
+          // It is NOT stored again. The bytes are already in this workspace, on somebody, so a second
+          // copy would add a duplicate document to answer a duplicate record — the clutter this item
+          // exists to stop, one level down. The message says who holds it, which is what a recruiter
+          // needs to act. An error from the lookup is surfaced, never read as "no duplicate".
+          const hash = contentHash(bytes);
+          const seen = await sameFileInWorkspace(db, me.workspace_id, hash);
+          if (seen.error) { row.kind = 'unreadable'; row.why = `could not check whether this file is already on file: ${seen.error}`; results.push(row); continue; }
+          const already = seen.supported ? sameFileNote(seen.matches) : null;
+          if (already) {
+            row.sameFile = already;
+            row.needsDecision = `${already} Nothing has been created or stored again — open that record if this CV belongs there, or drop it on the right person's page.`;
+            row.suggest = seen.matches.filter((m) => m.candidateId).slice(0, 4).map((m) => ({ candidateId: m.candidateId, reference: m.reference, name: m.name, kind: 'same_file', why: 'the same file, byte for byte' }));
+            row.profile = anonymize(profile);
+            row.trade = profile.trade;
+            results.push(row);
+            continue;
+          }
+
           const judged = judgeDuplicate(known, { full_name: profile.full_name, email: profile.pii.email, phone: profile.pii.phone, dob: profile.pii.dob });
           if (judged.verdict === 'ask') {
             const doc = await store(db, me, bytes, f, 'cv', null, { text: cvText.slice(0, 5000), profile, holder: profile.full_name });
@@ -312,9 +354,14 @@ async function store(db: any, me: any, bytes: Buffer, f: File, type: string, can
   const path = documentPath({ workspaceId: me.workspace_id, type, filename: f.name, contentType: f.type, candidateId });
   const up = await db.storage.from('documents').upload(path, bytes, { contentType: f.type || 'application/octet-stream', upsert: true });
   if (up.error) throw new Error(`could not store the file: ${up.error.message}`);
+  // 0044: the hash of the bytes, so "the same file again" is answerable at all. Guarded, because a
+  // deploy can land before its migration — a named column that is not there fails the WHOLE insert,
+  // which would take Verify's drop zone down rather than lose one duplicate check.
+  const hashed = await hasColumn(db, 'documents', 'content_sha256');
   const { data, error } = await db.from('documents').insert({
     workspace_id: me.workspace_id, candidate_id: candidateId, type, cert_body: extracted?.cert_body ?? null,
     storage_path: path, extracted, uploaded_by: me.id,
+    ...(hashed ? { content_sha256: contentHash(bytes) } : {}),
     status: extracted?.unreadable?.length ? 'needs_retake' : 'received',
   }).select().single();
   if (error) throw new Error(`could not save the document: ${error.message}`);

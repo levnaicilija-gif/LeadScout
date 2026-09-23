@@ -223,6 +223,21 @@ export function VerifyClient({ senior }: { senior?: boolean }) {
               <AttachChoice documentId={f.documentId} holder={f.extracted?.holder ?? f.profile?.full_name} suggest={f.suggest} />
             </div>
           )}
+          {/* 0044: the same file, byte for byte, as one already on somebody. Nothing was stored a
+              second time, so there is no document to attach and no AttachChoice — just who has it,
+              and a way to open that record. This is the case that made RFBT-P-0625 and 0626. */}
+          {!f.documentId && f.sameFile && (
+            <div className="px-[18px] pb-3.5" data-same-file>
+              <div className="text-[12px] text-warn mb-1.5">{f.needsDecision ?? f.sameFile}</div>
+              <div className="flex flex-wrap gap-2">
+                {(f.suggest ?? []).map((s: any) => (
+                  <a key={s.candidateId} className="btn text-[13px]" href={`/app/candidates/${s.candidateId}`}>
+                    Open {s.reference ?? 'the record'}{s.name ? ` · ${s.name}` : ''}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       ))}
     </>}
@@ -261,6 +276,22 @@ function FileCard({ f, candidate, senior, job, busy }: { f: any; candidate?: any
             ['Kept', 'trade, certificates with status, projects by type and country, rotations, languages, availability'],
             ['Certs in CV', `${f.crossCheck?.claimed ?? (f.profile?.certificates ?? []).length} claimed · ${f.crossCheck?.verified ?? 0} verified on file${(f.crossCheck?.verified ?? 0) === 0 ? ' — drop the certificates to check them' : ''}`],
           ]} />
+
+          {/* What this CV was and was NOT allowed to change on a record that already existed. An
+              update that silently leaves a disagreement is how a recruiter comes to trust a stale
+              phone number — so the fields it did not touch are named, with both values. */}
+          {f.merged && <div className="mt-2 text-[12px] text-ink3" data-cv-merged>Updated their record: {f.merged}</div>}
+          {f.conflicts?.length > 0 && (
+            <div className="mt-1.5 border border-dashed border-warn rounded-[8px] px-3 py-2 text-[12px]" data-cv-conflicts={f.conflicts.length}>
+              <b className="text-warn">This CV disagrees with what is on file — nothing was overwritten.</b>
+              {f.conflicts.map((c: any) => (
+                <div key={c.field} className="mt-1">
+                  <span className="text-ink3">{c.field}:</span> on file <b>{String(Array.isArray(c.current) ? c.current.join(', ') : c.current)}</b>
+                  {' · '}this CV says <b>{String(Array.isArray(c.fromCv) ? c.fromCv.join(', ') : c.fromCv)}</b>
+                </div>
+              ))}
+            </div>
+          )}
 
           {f.piiHits?.length > 0 && <div className="mt-2 text-[13px] text-bad">Blocked: {f.piiHits.join(', ')}</div>}
           {f.droppedBullets?.length > 0 && <div className="mt-2 text-[12px] text-warn">Dropped {f.droppedBullets.length} bullet(s) that could not be traced to the CV.</div>}

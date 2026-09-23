@@ -5,6 +5,8 @@ import { parseCv, anonymize, transcribeCv } from '@/lib/ai/documents';
 import { meterRecruiter } from '@/lib/ai/meter';
 import { nextReferenceCode } from '@/lib/reference-code';
 import { fileToBase64 } from '@/lib/files';
+import { judgeDuplicate } from '@/lib/candidate-dedupe';
+import { readPoolForMatching, POOL_UNREADABLE } from '@/lib/candidate-pool-read';
 export const maxDuration = 120;
 
 /**
@@ -34,6 +36,17 @@ async function handle(req: Request, me: SignedIn) {
     const results: any[] = [];
     const failed: { file: string; why: string }[] = [];
 
+    // THIS ROUTE CREATED A CANDIDATE FROM EVERY CV WITH NO DUPLICATE CHECK AT ALL (found 2026-09-23).
+    // Not a failed check — no check: it never read the pool, so there was nothing to fail. Verify's
+    // intake has had item 24's rule since 2026-09-15 and this path never got it, which is the more
+    // dangerous half of the same bug: intake could be fooled by a failed read, this one could not be
+    // fooled because it never looked. Nothing in src/ or scripts/ calls it any more — Verify's intake
+    // superseded it — but it is still a live endpoint any signed-in user can post to, so it is made
+    // safe here rather than left as a hole behind a route nobody reads. Retiring it outright is a
+    // separate decision, flagged rather than taken.
+    const { known, error: poolError } = await readPoolForMatching(db, me.workspace_id);
+    if (poolError) return NextResponse.json({ error: POOL_UNREADABLE, detail: poolError }, { status: 503 });
+
     for (const f of files) {
       try {
         const bytes = Buffer.from(await f.arrayBuffer());
@@ -44,6 +57,17 @@ async function handle(req: Request, me: SignedIn) {
         if (!text.trim()) { failed.push({ file: f.name, why: 'no readable text in the file' }); continue; }
 
         const profile = await parseCv(text);
+
+        // The same rule intake uses, from the same function — a name PLUS a second field, never the
+        // name alone. A likely or name-only match is not created here: this route has no screen to
+        // ask on, so the only honest answer is to refuse and name who it collided with.
+        const judged = judgeDuplicate(known, { full_name: profile.full_name, email: profile.pii.email, phone: profile.pii.phone, dob: profile.pii.dob });
+        if (judged.verdict === 'ask') {
+          const m = judged.matches[0];
+          failed.push({ file: f.name, why: `this looks like ${m.candidate.reference_code ?? 'somebody already on file'} — ${m.why}. Drop it on Verify, which can ask and attach it.` });
+          continue;
+        }
+
         const anon = anonymize(profile);
         const code = await nextReferenceCode(db, profile.trade_code);
 

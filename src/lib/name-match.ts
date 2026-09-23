@@ -12,7 +12,10 @@
  * "Attach?" is guessing along with us.
  */
 
-export type Person = { id: string; reference_code: string; full_name?: string | null };
+// `reference_code` is nullable in the database and callers pass rows straight from it, so the type
+// says so rather than forcing a `?? ''` at each call site that would hide a missing code. Nothing in
+// here reads it — it is carried through for whoever shows the match.
+export type Person = { id: string; reference_code: string | null; full_name?: string | null };
 /** `weak`: only the surname agrees — offered, but never enough to call a document this person's (holderFits). */
 export type Match<T extends Person = Person> = { candidate: T; kind: 'exact' | 'near'; why: string; weak?: true };
 
