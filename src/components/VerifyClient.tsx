@@ -198,6 +198,18 @@ export function VerifyClient({ senior }: { senior?: boolean }) {
             <span className="text-[12px] text-ink3">{c.files.some((f: any) => f.kind === 'cv') ? 'new candidate created from CV' : 'matched to existing candidate by name on document'} · {c.files.length} file{c.files.length === 1 ? '' : 's'}</span>
           </div>
           {c.files.map((f: any, i: number) => <FileCard key={i} f={f} candidate={c} senior={senior} job={job} busy={busy} />)}
+          {/* Item 25: the jobs this person fits, offered without being asked.
+              ONCE PER CANDIDATE, not once per file. A CV and two certificates dropped together are
+              three files on one person, and scoring them per card would run the shortlist three
+              times and pay for it three times — about EUR 0.36 for one drop, for the same answer.
+              A certificate that attached to somebody already on file lands here too, which IS the
+              "re-runs that candidate's matches" path: the new certificate may have widened what
+              they can be put forward for, and candidateTrades reads it the moment it is confirmed. */}
+          {c.id && c.files.some((f: any) => (f.kind === 'cv' && f.profile && !f.why) || (f.kind === 'certificate' && f.documentId)) && (
+            <div className="px-[18px] pb-3.5 pt-0">
+              <JobSuggestions candidateId={c.id} reference={c.reference_code} />
+            </div>
+          )}
         </div>
       ))}
 
@@ -287,10 +299,6 @@ function FileCard({ f, candidate, senior, job, busy }: { f: any; candidate?: any
               )}
             </div>
           )}
-
-          {/* Item 25: the jobs this person fits, offered without being asked. Only once the CV has
-              actually become a candidate — there is nothing to match a file we could not read. */}
-          {candidate?.id && f.profile && !f.why && <JobSuggestions candidateId={candidate.id} reference={f.reference} />}
 
           <div className="flex gap-2 mt-3 flex-wrap">
             <DownloadPdf candidateId={candidate?.id} kind="client" label="Download client PDF" disabled={!f.piiPassed} />

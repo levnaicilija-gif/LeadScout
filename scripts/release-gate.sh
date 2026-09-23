@@ -105,6 +105,11 @@ step job-matches npx tsx scripts/job-matches-check.ts
 # source_url, and a re-read lands on the board's LISTING page as readily as on the advert. The
 # fixture makes a resolver that trusts any page that loads FAIL. Pure, no network, no model.
 step job-suggest npx tsx scripts/job-suggest-check.ts
+# Item 25: a record standing on a certificate alone reads as exactly that, everywhere it appears.
+# The rule is the ABSENCE OF A CV rather than the presence of a certificate, and it is computed on
+# read - a stored flag needs clearing by whoever later attaches the CV, and the one that is missed
+# leaves a full candidate reading "certificate-only" in front of a client.
+step certificate-only npx tsx scripts/certificate-only-check.ts
 step scorecard-rls npx tsx --env-file=.env.local scripts/scorecard-rls-probe.ts
 step screening-rls npx tsx --env-file=.env.local scripts/screening-rls-probe.ts
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts

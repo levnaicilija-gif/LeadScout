@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { fold, matches, parseQuery, type Node } from './candidate-search';
 import { candidateNumber } from './candidate-number';
 import { sendKind, sendSearchText, type SendKind } from './cv-sent-entry';
+import { isCertificateOnly } from './certificate-only';
 import { STAGES, STAGE_LABEL, PREFERENCES, PREFERENCE_LABEL, type Stage, type Preference } from './candidate-stages';
 import { lapsedCerts } from './cert-availability';
 export { STAGES, STAGE_LABEL, PREFERENCES, PREFERENCE_LABEL, type Stage, type Preference } from './candidate-stages';
@@ -34,6 +35,8 @@ export type PoolRow = {
    * that is only true of a role that asks for the certificate, and no role is in view on this list.
    */
   lapsed: string[];
+  /** Item 25: opened from a certificate, no CV on file. Computed like , never stored. */
+  certificateOnly: boolean;
   sentTo: { client: string; sentAt: string | null; kind: SendKind }[];
   placements: { client: string; placedOn: string; endedOn: string | null }[];
   haystack: string;
@@ -110,6 +113,9 @@ function toRow(c: any, now = new Date()): PoolRow {
     // A lapsed certificate is searchable in the words a recruiter would use — "expired", "expired
     // cswip" — because the reason to look for one is usually that a client has just asked.
     ...lapsed.map((l) => `${l} expired certificate`),
+    // Item 25: findable in the words a recruiter would actually type when asked "who have we got
+    // that we have never actually seen a CV for".
+    isCertificateOnly(c.documents) ? 'unconfirmed certificate-only no cv' : '',
     ...sentTo.map((s) => sendSearchText(s.client, s.sentAt)),
     ...placements.map((p) => `placed at ${p.client}${p.endedOn ? '' : ` currently placed at ${p.client}`}`),
   ].filter(Boolean).join(' | '));
@@ -118,6 +124,7 @@ function toRow(c: any, now = new Date()): PoolRow {
     country: c.country ?? null, nationality: c.nationality ?? null, stage, preference,
     availableFrom: c.availability_from ?? null, ownerId: c.owner_id ?? null, createdBy: c.created_by ?? null, createdAt: c.created_at,
     notes: c.internal_notes ?? null, certificates, lapsed, sentTo, placements, haystack,
+    certificateOnly: isCertificateOnly(c.documents),
   };
 }
 

@@ -14,6 +14,7 @@ import { AnonymizeAction } from '@/components/AnonymizeAction';
 import { CandidateDocDrop } from '@/components/CandidateDocDrop';
 import { CertificateActions } from '@/components/CertificateActions';
 import { DeleteCandidate } from '@/components/DeleteCandidate';
+import { certificateOnlyBadge } from '@/lib/certificate-only';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -88,6 +89,15 @@ export default async function CandidatePage({ params }: { params: { id: string }
           <span data-candidate-number>{candidateLabel(c.reference_code)}</span> · {c.full_name ?? 'name not printed'}
         </h1>
         <div className="text-ink3 text-[12.5px] mt-0.5">{c.reference_code} · {c.trade ?? 'trade not stated'} · added {new Date(c.created_at).toLocaleDateString('en-GB')} via {c.created_via}{crm ? ` · owner ${nameOf(c.owner_id ?? c.created_by)}` : ''}</div>
+        {/* Item 25: a record opened from a certificate alone must read as exactly that — nobody has
+            seen this person's history, and the name is one click from a client. Computed from the
+            documents already loaded, so it clears itself the moment a CV is attached. */}
+        {certificateOnlyBadge(docs) && (
+          <div data-certificate-only className="mt-1.5 inline-block border border-dashed border-warn rounded-[8px] px-2.5 py-1.5 text-[12px]">
+            <b className="text-warn font-semibold">{certificateOnlyBadge(docs)!.label}</b>
+            <span className="text-ink3"> — {certificateOnlyBadge(docs)!.note}</span>
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-2 text-[13px]">
         <span className="text-ink3">Stage</span>

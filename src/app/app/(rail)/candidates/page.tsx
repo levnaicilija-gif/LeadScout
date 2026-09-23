@@ -6,6 +6,7 @@ import { loadPool, filterPool } from '@/lib/candidate-pool';
 import { STAGES, STAGE_LABEL, PREFERENCES, PREFERENCE_LABEL } from '@/lib/candidate-stages';
 import { describe } from '@/lib/candidate-search';
 import { candidateLabel } from '@/lib/candidate-number';
+import { CERTIFICATE_ONLY_LABEL } from '@/lib/certificate-only';
 import { CandidateBoard, type BoardCard } from '@/components/CandidateBoard';
 import { CandidateTableStage } from '@/components/CandidateTableStage';
 export const dynamic = 'force-dynamic';
@@ -106,7 +107,12 @@ export default async function Candidates({ searchParams }: { searchParams: Param
             {found.rows.map((r) => (
               <tr key={r.id} data-candidate-row={r.id}>
                 <td><div className="font-semibold whitespace-nowrap">{candidateLabel(r.reference)}</div><div className="text-ink3 text-[11px] whitespace-nowrap">{r.reference}</div></td>
-                <td><Link href={`/app/candidates/${r.id}`} className="text-ink hover:text-accent font-medium" data-candidate-link={r.id}>{r.name ?? 'name not printed'}</Link></td>
+                <td>
+                  <Link href={`/app/candidates/${r.id}`} className="text-ink hover:text-accent font-medium" data-candidate-link={r.id}>{r.name ?? 'name not printed'}</Link>
+                  {/* Item 25: a record opened from a certificate is a name with no CV behind it, and
+                      this list is where somebody picks a name to put forward. It says so here too. */}
+                  {r.certificateOnly && <span data-certificate-only={r.id} className="block text-[11.5px] text-warn">{CERTIFICATE_ONLY_LABEL}</span>}
+                </td>
                 <td>{r.trade ?? '—'}</td>
                 <td>{r.country ?? (r.nationality ? <span className="text-ink3">{r.nationality} (nationality)</span> : '—')}</td>
                 <td>{crm ? <CandidateTableStage candidate={{ id: r.id, name: r.name, stage: r.stage, placedAt: current(r) }} /> : <span className="text-ink3">—</span>}</td>
