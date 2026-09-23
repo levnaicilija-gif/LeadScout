@@ -518,10 +518,54 @@ Return {"results":[{"i":0,"supported":true,"unsupported":[]}]} with one entry pe
  * So every bullet is checked against the same data it was written from, the failures are named
  * back to the model for one retry, and anything still unsupported is dropped rather than sent.
  */
-export async function buildBullets(anon: object, verified: object[], jobContext?: string) {
+/**
+ * @param deps  the two model calls, injected so the ACCOUNTING below can be tested without spending
+ *              anything. The same reason job-matches.ts injects its comparison: what is worth
+ *              checking here is how many rounds ran and what was dropped, and a test that paid a
+ *              Sonnet call per assertion would not be run. Defaults to the real ones.
+ */
+export async function buildBullets(
+  anon: object,
+  verified: object[],
+  jobContext?: string,
+  deps: {
+    generate?: typeof clientBullets;
+    audit?: typeof checkBullets;
+    /** The retry. Injected too — without it a test of the SECOND round reaches the real model. */
+    rewrite?: (complaint: string, kept: string[]) => Promise<string[]>;
+  } = {},
+) {
+  const generate = deps.generate ?? clientBullets;
+  const audit = deps.audit ?? checkBullets;
+  // The real retry, unchanged: name the exact phrases and ask again, rather than throwing the whole
+  // set away. Lifted into a default so the loop reads as one step and a test can stand in for it.
+  const rewrite = deps.rewrite ?? (async (complaint: string, kept: string[]) => (await asTool('bullets', () => askJson(
+    BulletsSchema,
+    `${BULLETS_SYSTEM}
+
+A previous attempt failed the factual audit. Fix exactly these problems and change nothing else: ${complaint}
+
+These bullets already passed and must be returned unchanged: ${JSON.stringify(kept)}
+Replace only the failing ones, with a different fact from the data — do not return two bullets where three were asked for.`,
+    JSON.stringify({ candidate: anon, verified_certificates: verified, job: jobContext ?? null }),
+  ))).bullets);
   const source = { candidate: { ...(anon as any), certificates: undefined }, verified_certificates: verified, claimed_certificates: (anon as any)?.certificates ?? [] };
-  let bullets = (await clientBullets(anon, verified, jobContext)).bullets;
+  let bullets = (await generate(anon, verified, jobContext)).bullets;
   const dropped: string[] = [];
+  /**
+   * 0045: what the audit actually did, recorded rather than thrown away.
+   *
+   * The loop has exactly two exits — it returns from INSIDE the moment an audit finds nothing bad,
+   * leaving `dropped` empty, and falls out only when the third audit still finds bad ones, which go
+   * into `dropped`. So `dropped` already says satisfied-or-exhausted; what it cannot say is how many
+   * rounds it took, since a clean run looks identical at one round or three. `rounds` supplies that,
+   * and together they answer the question that could not be asked before: does the third round catch
+   * what the second missed? Measured at 6% of 295 runs that a third round RUNS at all; whether those
+   * are the ones where the guard earns its keep is what this starts recording.
+   *
+   * Nothing reads these. The audit runs exactly as it did.
+   */
+  const rounds: { round: number; bad: number }[] = [];
 
   /**
    * Three bullets, or as close as the facts allow.
@@ -532,24 +576,16 @@ export async function buildBullets(anon: object, verified: object[], jobContext?
    * also failed does the card go short.
    */
   for (let attempt = 0; attempt < 3; attempt++) {
-    const { results } = await checkBullets(bullets, source);
+    const { results } = await audit(bullets, source);
     const bad = results.filter((r) => !r.supported);
-    if (bad.length === 0) return { bullets: bullets.slice(0, 3), dropped };
+    rounds.push({ round: attempt + 1, bad: bad.length });
+    if (bad.length === 0) return { bullets: bullets.slice(0, 3), dropped, rounds: rounds.length, audit: rounds };
 
     if (attempt < 2) {
       // Name the exact phrases and ask again, rather than throwing the whole set away.
       const complaint = bad.map((r) => `bullet ${r.i + 1}: remove ${r.unsupported.map((u) => `"${u}"`).join(', ')}`).join('; ');
       const kept = bullets.filter((_, i) => !bad.some((b) => b.i === i));
-      bullets = (await asTool('bullets', () => askJson(
-        BulletsSchema,
-        `${BULLETS_SYSTEM}
-
-A previous attempt failed the factual audit. Fix exactly these problems and change nothing else: ${complaint}
-
-These bullets already passed and must be returned unchanged: ${JSON.stringify(kept)}
-Replace only the failing ones, with a different fact from the data — do not return two bullets where three were asked for.`,
-        JSON.stringify({ candidate: anon, verified_certificates: verified, job: jobContext ?? null }),
-      ))).bullets;
+      bullets = await rewrite(complaint, kept);
       continue;
     }
 
@@ -558,7 +594,7 @@ Replace only the failing ones, with a different fact from the data — do not re
     dropped.push(...bullets.filter((_, i) => badIdx.has(i)));
     bullets = bullets.filter((_, i) => !badIdx.has(i));
   }
-  return { bullets: bullets.slice(0, 3), dropped };
+  return { bullets: bullets.slice(0, 3), dropped, rounds: rounds.length, audit: rounds };
 }
 
 /** fits/missing/blockers come back as a single string often enough to be worth accepting. */

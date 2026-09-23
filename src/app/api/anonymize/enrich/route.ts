@@ -5,7 +5,7 @@ import { meterRecruiter } from '@/lib/ai/meter';
 import { renderClientCv, clientCvText, clientCvAllowed, type ClientCvData } from '@/lib/pdf/render';
 import { explainCert, clientLine } from '@/lib/certs/explain';
 import { loadLibrary } from '@/lib/certs/library';
-import { hasCertLibrary } from '@/lib/schema-features';
+import { hasCertLibrary, hasColumn } from '@/lib/schema-features';
 export const maxDuration = 120;
 
 /**
@@ -72,7 +72,7 @@ async function handle(req: Request, me: SignedIn) {
     //
     // Failure behaviour is deliberately unchanged: the summary keeps its own catch and degrades to
     // no summary, while bullets and the score still fail the whole request, exactly as before.
-    const [{ bullets, dropped: droppedBullets }, summary, score] = await Promise.all([
+    const [{ bullets, dropped: droppedBullets, rounds: bulletRounds, audit: bulletAudit }, summary, score] = await Promise.all([
       buildBullets(anon, verified ?? [], job),
       // Two lines a client reads before deciding whether to read the rest.
       clientSummary(anon, verified ?? []).then((r) => r.summary).catch(() => [] as string[]),
@@ -102,8 +102,14 @@ async function handle(req: Request, me: SignedIn) {
       if (up.error) return NextResponse.json({ error: `could not store the PDF: ${up.error.message}` }, { status: 500 });
     }
 
+    // 0045: what the bullet audit did. Guarded, because a deploy can land before its migration and
+    // a named column that is not there fails the WHOLE insert — which would lose the client version
+    // itself to record a statistic about it. Nothing reads these; they exist to make the "does the
+    // third round catch what the second missed" question answerable from real use.
+    const trail = await hasColumn(db, 'anonymized_cvs', 'bullet_rounds');
     await db.from('anonymized_cvs').insert({
       candidate_id: candidateId, public_slug: slug, storage_path: pdfPath, bullets,
+      ...(trail ? { bullet_rounds: bulletRounds, bullets_dropped: droppedBullets, bullet_audit: bulletAudit } : {}),
       certs_cross_check: { claimed: profile.certificates_claimed ?? [], verified: (verified ?? []).length },
       pii_check_passed: passed,
     });

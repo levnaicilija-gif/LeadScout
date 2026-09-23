@@ -129,6 +129,12 @@ step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts
 # with the disagreement reported. The middle tier is where the damage would be - a re-parsed CV
 # putting back a phone number corrected by hand is silent, plausible and permanent.
 step cv-merge npx tsx scripts/cv-merge-check.ts
+# 0045: buildBullets records how many audit rounds ran and what was dropped, so "does the third
+# round catch what the second missed" becomes answerable from real use - it was not, because
+# dropped went to the browser and was forgotten. Both model calls are injected, so the accounting
+# is checked for nothing. A mutation that stops recording the round makes a clean THIRD round
+# indistinguishable from a clean first, which is the whole failure this guards against.
+step bullet-audit npx tsx scripts/bullet-audit-check.ts
 # THE BUG ITSELF: a failed read of the candidate pool must never look like an empty pool. Two
 # records for one person (RFBT-P-0625 and 0626, the same CV byte for byte) came from an unread
 # { error } - judgeDuplicate was asked a question about an empty pool and answered it perfectly.
