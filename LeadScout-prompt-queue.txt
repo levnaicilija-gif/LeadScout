@@ -545,6 +545,60 @@ RULES THAT KEEP IT FROM LEAKING
 - Status per workspace with the acting user recorded; drafts keep their author
   (sent_by plus an author field).
 
+AUDIT 2026-09-23, before the project started. The design above is from
+2026-09-15 and a great deal shipped after it. Re-checked against the live
+database rather than assumed. WHAT IT GOT RIGHT: the hazard that fixes the
+order is still exactly right — outreach is still private, still scoped
+"lead_id in leads where workspace = mine", and api/lead/route.ts still writes
+leads.status, confirmed_by/at and job_description with the SIGNED-IN client,
+as the activity list says. WHAT IT MISSED OR GOT WRONG, named rather than
+quietly patched:
+
+  1. TWO BUCKETS ARE NOT ENOUGH. It classified 25 tables; there are 40. The
+     15 it never saw need two more kinds: PLATFORM (shipped content belonging
+     to nobody — glossary, trade_cards, cert_library, cert_bodies, all already
+     100% workspace_id null on the live database, plus health_checks) and
+     SERVICE (jobs, job_ticks, already service-role-only). Owner's decision
+     2026-09-23: platform belongs to NOBODY, not to a system workspace — a
+     fake owner reintroduces the rfbt_history problem in another form.
+  2. "No notes field exists yet on leads or companies" is TRUE for leads and
+     FALSE for companies: companies.rfbt_history exists. Worse under 20a, it
+     is the first customer's name welded into a table the design calls SHARED.
+  3. sources and radar_runs are missing from both lists. sources is worse than
+     missing: ws_sources is "for all using (workspace_id = my_workspace() or
+     workspace_id is null)", so a signed-in user may write ANY null-workspace
+     source row. 0 of 610 are null today, so the hole is real and unexploited.
+  4. cost_log: owner's decision 2026-09-23 — ONE table with a scope column
+     ('crawl' | 'workspace'), not two. Half its 7,310 rows carry no workspace
+     today and a null currently means two different things.
+  5. Item 25's job-suggest reads job_posts as the SIGNED-IN user, deliberately,
+     so RLS sees the 12 null-workspace rows. Once discovery is shared that read
+     must pass through the entitlement function or every workspace's
+     suggestions draw on the whole pool. The design predates it.
+  6. The buyer allowlist (src/lib/tender/buyers.ts) is CODE, not a table, so it
+     needs no migration — but it encodes "buyers whose work is OURS", a
+     per-customer judgement frozen as a global constant. A 20a question.
+  7. THE RLS INVARIANT IS NARROWER THAN IT HAS BEEN DESCRIBED. "Signed-in users
+     write nothing directly" is true of `users` ONLY (0028), and the mechanism
+     is the REVOKE, not the policy — 0028's update policy is permissive and the
+     lock is "revoke insert, update, delete on users from anon, authenticated".
+     Every one of the 12 shared tables has a "for all" policy and ordinary
+     grants. Step 3 should copy the revoke, not only rewrite policies.
+  8. PROBE COVERAGE IS BETTER THAN THE DESIGN IN ONE PLACE AND WORSE IN
+     ANOTHER. Three two-workspace WRITE probes now exist that the design never
+     asked for (candidate-rls, screening-rls, scorecard-rls). But its own step-1
+     probe names outreach, candidates, documents and verifications, and only
+     candidates has one: the other three are covered solely by rls-sweep, which
+     compares row counts and cannot test a write.
+
+REVISED ORDER (owner's go-ahead 2026-09-23). A new STEP 0 comes first, because
+the later steps are only checkable once the boundary is written down: the
+four-bucket registry (src/lib/table-registry.ts) with table-registry-check in
+the gate — an unclassified table fails, and so does a SECOND private table
+reached through a shared parent, which is the leak the order exists to prevent.
+Then steps 1-4 as designed, with step 1 also adding the three missing write
+probes and step 3 also covering sources, radar_runs and the revoke.
+
 -------------------------------------------------------------------------------
 20a. PRODUCT DIRECTION — LeadScout as a standalone product for industrial/
      offshore staffing recruiters (owner's decision, 2026-09-21)

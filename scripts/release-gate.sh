@@ -32,6 +32,12 @@ step build npx next build
 # Straight after the build and before anything reads as a user. A table a signed-in user cannot read
 # fails the gate here, whatever caused it: code, a migration, or a toggle in the Supabase dashboard.
 RLS_SWEEP_SOURCE=gate step rls-sweep npx tsx --env-file=.env.local scripts/rls-sweep.ts
+# Item 20 step 0: every table is classified shared / private / platform / service, and the
+# classification matches the database. A table added and NOT classified fails here rather than
+# defaulting to whatever the next reader assumes. It also asserts the leak the migration order
+# exists to prevent - exactly one private table reached through a shared parent (outreach via
+# leads) - so a second one cannot appear unnoticed.
+step table-registry npx tsx --env-file=.env.local scripts/table-registry-check.ts
 # Who may write users. A policy can exist and still be wrong: 0001's let any account change its own role,
 # move itself into any workspace, and change or delete a teammate's row. 0028 closed it on 2026-09-14;
 # this tries those writes with throwaway accounts and fails the gate if a migration or the dashboard reopens it.
