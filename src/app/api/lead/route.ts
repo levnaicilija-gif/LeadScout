@@ -6,7 +6,7 @@ import { checkRightToWork, searchCountriesFor } from '@/lib/right-to-work';
 import { chooseRecipient } from '@/lib/contact-choice';
 import { attendeesAt } from '@/lib/attendee-match';
 import { xrayCandidatesUrl, xrayLocalVariantUrl } from '@/lib/search-urls';
-import { hasRightToWork, hasCandidateCountries } from '@/lib/schema-features';
+import { hasRightToWork, hasCandidateCountries, hasColumn } from '@/lib/schema-features';
 import { previousEmployer } from '@/lib/previous-employer';
 import { rescoreFor, type CallFlag } from '@/lib/screening';
 import { hasScreeningCalls } from '@/lib/schema-features';
@@ -113,7 +113,9 @@ async function handle(req: Request, me: SignedIn) {
       // The recruiter is told who this is addressed to and why, before the model's own reasoning.
       const reasoning = `${pick.why} ${d.reasoning ?? ''}`.trim();
       const contactId = contacts.find((c) => c.name === pick.to.name)?.id ?? quoted?.id ?? null;
-      const { data: o } = await sb.from('outreach').insert({ lead_id: lead.id, contact_id: contactId, channel: 'email', subject: d.subject, body: d.email, reasoning, status: 'draft' }).select().single();
+      // 0046: its own workspace rather than the lead's, guarded until the migration is applied.
+      const scoped = await hasColumn(sb, 'outreach', 'workspace_id');
+      const { data: o } = await sb.from('outreach').insert({ lead_id: lead.id, contact_id: contactId, channel: 'email', subject: d.subject, body: d.email, reasoning, status: 'draft', ...(scoped ? { workspace_id: me.workspace_id } : {}) }).select().single();
       return NextResponse.json({ ...d, reasoning, outreach_id: o.id, recipient: pick.to, redirected: pick.redirected });
     }
   }

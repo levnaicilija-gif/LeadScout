@@ -4,7 +4,7 @@ import { jdFromLead, screeningQuestions, draftOutreachChecked, scoreWithRightToW
 import { meterRecruiter } from '@/lib/ai/meter';
 import { searchCountriesFor, checkRightToWork } from '@/lib/right-to-work';
 import { xrayCandidatesUrl, xrayLocalVariantUrl, linkedinSearchUrl, googleSearchUrl } from '@/lib/search-urls';
-import { hasRightToWork, hasCandidateCountries, hasHiringState, hasCompanyOutreach, hasPostingContact } from '@/lib/schema-features';
+import { hasRightToWork, hasCandidateCountries, hasHiringState, hasCompanyOutreach, hasPostingContact, hasColumn } from '@/lib/schema-features';
 import { buildSheet, fromAttendeeList, type FoundContact } from '@/lib/hiring-contacts';
 import { attendeesAt } from '@/lib/attendee-match';
 import { sendCapability } from '@/lib/send-capability';
@@ -219,9 +219,16 @@ async function handle(req: Request, me: SignedIn) {
       let outreachId: string | null = null;
       if (await hasCompanyOutreach(sb)) {
         const admin = supabaseAdmin();
+        // 0046: its own workspace. This draft has a company and NO lead, and until 0046 that meant
+        // it matched no policy at all — written by the service role, then unreadable by the people
+        // who wrote it, so /api/outreach answered 404 and it could never be sent. Guarded, because a
+        // deploy can land before its migration and a named column that is not there fails the whole
+        // insert, which would lose the draft entirely rather than one column of it.
+        const scoped = await hasColumn(admin, 'outreach', 'workspace_id');
         const { data: row } = await admin.from('outreach').insert({
           company_id: co.id, channel: 'email', subject: d.subject, body: d.email,
           reasoning: d.reasoning, job_post_ids: postings.map((p: any) => p.id), status: 'draft',
+          ...(scoped ? { workspace_id: me.workspace_id } : {}),
         }).select('id').maybeSingle();
         outreachId = row?.id ?? null;
       }

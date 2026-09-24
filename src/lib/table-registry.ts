@@ -76,8 +76,8 @@ export const TABLES: Record<string, Entry> = {
   internal_downloads: { bucket: 'private', scope: { by: 'workspace_id' }, why: 'who downloaded whose internal PDF' },
   outreach: {
     bucket: 'private',
-    scope: { by: 'parent', through: 'leads', fk: 'lead_id' },
-    why: 'THE HAZARD ITEM 20 IS ORDERED AROUND: a private draft scoped through a table that is about to become shared. Share leads before fixing this and every workspace\'s outreach opens silently. Step 1 gives it its own workspace_id',
+    scope: { by: 'workspace_id' },
+    why: 'ITEM 20 STEP 1, DONE (0046). It was the hazard the whole order is built around — a private draft scoped "lead_id in leads where workspace = mine", so sharing leads would have opened every workspace\'s drafts. It was also already broken: an approach written from postings has a company and NO lead, and null is never `in` anything, so those rows matched no policy and /api/outreach answered 404 on a draft it had just written',
   },
   followup_resolutions: { bucket: 'private', scope: { by: 'workspace_id' }, why: 'a resolved follow-up and the note a recruiter wrote on it' },
   scorecards: { bucket: 'private', scope: { by: 'workspace_id' }, why: 'one recruiter\'s own day' },
@@ -110,8 +110,11 @@ export const PLATFORM_TABLES = Object.entries(TABLES).filter(([, e]) => e.bucket
 /**
  * The private tables reached through a SHARED parent — the leak item 20's order exists to prevent.
  *
- * Exactly one today, and the check asserts that, so a second cannot appear unnoticed and step 1 has
- * a precise target rather than a category.
+ * MUST BE EMPTY, permanently, since 0046 gave outreach its own workspace_id. It held exactly one
+ * before that, and "exactly one" was the right assertion only while step 1 was outstanding: it named
+ * the target. Now the rule is the stronger and permanent one — no private table may be reached
+ * through a table that is about to become everybody's — and the gate proves step 1 stays done rather
+ * than merely that it happened once.
  */
 export function privateThroughShared(): { table: string; through: string }[] {
   return Object.entries(TABLES)

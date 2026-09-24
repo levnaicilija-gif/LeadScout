@@ -63,7 +63,6 @@ const THROUGH_PARENT: Record<string, (a: SupabaseClient, ws: string) => Promise<
   },
   lead_articles: (a, ws) => counted(a.from('lead_articles').select('lead_id, leads!inner(workspace_id)', { count: 'exact', head: true }).eq('leads.workspace_id', ws)),
   lead_people: (a, ws) => counted(a.from('lead_people').select('lead_id, leads!inner(workspace_id)', { count: 'exact', head: true }).eq('leads.workspace_id', ws)),
-  outreach: (a, ws) => counted(a.from('outreach').select('id, leads!inner(workspace_id)', { count: 'exact', head: true }).eq('leads.workspace_id', ws)),
   verifications: (a, ws) => counted(a.from('verifications').select('id, documents!inner(workspace_id)', { count: 'exact', head: true }).eq('documents.workspace_id', ws)),
   scores: (a, ws) => counted(a.from('scores').select('id, candidates!inner(workspace_id)', { count: 'exact', head: true }).eq('candidates.workspace_id', ws)),
   sends: (a, ws) => counted(a.from('sends').select('id, candidates!inner(workspace_id)', { count: 'exact', head: true }).eq('candidates.workspace_id', ws)),

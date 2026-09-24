@@ -202,7 +202,10 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     const { error: seenErr } = await admin.from('users').update({ last_seen_at: lastVisit }).eq('id', who.uid);
     if (seenErr) throw new Error(`seeding the last visit failed: ${seenErr.message}`);
     const { data: lead } = await admin.from('leads').select('id').eq('workspace_id', who.workspace).limit(1).single();
+    // 0046: outreach carries its own workspace_id and it is NOT NULL. Seeding without one used to
+    // work because the row's scope was inherited from its lead; it now refuses, which is the point.
     const { data: o, error: oErr } = await admin.from('outreach').insert({
+      workspace_id: who.workspace,
       lead_id: lead!.id, channel: 'email', subject: 'Probe outreach', body: 'Seeded so Mark done can be tested.',
       sent_by: who.uid, sent_at: iso(5), status: 'sent',
     }).select('id').single();

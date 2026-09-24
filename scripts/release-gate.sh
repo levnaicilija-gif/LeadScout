@@ -37,7 +37,15 @@ RLS_SWEEP_SOURCE=gate step rls-sweep npx tsx --env-file=.env.local scripts/rls-s
 # defaulting to whatever the next reader assumes. It also asserts the leak the migration order
 # exists to prevent - exactly one private table reached through a shared parent (outreach via
 # leads) - so a second one cannot appear unnoticed.
-step table-registry npx tsx --env-file=.env.local scripts/table-registry-check.ts
+# Exit 2 means the registry is AHEAD of the database, waiting on a migration applied by hand:
+# not judged, exactly as priority-window and industry-follow treat 0042 and 0032. A registry that
+# is wrong in any other way still fails.
+echo "=== table-registry" | tee -a "$LOG"
+npx tsx --env-file=.env.local scripts/table-registry-check.ts >> "$LOG" 2>&1
+code=$?
+if [ "$code" -eq 0 ]; then echo "    pass" | tee -a "$LOG"
+elif [ "$code" -eq 2 ]; then echo "    not judged (a migration in the registry is not applied yet)" | tee -a "$LOG"
+else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("table-registry"); fi
 # Who may write users. A policy can exist and still be wrong: 0001's let any account change its own role,
 # move itself into any workspace, and change or delete a teammate's row. 0028 closed it on 2026-09-14;
 # this tries those writes with throwaway accounts and fails the gate if a migration or the dashboard reopens it.
@@ -123,6 +131,18 @@ step certificate-only npx tsx scripts/certificate-only-check.ts
 step storage-path npx tsx scripts/storage-path-check.ts
 step scorecard-rls npx tsx --env-file=.env.local scripts/scorecard-rls-probe.ts
 step screening-rls npx tsx --env-file=.env.local scripts/screening-rls-probe.ts
+# Item 20 step 1: the three cross-workspace WRITE probes the design asked for and nobody had.
+# rls-sweep compares row counts and cannot test a write, which is precisely how 0041's hole on
+# screening_calls survived a passing sweep. It also regression-tests a live bug 0046 fixed: an
+# approach drafted from postings has a company and NO lead, null is never `in` anything, so those
+# rows matched no policy and /api/outreach answered 404 on a draft it had just written.
+# Exit 2 = 0046 not applied yet: not judged.
+echo "=== outreach-rls" | tee -a "$LOG"
+npx tsx --env-file=.env.local scripts/outreach-rls-probe.ts >> "$LOG" 2>&1
+code=$?
+if [ "$code" -eq 0 ]; then echo "    pass" | tee -a "$LOG"
+elif [ "$code" -eq 2 ]; then echo "    not judged (0046 not applied)" | tee -a "$LOG"
+else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("outreach-rls"); fi
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts
 # A newer CV updates a record without overwriting what a recruiter typed: the reading always follows
 # the newest CV, an empty field is filled from it, and a field somebody already filled is LEFT ALONE
