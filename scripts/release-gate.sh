@@ -143,6 +143,21 @@ code=$?
 if [ "$code" -eq 0 ]; then echo "    pass" | tee -a "$LOG"
 elif [ "$code" -eq 2 ]; then echo "    not judged (0046 not applied)" | tee -a "$LOG"
 else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("outreach-rls"); fi
+# Every column NAMED in a literal .select() exists in the live schema. Built for item 20 step 2c,
+# which removes leads.status, confirmed_by, confirmed_at, job_description, jd_version and the
+# company's hiring and override columns — but it guards every future rename too.
+#
+# 04cf363's three shapes: .update({col}) fails loudly, .select('a, col, c') fails the WHOLE query,
+# and .select('*') plus a property access FAILS SILENTLY. This covers the middle one. It CANNOT
+# cover the star, which is why the run prints how many stars and template-literal selects it
+# skipped rather than reporting a bare pass - the blind spot is stated every run, not implied.
+#
+# --self-test runs FIRST and is the reason to trust the other: it points the checker at a column
+# that does not exist and requires it to fail naming that column, requires a valid select beside it
+# NOT to be flagged, and replays the real incident - companies.rfbt_history, which 0047 renamed
+# while six live sites still named it.
+step column-exists-selftest npx tsx --env-file=.env.local scripts/column-exists-check.ts --self-test
+step column-exists npx tsx --env-file=.env.local scripts/column-exists-check.ts
 # Item 20 step 2b: the app reads lead and company state from the workspace's own tables.
 #
 # The MECHANISM first. `openLeads` in radar/page.tsx is the one closure the Leads table, both source
