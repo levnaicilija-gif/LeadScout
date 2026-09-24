@@ -106,21 +106,32 @@ async function run(req: Request) {
   const budget = await Budget.open(db, cap);
   if (budget.exhausted) return NextResponse.json({ ok: true, stopped: 'daily budget already spent', spentToday: Number(budget.totalToday.toFixed(4)) });
 
-  // Companies with a board that no person has ruled on and this job has not yet read.
+  // Companies with a board this job has not yet read.
   //
-  // ITEM 20 STEP 2B LEFT THIS ONE SITE ON THE OLD COLUMN, deliberately, and 2c must resolve it.
-  // The predicate here is the ABSENCE of an override — "no person has ruled on it" — and that is a
-  // negative over a table that is sparse by design: 3 rows of 5,889 companies. PostgREST cannot
-  // express "has no state row, OR has one whose override is null" through an embed, and the two ways
-  // round it are both the ceiling the owner rejected for leads on 2026-09-24: excluding the
-  // overridden ids by `.not('id','in',(…))` works at 3 and breaks at roughly 200, and filtering the
-  // batch in memory can hand back a batch that is entirely overridden and do no work.
+  // THE OVERRIDE FILTER IS GONE, and its absence is the point rather than an omission. Until item 20
+  // step 2b this query also said `.is('employer_type_override', null)` — skip anything a person has
+  // ruled on — because the override and the detected type shared a row and re-classifying could
+  // overwrite somebody's judgement. api/company/employer-type's own comment states that as the
+  // reason the two were stored separately in the first place.
   //
-  // It is CORRECT as it stands, because 2b dual-writes: api/company/employer-type writes the state
-  // row and this column together, so the column is current. It is written down rather than quietly
-  // left because a dual-written column stops being current the moment 2c removes the second write.
-  let q = db.from('companies').select('id, name, domain, careers_url, employer_type, employer_type_override, employer_type_source')
-    .eq('careers_status', 'found').is('employer_type_override', null).is('employer_type_checked_at', null)
+  // They are now in SEPARATE TABLES. The override lives in workspace_company_state, this job writes
+  // only companies.employer_type and its provenance (verdictPatch never touches an override), and
+  // effectiveEmployerType still prefers the override over the detected value. So the thing the
+  // filter protected is protected by the schema, and the filter is no longer doing the job it was
+  // written for.
+  //
+  // Reimplementing it against the state table would also have been WRONG, not merely awkward: it
+  // would let ONE workspace's private correction stop the SHARED fact being determined for every
+  // other workspace, which is precisely what item 20 exists to prevent. A private judgement must not
+  // silently rewrite another customer's view, and suppressing the crawl is a way of doing that.
+  //
+  // Measured before removing it, 2026-09-24: of 370 companies with a careers page, 28 are
+  // unclassified, 25 were already in this queue and 3 were excluded by the override filter — so this
+  // adds exactly 3 companies, once. 0 companies are overridden AND already classified, so nothing is
+  // re-classified in a burst. `employer_type_checked_at is null` still bounds the work to once per
+  // company, which was always the filter that mattered.
+  let q = db.from('companies').select('id, name, domain, careers_url, employer_type, employer_type_source')
+    .eq('careers_status', 'found').is('employer_type_checked_at', null)
     .order('id').limit(batch);
   if (only) q = q.ilike('name', `%${only}%`);
   if (ids.length) q = q.in('id', ids);
@@ -180,7 +191,9 @@ async function run(req: Request) {
   });
 
   const { count: remaining } = await db.from('companies').select('id', { count: 'exact', head: true })
-    .eq('careers_status', 'found').is('employer_type_override', null).is('employer_type_checked_at', null);
+    // The same predicate as the queue above, or "remaining" would count a different set from the one
+    // the next batch will actually take — the banner-and-table mismatch, in a log line.
+    .eq('careers_status', 'found').is('employer_type_checked_at', null);
 
   console.log(`[classify-employers] did=${(companies ?? []).length} ${JSON.stringify(counts)} unreadable=${unreadable} remaining=${remaining} spent=EUR${budget.totalToday.toFixed(3)}`);
   return NextResponse.json({

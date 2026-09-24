@@ -107,7 +107,11 @@ export async function runJobBoardsBatch(req: Request) {
   // companies of 5,889 carry an override, so an inner join would reduce `known` from the whole book
   // of companies to three — and this map is what stops an advert creating a duplicate company row.
   const { data: knownRaw } = await db.from('companies')
-    .select(`id, name, employer_type, employer_type_override, ${COMPANY_STATE_LEFT}`)
+    // The old column is NOT named here. Every company carrying an override has a state row (3 of 3,
+    // checked 2026-09-24), so the column adds nothing — and naming it would leave a reference to a
+    // column 2c removes inside a TEMPLATE LITERAL, which column-exists-check cannot read. 2b put
+    // this select into that blind spot; this takes it back out.
+    .select(`id, name, employer_type, ${COMPANY_STATE_LEFT}`)
     .eq('workspace_id', ws.id);
   const known = (knownRaw ?? []).map(withCompanyState);
   const byName = new Map(known.map((c: any) => [canon(c.name), c]));

@@ -158,6 +158,19 @@ else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("outreach-rls"); fi
 # while six live sites still named it.
 step column-exists-selftest npx tsx --env-file=.env.local scripts/column-exists-check.ts --self-test
 step column-exists npx tsx --env-file=.env.local scripts/column-exists-check.ts
+# A recruiter's employer-type override survives the classifier re-reading the company.
+#
+# classify-employers used to SKIP any company a person had ruled on, because the override and the
+# detected type shared a row. Item 20 moved the override to workspace_company_state and that filter
+# was deleted - reimplementing it would have let ONE workspace's private correction stop the SHARED
+# type being determined for everybody else, which is the thing item 20 exists to prevent.
+#
+# Deleting a guard because "the schema handles it now" is right until it quietly isn't, so the claim
+# is asserted rather than believed: verdictPatch - the route's own function - is given a verdict that
+# contradicts both the stored type AND the override, its patch is applied the way the route applies
+# it, and the override must survive and still win on read. It also asserts the patch NAMES no
+# override column, so a future verdictPatch that started writing one fails here.
+step employer-override npx tsx --env-file=.env.local scripts/employer-override-check.ts
 # Item 20 step 2b: the app reads lead and company state from the workspace's own tables.
 #
 # The MECHANISM first. `openLeads` in radar/page.tsx is the one closure the Leads table, both source

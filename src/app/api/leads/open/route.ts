@@ -18,7 +18,11 @@ export async function GET() {
   // Item 20 step 2b: both the open-ness and the saved job description are THIS workspace's, so both
   // come from its state row — flattened, so `l.job_description` below is unchanged.
   const { data: rows } = await sb.from('leads')
-    .select(`id, kind, project_name, project_location, country, fit_score, job_description, trades_inferred, companies(name), job_posts(role, location, certs_required, rotation, headcount, contract_type), ${LEAD_STATE_EMBED}`)
+    // job_description is NOT named on the parent: the embed is `!inner`, so every row returned has a
+    // state row, and withLeadState takes the description from it. Naming the old column too would
+    // leave a reference that 2c removes inside a TEMPLATE LITERAL, where column-exists-check cannot
+    // read it — the one place a dropped column goes unnoticed until a screen is blank.
+    .select(`id, kind, project_name, project_location, country, fit_score, trades_inferred, companies(name), job_posts(role, location, certs_required, rotation, headcount, contract_type), ${LEAD_STATE_EMBED}`)
     .not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES)
     .order('fit_score', { ascending: false })
     .limit(60);
