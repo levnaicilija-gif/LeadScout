@@ -344,8 +344,15 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     const ctx = await browser.newContext({ viewport: { width: 1500, height: 1100 } });
     const page = await ctx.newPage();
     await signIn(page, who);
-    const { error: rejErr } = await admin.from('companies').update({ hiring_status: 'not_for_us' }).eq('id', namedCompanyIds[0]);
-    if (rejErr && !/column|schema cache/i.test(rejErr.message)) throw new Error(`could not mark the company: ${rejErr.message}`);
+    // Item 20 step 2c: "not for us" is THIS workspace's decision and lives in
+    // workspace_company_state, which is where api/hiring writes it and where Radar reads it. This
+    // used to seed companies.hiring_status, and when 2c stopped Radar reading that column the probe
+    // went red on a screen that was behaving correctly — it was marking the company in a place
+    // nothing looks at any more. Seeding the same fact in its new home is the fix; the column is
+    // dropped outright by the next migration, so the old seed had no future either way.
+    const { error: rejErr } = await admin.from('workspace_company_state')
+      .upsert({ workspace_id: who.workspace, company_id: namedCompanyIds[0], hiring_status: 'not_for_us' }, { onConflict: 'workspace_id,company_id' });
+    if (rejErr && !/column|schema cache|does not exist/i.test(rejErr.message)) throw new Error(`could not mark the company: ${rejErr.message}`);
     if (!rejErr) {
       console.log('\n--- a named company marked "not for us" ---');
       await page.goto(hiringUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -366,7 +373,7 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       check(left === NAMED_COMPANIES - 1, 'a company marked "not for us" stays out even when the item names it',
         `${left} row(s)${shown ? '' : ' — and the wait for that count timed out, so this is a timing loss rather than a row that should not be there'}`);
       check(new RegExp(`Showing ${NAMED_COMPANIES - 1} compan`).test(b), 'and the banner counts what is actually on screen, not what the URL asked for', b.slice(0, 120));
-      await admin.from('companies').update({ hiring_status: 'new' }).eq('id', namedCompanyIds[0]);
+      await admin.from('workspace_company_state').delete().eq('workspace_id', who.workspace).eq('company_id', namedCompanyIds[0]);
     }
 
     // 7 — with no ids, both tabs are untouched. The filter must chain nothing: an unconditional .in()

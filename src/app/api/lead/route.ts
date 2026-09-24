@@ -33,25 +33,23 @@ async function handle(req: Request, me: SignedIn) {
   const lead = withLeadState(row);
   const articleText = (lead.lead_articles?.[0] as any)?.articles?.text ?? '';
   switch (b.action) {
-    // Item 20 step 2b: the three writes that record what THIS workspace decided now land in
-    // workspace_lead_state, which is where every read takes them from. They also still write the old
-    // column, so 2b can be rolled back onto data that is current rather than stale; 2c removes the
-    // second half and only then drops the columns.
+    // Item 20 step 2c: the three writes that record what THIS workspace decided land ONLY in
+    // workspace_lead_state now. 2b wrote the old columns as well so the step could be rolled back
+    // onto data that was current rather than stale; that second write is gone, which is what makes
+    // the drop migration safe to run next — never in the same deploy.
     //
-    // The state write's error is READ and returned. The old column's is not, because it is already
-    // the copy — reporting a failure to update a column nothing reads would be reporting a failure
-    // the recruiter cannot act on and that did not affect what they will see.
+    // `leads.updated_at` went with them and is not replaced: nothing reads it (checked), and
+    // setLeadState already stamps the state row's own updated_at, which is the one that means "this
+    // workspace touched this lead".
     case 'confirm': {
       const at = new Date().toISOString();
       const { error } = await setLeadState(sb, me.workspace_id, lead.id, { confirmed_by: me.id, confirmed_at: at }, me.id);
       if (error) return NextResponse.json({ error: `the confirmation was not saved: ${error}` }, { status: 500 });
-      await sb.from('leads').update({ confirmed_by: me.id, confirmed_at: at }).eq('id', lead.id);
       return NextResponse.json({ ok: true });
     }
     case 'status': {
       const { error } = await setLeadState(sb, me.workspace_id, lead.id, { status: b.status }, me.id);
       if (error) return NextResponse.json({ error: `the status was not saved: ${error}` }, { status: 500 });
-      await sb.from('leads').update({ status: b.status, updated_at: new Date().toISOString() }).eq('id', lead.id);
       return NextResponse.json({ ok: true });
     }
     case 'jd': {
@@ -59,7 +57,6 @@ async function handle(req: Request, me: SignedIn) {
       const version = (lead.jd_version ?? 0) + 1;
       const { error } = await setLeadState(sb, me.workspace_id, lead.id, { job_description: jd.job_description, jd_version: version }, me.id);
       if (error) return NextResponse.json({ error: `the job description was written but not saved: ${error}` }, { status: 500 });
-      await sb.from('leads').update({ job_description: jd.job_description, jd_version: version }).eq('id', lead.id);
       return NextResponse.json(jd);
     }
     case 'questions': {

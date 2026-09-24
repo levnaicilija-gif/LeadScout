@@ -77,7 +77,6 @@ export async function POST(req: Request) {
   if (o.lead_id) {
     const { error } = await setLeadState(sb, me.workspace_id, o.lead_id, { status: 'contacted' }, me.id);
     if (error) statusNote = `The email went out, but the lead was not moved to Contacted: ${error}`;
-    else await sb.from('leads').update({ status: 'contacted', updated_at: new Date().toISOString() }).eq('id', o.lead_id);
   }
 
   return NextResponse.json({ ok: true, to: b.to, ...(statusNote ? { warning: statusNote } : {}) });

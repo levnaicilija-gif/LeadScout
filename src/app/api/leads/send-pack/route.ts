@@ -108,7 +108,6 @@ export async function POST(req: Request) {
     if (target.kind === 'lead') {
       const { error } = await setLeadState(db, me.workspace_id, target.id, { status: 'pursue' }, me.id);
       if (error) return NextResponse.json({ error: `the pack was prepared but the lead was not moved to Pursue: ${error}` }, { status: 500 });
-      await db.from('leads').update({ status: 'pursue' }).eq('id', target.id);
     }
 
     return NextResponse.json({

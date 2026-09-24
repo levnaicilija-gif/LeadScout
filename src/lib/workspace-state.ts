@@ -169,15 +169,29 @@ export function withLeadState<T extends Record<string, any>>(row: T): T {
 export function withCompanyState<T extends Record<string, any>>(row: T): T {
   const s = Array.isArray(row.workspace_company_state) ? row.workspace_company_state[0] : row.workspace_company_state;
   if (!s) return row;
-  // Only the fields that are actually SET are taken. A sparse row created to hold a hiring status
-  // carries null in employer_type_override, and letting that null win would silently clear a
-  // recruiter's override — the state row would be saying "no override" when it means "not my field".
-  const take = <K extends keyof CompanyStatePatch>(k: K) => (s[k] === null || s[k] === undefined ? {} : { [k]: s[k] });
+  // THE STATE ROW IS TAKEN WHOLESALE, NULLS INCLUDED, and that is a deliberate reversal.
+  //
+  // While 2b dual-wrote, this skipped nulls: a sparse row created to hold a hiring status carries
+  // null in employer_type_override, and letting that null win would have wiped an override the
+  // COLUMN still held correctly. Once 2c removed the second write, skipping nulls inverts into the
+  // opposite bug — clearing an override writes null to the state row, the null is skipped, the now
+  // stale column wins, and the recruiter's clear silently comes back. A silent regression, not a
+  // loud one, which is the kind this item keeps having to hunt.
+  //
+  // With the columns no longer written there is nothing meaningful to fall back to, so a null in the
+  // state row means what it says: this workspace has no value for that field.
   return {
     ...row,
-    ...take('hiring_status'), ...take('hiring_status_at'), ...take('hiring_status_by'),
-    ...take('hiring_confirmed_at'), ...take('hiring_confirmed_by'),
-    ...take('employer_type_override'), ...take('employer_type_set_by'),
-    ...take('employer_type_set_at'), ...take('employer_type_reason'),
+    hiring_status: s.hiring_status ?? null,
+    hiring_status_at: s.hiring_status_at ?? null,
+    hiring_status_by: s.hiring_status_by ?? null,
+    hiring_confirmed_at: s.hiring_confirmed_at ?? null,
+    hiring_confirmed_by: s.hiring_confirmed_by ?? null,
+    employer_type_override: s.employer_type_override ?? null,
+    employer_type_set_by: s.employer_type_set_by ?? null,
+    employer_type_set_at: s.employer_type_set_at ?? null,
+    // employer_type_reason is NOT taken from the state row. companies.employer_type_reason is a
+    // SHARED fact the crawl writes about the DETECTED type — 525 of the 528 that carry one — and
+    // overwriting it with a workspace's override reason would hide the crawl's explanation.
   };
 }

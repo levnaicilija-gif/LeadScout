@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { IndustryId } from '@/lib/industry';
 import { hasIndustries } from '@/lib/schema-features';
-import { hasPostingContact, hasHiringState, hasAwardDate, hasWorkspaceState } from './schema-features';
+import { hasPostingContact, hasAwardDate, hasWorkspaceState } from './schema-features';
 import { CLOSED_LEAD_STATUSES, COMPANY_STATE_LEFT, LEAD_STATE_EMBED, LEAD_STATE_TABLE, withCompanyState } from './workspace-state';
 import { newsLeadAge, tenderLeadAge, postingAge, reAdverts, roleKey, ageSink, REPOST_WINDOW_DAYS } from './lead-age';
 import { leadSource, primaryArticle } from './lead-source';
@@ -334,11 +334,12 @@ export const whenLabel = (item: TodayItem, index: number) => item.at ?? (index =
  */
 async function hiringWorthCalling(sb: SupabaseClient, industriesOn = false, followedFirst: (i: string[] | null | undefined) => number = () => 1): Promise<{ id: string; name: string; why: string; ageing: boolean; newest: string | null }[]> {
   const contacts = await hasPostingContact(sb);
-  const state = await hasHiringState(sb);
-  // Item 20 step 2b: "not for us" is THIS workspace's decision, so it is read from its own state row
-  // nested inside the company embed, and flattened before the loop below reads `hiring_status`.
+  // Item 20 step 2c: "not for us" is THIS workspace's decision, read from its own state row nested
+  // inside the company embed and flattened before the loop below reads `hiring_status`. The old
+  // companies.hiring_status is NOT asked for any more — it stopped being written when the dual-write
+  // was removed, so reading it would return a stale value rather than no value.
   const wsState = await hasWorkspaceState(sb);
-  const cols = `company_id, role, title, headcount, posted_at, first_seen_at${contacts ? ', contact_name' : ''}, companies!inner(name${state ? ', hiring_status' : ''}${wsState ? `, ${COMPANY_STATE_LEFT}` : ''}${industriesOn ? ', industries' : ''})`;
+  const cols = `company_id, role, title, headcount, posted_at, first_seen_at${contacts ? ', contact_name' : ''}, companies!inner(name${wsState ? `, ${COMPANY_STATE_LEFT}` : ''}${industriesOn ? ', industries' : ''})`;
   const { data: rows, error } = await sb.from('job_posts').select(cols as '*')
     .eq('status', 'open').not('company_id', 'is', null).limit(400) as { data: any[] | null; error: any };
   if (error || !rows) return [];
@@ -346,7 +347,7 @@ async function hiringWorthCalling(sb: SupabaseClient, industriesOn = false, foll
 
   const byCompany = new Map<string, any[]>();
   for (const p of data) {
-    if ((state || wsState) && p.companies?.hiring_status === 'not_for_us') continue;
+    if (wsState && p.companies?.hiring_status === 'not_for_us') continue;
     const k = p.company_id as string;
     (byCompany.get(k) ?? byCompany.set(k, []).get(k)!).push(p);
   }

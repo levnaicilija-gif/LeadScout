@@ -93,6 +93,47 @@ async function main() {
     // that started writing one fails here even if the row happened to look right.
     check('verdictPatch names no override column', !Object.keys(patch).some((k) => k.includes('override')),
       `it writes ${Object.keys(patch).join(', ')} — none of which is an override`);
+
+    // ---- 2c: CLEARING an override must actually clear it ------------------------------------------
+    // withCompanyState used to SKIP nulls, which was right while 2b dual-wrote: a sparse state row
+    // holding only a hiring status carries null in employer_type_override, and letting that null win
+    // would have wiped an override the COLUMN still held correctly. The moment 2c removed the second
+    // write it inverted — a cleared override writes null to the state row, the null is skipped, and
+    // the now-stale column wins, so the recruiter's clear silently comes back.
+    //
+    // THE OLD COLUMN IS DELIBERATELY LEFT HOLDING THE STALE VALUE HERE. That is what makes this
+    // assertion real: with the column set to staffing_agency and the state row cleared, a read that
+    // skipped nulls would answer staffing_agency and fail. A read that takes the state row wholesale
+    // answers with the detected type. Nothing else distinguishes the two.
+    const { error: clearErr } = await db.from('workspace_company_state')
+      .update({ employer_type_override: null, employer_type_set_by: null, employer_type_set_at: null })
+      .eq('workspace_id', ws.id).eq('company_id', co.id);
+    if (clearErr) throw new Error(`could not clear the override: ${clearErr.message}`);
+
+    // The stale column is put on the ROW IN MEMORY rather than written to companies and selected
+    // back. Two reasons, and the first is the one that matters: the probe's own read does not ask for
+    // companies.employer_type_override — no read in the app does any more — so writing it to the
+    // database would not have reached the helper at all, and the assertion would have been testing
+    // null-versus-undefined while claiming to test a stale fallback. The second is that the drop
+    // migration removes that column, and a probe that selected it would stop running the day 2c lands.
+    //
+    // So the helper is handed exactly the shape the bug needs — a company row still carrying the old
+    // override, beside a state row that has cleared it — and must answer with the cleared value.
+    const clearedRow = await readBack();
+    const { data: stateRow } = await db.from('workspace_company_state')
+      .select('*').eq('workspace_id', ws.id).eq('company_id', co.id).single();
+    const withStaleColumn = withCompanyState({
+      ...(clearedRow as any),
+      employer_type_override: 'staffing_agency',
+      workspace_company_state: [stateRow],
+    });
+    check('the state row really is cleared', (stateRow as any)?.employer_type_override === null,
+      `workspace_company_state.employer_type_override is ${JSON.stringify((stateRow as any)?.employer_type_override)}`);
+    check('CLEARING AN OVERRIDE CLEARS IT, even beside a stale column',
+      withStaleColumn.employer_type_override === null,
+      `the row carried "staffing_agency" and the read answered ${JSON.stringify(withStaleColumn.employer_type_override)} — a helper that skipped the null would have answered "staffing_agency"`);
+    check('and the detected type takes over again', effectiveEmployerType(withStaleColumn as any) === 'epc_contractor',
+      `effective type is "${effectiveEmployerType(withStaleColumn as any)}" — back to what the crawl concluded, which is what clearing an override means`);
   } finally {
     const leftovers: string[] = [];
     for (const t of ['workspace_company_state', 'companies'] as const) {

@@ -45,15 +45,16 @@ export async function POST(req: Request) {
       employer_type_set_at: type ? new Date().toISOString() : null,
       employer_type_reason: type ? (reason ?? null) : null,
     };
-    const { error: stateError } = await setCompanyState(db, me.workspace_id, companyId, patch, me.id);
-    if (stateError) return NextResponse.json({ error: stateError }, { status: 500 });
-    // The old columns too, until 2c — see the note in workspace-state.ts on why 2b dual-writes.
-    // NOTE for 2c: companies.employer_type_reason must NOT be dropped with the others. The crawl
-    // writes it as a SHARED explanation of the DETECTED type (classify-employers, employer-verdict,
-    // find-or-create-company all set it), which is a different fact from the reason a recruiter gives
-    // for an override. Only the override's half moves.
-    const { error } = await db.from('companies').update(patch).eq('id', companyId);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // Item 20 step 2c: the override is written ONLY to the workspace's own row now. The matching
+    // write to companies was 2b's rollback copy and is gone.
+    //
+    // STILL TRUE FOR THE DROP MIGRATION: companies.employer_type_reason must NOT be dropped with the
+    // others. The crawl writes it as a SHARED explanation of the DETECTED type — classify-employers,
+    // employer-verdict and find-or-create-company all set it, on 525 of the 528 companies that carry
+    // one — which is a different fact from the reason a recruiter gives for an override. Only the
+    // override's half moved.
+    const { error } = await setCompanyState(db, me.workspace_id, companyId, patch, me.id);
+    if (error) return NextResponse.json({ error }, { status: 500 });
 
     return NextResponse.json({
       ok: true,

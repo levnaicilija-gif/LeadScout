@@ -4,7 +4,7 @@ import { jdFromLead, screeningQuestions, draftOutreachChecked, scoreWithRightToW
 import { meterRecruiter } from '@/lib/ai/meter';
 import { searchCountriesFor, checkRightToWork } from '@/lib/right-to-work';
 import { xrayCandidatesUrl, xrayLocalVariantUrl, linkedinSearchUrl, googleSearchUrl } from '@/lib/search-urls';
-import { hasRightToWork, hasCandidateCountries, hasHiringState, hasCompanyOutreach, hasPostingContact, hasColumn } from '@/lib/schema-features';
+import { hasRightToWork, hasCandidateCountries, hasWorkspaceState, hasCompanyOutreach, hasPostingContact, hasColumn } from '@/lib/schema-features';
 import { buildSheet, fromAttendeeList, type FoundContact } from '@/lib/hiring-contacts';
 import { attendeesAt } from '@/lib/attendee-match';
 import { sendCapability } from '@/lib/send-capability';
@@ -182,7 +182,7 @@ async function handle(req: Request, me: SignedIn) {
 
     /* -------------------------------------------------- the approach */
     case 'draft': {
-      if (!co.hiring_confirmed_at && (await hasHiringState(sb))) {
+      if (!co.hiring_confirmed_at && (await hasWorkspaceState(sb))) {
         return NextResponse.json({ error: 'Confirm you have looked at the board before drafting an approach.' }, { status: 400 });
       }
       // What we actually hold. Only verified certificates reach the draft, and checkDraft
@@ -252,24 +252,22 @@ async function handle(req: Request, me: SignedIn) {
 
     /* ------------------------------------------------- row decisions */
     case 'confirm': {
-      if (!(await hasHiringState(sb))) return NextResponse.json({ error: 'Migration 0020 has not been applied yet.' }, { status: 503 });
-      // Item 20 step 2b: "I have looked at this board" is one workspace's record, not a fact about
-      // the company. Written to the state table, which is where the `draft` guard above now reads it
-      // from, and to the old column until 2c.
+      if (!(await hasWorkspaceState(sb))) return NextResponse.json({ error: 'Migration 0047 has not been applied yet.' }, { status: 503 });
+      // Item 20 step 2c: "I have looked at this board" is one workspace's record, not a fact about
+      // the company. Written ONLY to the state table, which is where the `draft` guard above reads
+      // it from; 2b's copy to the old column is gone.
       const patch = { hiring_confirmed_at: new Date().toISOString(), hiring_confirmed_by: me.id };
       const { error } = await setCompanyState(supabaseAdmin(), me.workspace_id, co.id, patch, me.id);
       if (error) return NextResponse.json({ error: `the confirmation was not saved: ${error}` }, { status: 500 });
-      await supabaseAdmin().from('companies').update(patch).eq('id', co.id);
       return NextResponse.json({ ok: true });
     }
 
     case 'status': {
-      if (!(await hasHiringState(sb))) return NextResponse.json({ error: 'Migration 0020 has not been applied yet.' }, { status: 503 });
+      if (!(await hasWorkspaceState(sb))) return NextResponse.json({ error: 'Migration 0047 has not been applied yet.' }, { status: 503 });
       if (!['new', 'pursued', 'not_for_us'].includes(b.status)) return NextResponse.json({ error: 'unknown status' }, { status: 400 });
       const patch = { hiring_status: b.status, hiring_status_at: new Date().toISOString(), hiring_status_by: me.id };
       const { error } = await setCompanyState(supabaseAdmin(), me.workspace_id, co.id, patch, me.id);
       if (error) return NextResponse.json({ error: `the status was not saved: ${error}` }, { status: 500 });
-      await supabaseAdmin().from('companies').update(patch).eq('id', co.id);
       return NextResponse.json({ ok: true, status: b.status });
     }
 

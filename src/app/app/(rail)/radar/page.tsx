@@ -4,7 +4,7 @@ import { FOLLOW_OPTIONS } from '@/lib/industry';
 import { Help } from '@/components/Help';
 import { LeadDrawer } from '@/components/LeadDrawer';
 import { HiringNow, HiringHelp } from '@/components/HiringNow';
-import { hasEmployerOverride, hasJobBoardFields, hasHiringState, hasPostingContact, hasAwardDate, hasIndustries, hasDomainProvenance, hasWorkspaceState } from '@/lib/schema-features';
+import { hasJobBoardFields, hasPostingContact, hasAwardDate, hasIndustries, hasDomainProvenance, hasWorkspaceState } from '@/lib/schema-features';
 import { CLOSED_LEAD_STATUSES, COMPANY_STATE_LEFT, LEAD_STATE_EMBED, LEAD_STATE_TABLE, withCompanyState, withLeadState } from '@/lib/workspace-state';
 import { HiringDrawer } from '@/components/HiringDrawer';
 import { groupByCompany } from '@/components/HiringNow';
@@ -33,19 +33,16 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const industryFilter = industriesOn && !showAll && followed !== 'all' ? followed : null;
   const viewQs = showAll ? '&industries=all' : '';
   const followedNames = followed === 'all' ? [] : FOLLOW_OPTIONS.filter((o) => o.industries.some((i) => (followed as string[]).includes(i))).map((o) => o.label);
-  // Migration 0012 may not be applied yet; naming a column that does not exist fails the whole
-  // query, so the override is only asked for once it is there.
-  const ovr = await hasEmployerOverride(sb);
-  const coOverride = ovr ? ", employer_type_override, employer_type_set_at" : "";
+  // Item 20 step 2c: the employer-type override and the hiring state are NOT read from companies any
+  // more. They come from workspace_company_state through coWsState below. Asking for the old columns
+  // as well would read values that stopped being written the moment the dual-write was removed —
+  // stale rather than absent, which is the worse of the two failures, and the reason these two are
+  // emptied here in the same deploy that removed the writes rather than left to the drop migration.
   const boards0014 = await hasJobBoardFields(sb);
   const jpBoard = boards0014 ? ", poster_name, poster_type, is_secondary, duplicate_of" : "";
-  // 0020: row state on the company, and the contact printed on an advert.
-  const state0020 = await hasHiringState(sb);
-  const coState = state0020 ? ", hiring_status, hiring_confirmed_at" : "";
-  // Item 20 step 2b: the workspace's own row on the company, nested inside the company embed. Asked
-  // for alongside the old columns, not instead of them, because 2b dual-writes — a company with no
-  // state row still reads correctly from its column until 2c drops it. Guarded on the TABLE, not on
-  // the old columns, since 2c takes those away and a guard on them would quietly stop asking.
+  // The workspace's own row on the company, nested inside the company embed — now the ONLY source
+  // for both. Guarded on the TABLE, never on the old columns: a guard on those would go false the
+  // moment the drop lands and quietly stop asking for state at all.
   const wsState = await hasWorkspaceState(sb);
   const coWsState = wsState ? `, ${COMPANY_STATE_LEFT}` : "";
   const jpContact = (await hasPostingContact(sb)) ? ", contact_name, contact_title, contact_email" : "";
@@ -93,7 +90,7 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const { data: postingsRaw } = hiring
     ? await (() => {
       const q = sb.from('job_posts')
-        .select(`id, company_id, title, role, location, country, trades, certs_required, rotation, contract_type, headcount, posted_at, first_seen_at, source_url, via${jpBoard}${jpContact}, companies!inner(name, employer_type, country, domain${coOverride}${coState}${coWsState}${industriesOn ? ', industries' : ''})`)
+        .select(`id, company_id, title, role, location, country, trades, certs_required, rotation, contract_type, headcount, posted_at, first_seen_at, source_url, via${jpBoard}${jpContact}, companies!inner(name, employer_type, country, domain${coWsState}${industriesOn ? ', industries' : ''})`)
         .eq('status', 'open').not('company_id', 'is', null);
       // The named companies are filtered HERE rather than on the grouped rows, because this query keeps
       // only the newest 400 postings: a company whose adverts fall outside that window would vanish from
@@ -150,7 +147,7 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // could show neither), and what the company's own site gave — switchboard, general email, people — with sources.
   // 0033: how the website was found and checked. Named only once it exists — a missing column fails the whole query.
   const domainCols = (await hasDomainProvenance(sb)) ? ', domain_source, domain_address_check, domain_checked_address, domain_scope, domain_scope_reason' : '';
-  const leadCols = `*, companies(name, domain, country, source, employer_type, size_band, switchboard, switchboard_source_url, general_email, general_email_source_url, contacts_checked_at${coOverride}${domainCols}, contacts(name, title, email, email_status, email_source_url, phone, phone_source_url, source_url, lead_id, linkedin_search_url, google_search_url)), contacts(name, title, quote, email, email_status, email_source_url, phone, phone_source_url, linkedin_search_url, google_search_url), job_posts(role, headcount, certs_required, hiring_pressure, posted_at)`;
+  const leadCols = `*, companies(name, domain, country, source, employer_type, size_band, switchboard, switchboard_source_url, general_email, general_email_source_url, contacts_checked_at${coWsState}${domainCols}, contacts(name, title, email, email_status, email_source_url, phone, phone_source_url, source_url, lead_id, linkedin_search_url, google_search_url)), contacts(name, title, quote, email, email_status, email_source_url, phone, phone_source_url, linkedin_search_url, google_search_url), job_posts(role, headcount, certs_required, hiring_pressure, posted_at)`;
   // Item 20 step 2b: the status filter moves onto the workspace's own state row.
   //
   // This is the closure CLAUDE.md names — the table, both source counts and every chip number go
@@ -210,7 +207,12 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // because articles and lead_articles have no read policy until 0025 (src/lib/lead-articles.ts).
   // Item 20 step 2b: flattened here, once, at the point the two lists become one — so the "confirmed"
   // badge in the table and everything the drawer shows read this workspace's own row.
-  const loaded = ([...((newsRes as any).data ?? []), ...((tenderRes as any).data ?? [])] as any[]).map(withLeadState);
+  // The lead's own state, and the company's — the drawer shows the employer-type override beside the
+  // detected type, and from 2c that override lives only in workspace_company_state. Both flattened
+  // here, once, at the point the two lists become one.
+  const loaded = ([...((newsRes as any).data ?? []), ...((tenderRes as any).data ?? [])] as any[])
+    .map(withLeadState)
+    .map((l: any) => (l.companies ? { ...l, companies: withCompanyState(l.companies) } : l));
   const { byLead, error: linksError } = await articlesByLead(loaded.map((l) => l.id), awardCols);
   for (const l of loaded) l.lead_articles = byLead.get(l.id) ?? [];
   const { byLead: peopleBy, error: peopleError } = await peopleByLead(loaded.map((l) => l.id));
