@@ -79,6 +79,11 @@ export const TABLES: Record<string, Entry> = {
     scope: { by: 'workspace_id' },
     why: 'ITEM 20 STEP 1, DONE (0046). It was the hazard the whole order is built around — a private draft scoped "lead_id in leads where workspace = mine", so sharing leads would have opened every workspace\'s drafts. It was also already broken: an approach written from postings has a company and NO lead, and null is never `in` anything, so those rows matched no policy and /api/outreach answered 404 on a draft it had just written',
   },
+  // 0047, item 20 step 2: one workspace's ACTIVITY on a record whose facts are about to be shared.
+  // Their own workspace_id and NOT a scope inherited through leads or companies — which is the whole
+  // point, and what privateThroughShared() would catch if they were built the other way.
+  workspace_lead_state: { bucket: 'private', scope: { by: 'workspace_id' }, why: 'status, confirmation, notes and the job description for ONE workspace. "We are pursuing this" is the thing that must never leak to another customer looking at the same lead' },
+  workspace_company_state: { bucket: 'private', scope: { by: 'workspace_id' }, why: 'hiring status, confirmation, notes and the employer-type override for ONE workspace. The override is a correction of a crawled fact and is arguably true for everyone, but one customer\'s judgement must not silently rewrite another\'s view (owner\'s decision 2026-09-24)' },
   followup_resolutions: { bucket: 'private', scope: { by: 'workspace_id' }, why: 'a resolved follow-up and the note a recruiter wrote on it' },
   scorecards: { bucket: 'private', scope: { by: 'workspace_id' }, why: 'one recruiter\'s own day' },
   scorecard_targets: { bucket: 'private', scope: { by: 'workspace_id' }, why: 'what a senior set for them' },

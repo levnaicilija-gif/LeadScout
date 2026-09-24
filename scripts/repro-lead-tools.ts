@@ -57,7 +57,7 @@ const stage = async <T>(name: string, fn: () => Promise<T>): Promise<T | null> =
 
   const d = await stage('draft', () => draftOutreach({
     company: lead.companies?.name, contact: lead.contacts?.[0], project: lead.project_name,
-    phase: lead.phase, trades: lead.trades_inferred, rfbt_history: lead.companies?.rfbt_history, packs: [],
+    phase: lead.phase, trades: lead.trades_inferred, sector_note: lead.companies?.sector_note, packs: [],
   }));
   if (d) {
     console.log(`Subject: ${(d as any).subject}\n`);

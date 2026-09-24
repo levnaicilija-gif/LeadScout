@@ -55,7 +55,7 @@ const check = (label: string, { error }: { error: unknown }) => {
   const ag = csv('agencies.csv').map((r) => ({
     workspace_id: ws, name: r.company,
     domain: (() => { try { return new URL(r.website).hostname; } catch { return null; } })(),
-    employer_type: 'staffing_agency', rfbt_history: r.focus,
+    employer_type: 'staffing_agency', sector_note: r.focus,
   }));
   check('companies', await db.from('companies').upsert(ag, { onConflict: 'workspace_id,name' }));
 

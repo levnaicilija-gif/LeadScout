@@ -92,11 +92,11 @@ async function run(req: Request) {
   }
 
   // Every company without a tag gets one — including the ones Radar created.
-  const { data: untagged } = await db.from('companies').select('id, name, country, rfbt_history').eq('workspace_id', workspace).is('tier', null).limit(5000);
+  const { data: untagged } = await db.from('companies').select('id, name, country, sector_note').eq('workspace_id', workspace).is('tier', null).limit(5000);
   for (const c of untagged ?? []) {
-    const country = c.country ?? countryFromText(c.rfbt_history);
+    const country = c.country ?? countryFromText(c.sector_note);
     await db.from('companies').update({
-      country: country ?? null, region: regionFor(country), tier: tierFor(country), sector: sectorFor(c.name, c.rfbt_history),
+      country: country ?? null, region: regionFor(country), tier: tierFor(country), sector: sectorFor(c.name, c.sector_note),
     }).eq('id', c.id);
     stats.retagged++;
   }

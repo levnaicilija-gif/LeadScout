@@ -103,7 +103,7 @@ async function handle(req: Request, me: SignedIn) {
 
       const d = await draftOutreachChecked({
         company: lead.companies?.name, project: lead.project_name, phase: lead.phase,
-        trades: lead.trades_inferred, rfbt_history: lead.companies?.rfbt_history, packs: b.packs ?? [],
+        trades: lead.trades_inferred, sector_note: lead.companies?.sector_note, packs: b.packs ?? [],
         recipient: { name: pick.to.name, title: pick.to.title },
         hook: pick.hook ? { name: pick.hook.name, title: pick.hook.title, quote: (pick.hook as any).quote ?? quoted?.quote } : null,
         // What we can actually claim. Without this the draft invents certificates the pool does

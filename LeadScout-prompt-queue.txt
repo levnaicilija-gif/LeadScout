@@ -591,6 +591,32 @@ quietly patched:
      candidates has one: the other three are covered solely by rls-sweep, which
      compares row counts and cannot test a write.
 
+HARD RULE FOR THE REST OF THIS PROJECT (2026-09-24, learned by breaking
+production): CODE FIRST, DEPLOY, THEN MIGRATE — for anything that renames or
+drops a column. 0047 renamed companies.rfbt_history to sector_note in one
+statement while six live sites still named the old one, and applying it took
+/api/jobs/companies and /api/jobs/resolve-domains down immediately. A rename is
+a DROP PLUS AN ADD and no running code survives it. Every remaining step-2, 3
+and 4 migration that removes or renames a column must therefore be split:
+
+  1. add the new column (or table) — safe to migrate first, hasColumn guards it
+  2. backfill it, and verify the copy independently of the script that made it
+  3. deploy the code reading the NEW name, with the old column still present
+  4. ONLY THEN drop the old column, in its own later migration
+
+Before any of those, grep for every reference. Three failure shapes, hardest to
+notice last: .update({col}) always fails; .select('a, col, c') fails the whole
+query; .select('*') plus a property access FAILS SILENTLY — api/lead did not
+crash, it just quietly stopped putting the company's sector line into outreach
+drafts. Watching for exceptions does not answer "did anything break".
+
+The remaining step-2 write surface, counted 2026-09-24: leads.status /
+confirmed_by / confirmed_at / job_description / jd_version are written at 5
+sites (api/lead x3, api/leads/send-pack, api/outreach); the companies columns at
+api/company/employer-type and api/hiring. Only 4 selects name any of them
+explicitly — everything else uses select('*') or companies(*), which is exactly
+the silent-failure shape above.
+
 REVISED ORDER (owner's go-ahead 2026-09-23). A new STEP 0 comes first, because
 the later steps are only checkable once the boundary is written down: the
 four-bucket registry (src/lib/table-registry.ts) with table-registry-check in

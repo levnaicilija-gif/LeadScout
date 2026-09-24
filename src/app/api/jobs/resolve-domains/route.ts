@@ -97,8 +97,8 @@ async function run(req: Request) {
         // With 0033 the search's result has its own columns and companies.source keeps where the company came from.
         const scope = siteScope({ companyName: c.name, domain, winnerCountry: c.country });
         await db.from('companies').update(provenance
-          ? { domain, domain_source: 'web search', domain_source_url: ans.source_url ?? null, domain_address_check: 'no_address', domain_scope: scope.scope, domain_scope_reason: scope.reason, rfbt_history: null, ...stamp }
-          : { domain, source: 'web search', source_url: ans.source_url ?? null, rfbt_history: null },
+          ? { domain, domain_source: 'web search', domain_source_url: ans.source_url ?? null, domain_address_check: 'no_address', domain_scope: scope.scope, domain_scope_reason: scope.reason, sector_note: null, ...stamp }
+          : { domain, source: 'web search', source_url: ans.source_url ?? null, sector_note: null },
         ).eq('id', c.id);
         stats.resolved++;
         found.push({ name: c.name, country: c.country, domain, confirmed_by: String(ans.confirmed_by).slice(0, 90), scope: scope.scope });

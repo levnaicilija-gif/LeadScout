@@ -23,6 +23,8 @@
  * hand. That is a normal state here and failing the gate for it would teach everyone to ignore a red
  * step — priority-window and industry-follow already use exit 2 the same way for 0042 and 0032.
  */
+import { readdirSync, readFileSync } from 'fs';
+import { join } from 'path';
 import { createClient } from '@supabase/supabase-js';
 import { TABLES, PLATFORM_TABLES, privateThroughShared } from '../src/lib/table-registry';
 
@@ -44,13 +46,31 @@ const check = (ok: boolean, what: string, detail = '') => {
   if (!live.length) throw new Error('the API listed no tables');
   const columns = (t: string) => Object.keys(spec.definitions[t]?.properties ?? {});
 
+  /** Registry ahead of the database: a migration applied by hand has not landed yet. Not a failure. */
+  const pending: string[] = [];
+
   console.log(`--- 1. every table is classified (${live.length} live, ${Object.keys(TABLES).length} registered) ---`);
   const unregistered = live.filter((t) => !TABLES[t]);
   check(unregistered.length === 0,
     'no table is missing from the registry',
     unregistered.length ? `UNCLASSIFIED: ${unregistered.join(', ')} — add it to src/lib/table-registry.ts with its bucket` : 'all classified');
-  const gone = Object.keys(TABLES).filter((t) => !live.includes(t));
-  check(gone.length === 0, 'and the registry names no table that no longer exists', gone.join(', ') || 'none stale');
+  /**
+   * A registered table that is not live has TWO causes and they deserve different verdicts: its
+   * migration is not applied yet (pending — normal here, migrations are applied by hand), or it was
+   * dropped and the registry is stale (a real failure). They are told apart by asking whether any
+   * migration actually creates it, rather than by assuming the friendlier one.
+   */
+  const migrations = readdirSync('supabase/migrations')
+    .filter((f) => f.endsWith('.sql'))
+    .map((f) => readFileSync(join('supabase/migrations', f), 'utf8'))
+    .join('\n');
+  const notLive = Object.keys(TABLES).filter((t) => !live.includes(t));
+  const awaited = notLive.filter((t) => new RegExp(`create table (if not exists )?${t}\\b`, 'i').test(migrations));
+  const stale = notLive.filter((t) => !awaited.includes(t));
+  pending.push(...awaited);
+  check(stale.length === 0,
+    'and the registry names no table that no longer exists',
+    stale.length ? `${stale.join(', ')} — in the registry, in no migration, and not in the database` : awaited.length ? `${awaited.length} awaiting a migration (${awaited.join(', ')})` : 'none stale');
 
   console.log('\n--- 2. the scoping claim matches the columns ---');
   const wrongScope: string[] = [];
@@ -63,7 +83,6 @@ const check = (ok: boolean, what: string, detail = '') => {
    * priority-window and industry-follow already do for 0042 and 0032. A registry that is WRONG in
    * any other way still fails.
    */
-  const pending: string[] = [];
   for (const [t, e] of Object.entries(TABLES)) {
     if (!live.includes(t)) continue;
     const cols = columns(t);
