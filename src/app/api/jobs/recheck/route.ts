@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { fetchPage } from '@/lib/fetch-page';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '@/lib/workspace-state';
 import { runLookup } from '@/lib/verify/adapters';
 import { leadSource } from '@/lib/lead-source';
 import { sourceFlag } from '@/lib/source-quality';
@@ -30,7 +31,8 @@ export async function POST(req: Request) {
   // switched on in the Supabase dashboard between commits.
   const sweep = await runRlsSweep();
   const sweepNotKept = await recordRlsSweep(db, sweep, 'cron');
-  const { data: leads } = await db.from('leads').select('id, source_url, kind, created_at').not('status', 'in', '("stale","not_for_us")').limit(200);
+  // Item 20 step 2b: only leads somebody still considers open are re-fetched, read from the state row.
+  const { data: leads } = await db.from('leads').select(`id, source_url, kind, created_at, ${LEAD_STATE_EMBED}`).not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES).limit(200);
   const flagOn = await hasSourceFlag(db);
   for (const l of leads ?? []) {
     if (!l.source_url) continue;

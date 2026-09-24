@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { supabaseServer, currentUser } from '@/lib/supabase/server';
 import { followedIndustries } from '@/lib/industry-follow';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '@/lib/workspace-state';
 import { Help } from '@/components/Help';
 import { todayItems, whenLabel, last24h, type TodayItem, type Last24Row } from '@/lib/today';
 import { planFor, needsReview } from '@/lib/onboarding';
@@ -73,14 +74,15 @@ export default async function Today({ searchParams }: { searchParams: { view?: s
 
   const [items, wonCount, hiringCount, pool, expiring, availableNow, checkedToday, bullets, recentWon, recentHiring, followupState] = await Promise.all([
     todayItems(sb, followedIndustries((me as any)?.industry_follow), windowSince),
-    sb.from('leads').select('id', { count: 'exact', head: true }).eq('kind', 'won_work').not('status', 'in', '("stale","not_for_us")'),
+    // Item 20 step 2b: open won-work, counted through this workspace's own state rows.
+    sb.from('leads').select(`id, ${LEAD_STATE_EMBED}`, { count: 'exact', head: true }).eq('kind', 'won_work').not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES),
     sb.from('job_posts').select('id', { count: 'exact', head: true }).eq('status', 'open'),
     sb.from('candidates').select('id', { count: 'exact', head: true }),
     sb.from('verifications').select('id', { count: 'exact', head: true }).eq('result', 'valid').gte('valid_until', today).lte('valid_until', in60),
     sb.from('candidates').select('id', { count: 'exact', head: true }).or(`availability_from.is.null,availability_from.lte.${today}`),
     sb.from('verifications').select('id', { count: 'exact', head: true }).gte('checked_at', `${today}T00:00:00Z`),
     sb.from('anonymized_cvs').select('bullets').eq('pii_check_passed', true).limit(200),
-    sb.from('leads').select('project_name, created_at, companies(name)').eq('kind', 'won_work').not('status', 'in', '("stale","not_for_us")').order('created_at', { ascending: false }).limit(2),
+    sb.from('leads').select(`project_name, created_at, companies(name), ${LEAD_STATE_EMBED}`).eq('kind', 'won_work').not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES).order('created_at', { ascending: false }).limit(2),
     sb.from('job_posts').select('role, title, posted_at, first_seen_at, companies(name)').eq('status', 'open').order('first_seen_at', { ascending: false }).limit(2),
     followups(sb, { resolutionsReady: followupsOn }),
   ]);

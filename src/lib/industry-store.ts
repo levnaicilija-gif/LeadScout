@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { classifyAward, classifyNews, classifyCompany, repeatedSentences, INDUSTRIES, type IndustryEvidence, type IndustryId } from '@/lib/industry';
 import { leadSource } from '@/lib/lead-source';
 import { hasIndustries } from '@/lib/schema-features';
+import { LEAD_STATE_LEFT, withLeadState } from '@/lib/workspace-state';
 
 /**
  * Where industries are written as leads and adverts arrive (0031). scripts/industry-backfill.ts did the rows already
@@ -47,7 +48,11 @@ export async function refreshCompanyIndustries(db: SupabaseClient, companyId: st
     const { data: co, error } = await db.from('companies').select('id, employer_type_evidence').eq('id', companyId).maybeSingle();
     if (error || !co) return `company ${companyId} could not be read: ${error?.message ?? 'not found'}`;
     const { data: posts } = await db.from('job_posts').select('title').eq('company_id', companyId).eq('status', 'open').limit(100);
-    const { data: leads } = await db.from('leads').select('status, industry_evidence').eq('company_id', companyId).limit(200);
+    // Item 20 step 2b: whether a lead is open comes from the workspace's state row. A LEFT join, not
+    // `!inner` — this is evidence-gathering, and a lead whose state row were missing should still be
+    // considered rather than silently dropped from the classification.
+    const { data: leadRows } = await db.from('leads').select(`status, industry_evidence, ${LEAD_STATE_LEFT}`).eq('company_id', companyId).limit(200);
+    const leads = (leadRows ?? []).map(withLeadState);
     const own = classifyCompany({
       postingTitles: (posts ?? []).map((p: any) => p.title),
       employerEvidence: typeof co.employer_type_evidence === 'string' ? co.employer_type_evidence : JSON.stringify(co.employer_type_evidence ?? ''),

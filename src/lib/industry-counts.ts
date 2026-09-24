@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { FOLLOW_OPTIONS } from '@/lib/industry';
 import { hasIndustries } from '@/lib/schema-features';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '@/lib/workspace-state';
 
 export type OptionCount = { id: string; label: string; leads: number | null; hiring: number | null };
 
@@ -13,7 +14,8 @@ export async function followOptionCounts(sb: SupabaseClient): Promise<OptionCoun
   const counted = await hasIndustries(sb);
   if (!counted) return FOLLOW_OPTIONS.map((o) => ({ id: o.id, label: o.label, leads: null, hiring: null }));
   const [{ data: leads }, { data: posts }] = await Promise.all([
-    sb.from('leads').select('industries').eq('kind', 'won_work').not('status', 'in', '("stale","not_for_us")').limit(5000),
+    // Item 20 step 2b: "open" is the reader's own judgement, read from their state row.
+    sb.from('leads').select(`industries, ${LEAD_STATE_EMBED}`).eq('kind', 'won_work').not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES).limit(5000),
     sb.from('job_posts').select('company_id, companies!inner(industries)').eq('status', 'open').limit(5000),
   ]);
   const hiring = new Map<string, string[]>();

@@ -9,6 +9,7 @@ import { buildSheet, fromAttendeeList, type FoundContact } from '@/lib/hiring-co
 import { attendeesAt } from '@/lib/attendee-match';
 import { sendCapability } from '@/lib/send-capability';
 import { previousEmployer } from '@/lib/previous-employer';
+import { COMPANY_STATE_LEFT, setCompanyState, withCompanyState } from '@/lib/workspace-state';
 export const maxDuration = 120;
 
 /**
@@ -36,8 +37,14 @@ async function handle(req: Request, me: SignedIn) {
 
   const withContact = await hasPostingContact(sb);
   const contactCols = withContact ? ', contact_name, contact_title, contact_email, contact_phone' : '';
-  const { data: co } = await sb.from('companies').select('*').eq('id', b.company_id).maybeSingle();
-  if (!co) return NextResponse.json({ error: 'not found' }, { status: 404 });
+  // Item 20 step 2b: this workspace's own hiring status, confirmation and employer-type override
+  // ride in as an embed and are flattened onto the row, so `co.hiring_confirmed_at` and
+  // `co.employer_type_override` below read what THIS workspace decided rather than a column that is
+  // about to belong to everybody. LEFT, because workspace_company_state is sparse — 3 rows of 5,889
+  // companies — and an inner join would 404 every company nobody has touched.
+  const { data: coRow } = await sb.from('companies').select(`*, ${COMPANY_STATE_LEFT}`).eq('id', b.company_id).maybeSingle();
+  if (!coRow) return NextResponse.json({ error: 'not found' }, { status: 404 });
+  const co = withCompanyState(coRow);
 
   // The column list is built at runtime because the contact columns arrive with 0020, so the
   // select is cast: Supabase's type parser cannot read a template literal.
@@ -246,18 +253,23 @@ async function handle(req: Request, me: SignedIn) {
     /* ------------------------------------------------- row decisions */
     case 'confirm': {
       if (!(await hasHiringState(sb))) return NextResponse.json({ error: 'Migration 0020 has not been applied yet.' }, { status: 503 });
-      await supabaseAdmin().from('companies')
-        .update({ hiring_confirmed_at: new Date().toISOString(), hiring_confirmed_by: me.id })
-        .eq('id', co.id);
+      // Item 20 step 2b: "I have looked at this board" is one workspace's record, not a fact about
+      // the company. Written to the state table, which is where the `draft` guard above now reads it
+      // from, and to the old column until 2c.
+      const patch = { hiring_confirmed_at: new Date().toISOString(), hiring_confirmed_by: me.id };
+      const { error } = await setCompanyState(supabaseAdmin(), me.workspace_id, co.id, patch, me.id);
+      if (error) return NextResponse.json({ error: `the confirmation was not saved: ${error}` }, { status: 500 });
+      await supabaseAdmin().from('companies').update(patch).eq('id', co.id);
       return NextResponse.json({ ok: true });
     }
 
     case 'status': {
       if (!(await hasHiringState(sb))) return NextResponse.json({ error: 'Migration 0020 has not been applied yet.' }, { status: 503 });
       if (!['new', 'pursued', 'not_for_us'].includes(b.status)) return NextResponse.json({ error: 'unknown status' }, { status: 400 });
-      await supabaseAdmin().from('companies')
-        .update({ hiring_status: b.status, hiring_status_at: new Date().toISOString(), hiring_status_by: me.id })
-        .eq('id', co.id);
+      const patch = { hiring_status: b.status, hiring_status_at: new Date().toISOString(), hiring_status_by: me.id };
+      const { error } = await setCompanyState(supabaseAdmin(), me.workspace_id, co.id, patch, me.id);
+      if (error) return NextResponse.json({ error: `the status was not saved: ${error}` }, { status: 500 });
+      await supabaseAdmin().from('companies').update(patch).eq('id', co.id);
       return NextResponse.json({ ok: true, status: b.status });
     }
 

@@ -115,7 +115,11 @@ export async function countsFor(
     sb.from('verifications').select('id, documents!inner(uploaded_by, workspace_id)', { count: 'exact', head: true })
       .eq('documents.uploaded_by', opts.userId).eq('documents.workspace_id', opts.workspaceId)
       .gte('checked_at', from).lt('checked_at', to),
-    sb.from('leads').select('id', { count: 'exact', head: true })
+    // Item 20 step 2b: "leads this person confirmed" is counted from the workspace's own state rows.
+    // Counted on the state table DIRECTLY rather than through an embed on `leads`: the question is
+    // entirely about who confirmed what and when, every one of which now lives here, and the
+    // workspace is already pinned — which is also what keeps the count right once leads are shared.
+    sb.from('workspace_lead_state').select('lead_id', { count: 'exact', head: true })
       .eq('workspace_id', opts.workspaceId).eq('confirmed_by', opts.userId).gte('confirmed_at', from).lt('confirmed_at', to),
     sb.from('candidates').select('id', { count: 'exact', head: true })
       .eq('workspace_id', opts.workspaceId).eq('created_by', opts.userId).gte('created_at', from).lt('created_at', to),

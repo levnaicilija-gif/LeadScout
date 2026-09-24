@@ -6,6 +6,7 @@ import { ruleFor } from '@/lib/source-rules';
 import { extractLead, extractJobPost } from '@/lib/ai/radar-extract';
 import { detectEmployerType } from '@/lib/agency-detector';
 import { findOrCreateCompany } from '@/lib/find-or-create-company';
+import { LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '@/lib/workspace-state';
 import { linkedinSearchUrl, googleSearchUrl } from '@/lib/search-urls';
 import { inferTrades } from '@/lib/trades';
 import { countryFromText, regionFor } from '@/lib/geo';
@@ -129,8 +130,19 @@ export async function runRadarBatch(req: Request) {
 
   // Item 14's target accounts, narrow as the owner decided: a company with an active lead, or
   // hiring marked pursued. A quoted person from another company counts only if it is one of these.
-  const { data: activeLeads } = await db.from('leads').select('companies(name)').in('status', ['pursue', 'contacted', 'replied', 'call', 'trial', 'framework']);
-  const { data: pursuedCompanies } = await db.from('companies').select('name').eq('hiring_status', 'pursued');
+  // Item 20 step 2b: "active" and "pursued" are the crawl workspace's own decisions, so both come
+  // from its state rows. Read as the SERVICE ROLE, so the workspace is pinned explicitly on each
+  // embed rather than left to RLS — and pinning it now is what keeps this correct at step 3, when a
+  // lead will carry one state row per workspace instead of one.
+  // The workspace is pinned when the batch knows one. It can be null — the batch's sources name it,
+  // and with no sources `crawlWorkspace` may fail — in which case the query is left as wide as it has
+  // always been rather than silently returning nothing and quietly emptying the target list.
+  const pinLead = (q: any) => (workspaceId ? q.eq(`${LEAD_STATE_TABLE}.workspace_id`, workspaceId) : q);
+  const pinCo = (q: any) => (workspaceId ? q.eq('workspace_company_state.workspace_id', workspaceId) : q);
+  const { data: activeLeads } = await pinLead(db.from('leads').select(`companies(name), ${LEAD_STATE_EMBED}`))
+    .in(`${LEAD_STATE_TABLE}.status`, ['pursue', 'contacted', 'replied', 'call', 'trial', 'framework']);
+  const { data: pursuedCompanies } = await pinCo(db.from('companies').select('name, workspace_company_state!inner(hiring_status)'))
+    .eq('workspace_company_state.hiring_status', 'pursued');
   const targets = new Set<string>([...(activeLeads ?? []).map((l: any) => l.companies?.name), ...(pursuedCompanies ?? []).map((c: any) => c.name)].filter(Boolean).map((n: string) => canonCompany(n)));
   // Every judgement is kept, a rejection included — never dropped. Written once 0023 exists; until
   // then the run record's rejected list carries the same reasons.

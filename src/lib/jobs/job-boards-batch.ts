@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cronAuthorised } from '@/lib/jobs/cron-auth';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { crawlWorkspace } from '@/lib/crawl-workspace';
+import { COMPANY_STATE_LEFT, withCompanyState } from '@/lib/workspace-state';
 import { fetchPage, articleLinks } from '@/lib/fetch-page';
 import { ruleFor } from '@/lib/source-rules';
 import { claude, MODEL_CLASSIFY, MODEL_EXTRACT, appearsIn } from '@/lib/ai/claude';
@@ -101,9 +102,16 @@ export async function runJobBoardsBatch(req: Request) {
   const chained = false;
 
   // Companies we already know, so an advert can be matched to one rather than creating a new row.
-  const { data: known } = await db.from('companies').select('id, name, employer_type, employer_type_override').eq('workspace_id', ws.id);
-  const byName = new Map((known ?? []).map((c: any) => [canon(c.name), c]));
-  const agencyNames = (known ?? []).filter((c: any) => (c.employer_type_override ?? c.employer_type) === 'staffing_agency').map((c: any) => c.name);
+  // Item 20 step 2b: the override is this workspace's own correction, read from its state row and
+  // flattened so the agency test below is unchanged. LEFT join and pinned to this workspace: only 3
+  // companies of 5,889 carry an override, so an inner join would reduce `known` from the whole book
+  // of companies to three — and this map is what stops an advert creating a duplicate company row.
+  const { data: knownRaw } = await db.from('companies')
+    .select(`id, name, employer_type, employer_type_override, ${COMPANY_STATE_LEFT}`)
+    .eq('workspace_id', ws.id);
+  const known = (knownRaw ?? []).map(withCompanyState);
+  const byName = new Map(known.map((c: any) => [canon(c.name), c]));
+  const agencyNames = known.filter((c: any) => (c.employer_type_override ?? c.employer_type) === 'staffing_agency').map((c: any) => c.name);
 
   const stats = { boards: 0, linksSeen: 0, alreadyHad: 0, read: 0, notTrade: 0, kept: 0, agencyPosted: 0, employerNamed: 0, outsideEurope: 0, secondary: 0, noTitle: 0 };
   const found: any[] = [];

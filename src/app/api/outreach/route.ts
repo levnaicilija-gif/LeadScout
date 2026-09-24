@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { supabaseServer, currentUser } from '@/lib/supabase/server';
 import { sendCapability } from '@/lib/send-capability';
+import { setLeadState } from '@/lib/workspace-state';
 export const maxDuration = 60;
 
 /**
@@ -69,7 +70,15 @@ export async function POST(req: Request) {
   await sb.from('outreach').update({
     subject: b.subject, body: b.body, sent_by: me.id, sent_at: new Date().toISOString(), status: 'sent',
   }).eq('id', o.id);
-  if (o.lead_id) await sb.from('leads').update({ status: 'contacted', updated_at: new Date().toISOString() }).eq('id', o.lead_id);
+  // Item 20 step 2b: "contacted" is this workspace's record of its own approach. The email has
+  // ALREADY GONE by this point, so a failure here must not read as a failed send — it is reported
+  // alongside the success rather than instead of it, and the recruiter can move the lead by hand.
+  let statusNote: string | null = null;
+  if (o.lead_id) {
+    const { error } = await setLeadState(sb, me.workspace_id, o.lead_id, { status: 'contacted' }, me.id);
+    if (error) statusNote = `The email went out, but the lead was not moved to Contacted: ${error}`;
+    else await sb.from('leads').update({ status: 'contacted', updated_at: new Date().toISOString() }).eq('id', o.lead_id);
+  }
 
-  return NextResponse.json({ ok: true, to: b.to });
+  return NextResponse.json({ ok: true, to: b.to, ...(statusNote ? { warning: statusNote } : {}) });
 }

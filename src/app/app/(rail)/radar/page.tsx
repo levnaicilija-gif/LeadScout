@@ -4,7 +4,8 @@ import { FOLLOW_OPTIONS } from '@/lib/industry';
 import { Help } from '@/components/Help';
 import { LeadDrawer } from '@/components/LeadDrawer';
 import { HiringNow, HiringHelp } from '@/components/HiringNow';
-import { hasEmployerOverride, hasJobBoardFields, hasHiringState, hasPostingContact, hasAwardDate, hasIndustries, hasDomainProvenance } from '@/lib/schema-features';
+import { hasEmployerOverride, hasJobBoardFields, hasHiringState, hasPostingContact, hasAwardDate, hasIndustries, hasDomainProvenance, hasWorkspaceState } from '@/lib/schema-features';
+import { CLOSED_LEAD_STATUSES, COMPANY_STATE_LEFT, LEAD_STATE_EMBED, LEAD_STATE_TABLE, withCompanyState, withLeadState } from '@/lib/workspace-state';
 import { HiringDrawer } from '@/components/HiringDrawer';
 import { groupByCompany } from '@/components/HiringNow';
 import { checkRightToWork } from '@/lib/right-to-work';
@@ -41,6 +42,12 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // 0020: row state on the company, and the contact printed on an advert.
   const state0020 = await hasHiringState(sb);
   const coState = state0020 ? ", hiring_status, hiring_confirmed_at" : "";
+  // Item 20 step 2b: the workspace's own row on the company, nested inside the company embed. Asked
+  // for alongside the old columns, not instead of them, because 2b dual-writes — a company with no
+  // state row still reads correctly from its column until 2c drops it. Guarded on the TABLE, not on
+  // the old columns, since 2c takes those away and a guard on them would quietly stop asking.
+  const wsState = await hasWorkspaceState(sb);
+  const coWsState = wsState ? `, ${COMPANY_STATE_LEFT}` : "";
   const jpContact = (await hasPostingContact(sb)) ? ", contact_name, contact_title, contact_email" : "";
 
   // Today's queue item names a handful of companies, so its link shows exactly those (2026-09-17):
@@ -83,10 +90,10 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
 
   // Hiring now reads job_posts directly: a posting on a company's own careers page has no lead
   // behind it, and inventing one to hang it off would be a lead nobody decided to create.
-  const { data: postings } = hiring
+  const { data: postingsRaw } = hiring
     ? await (() => {
       const q = sb.from('job_posts')
-        .select(`id, company_id, title, role, location, country, trades, certs_required, rotation, contract_type, headcount, posted_at, first_seen_at, source_url, via${jpBoard}${jpContact}, companies!inner(name, employer_type, country, domain${coOverride}${coState}${industriesOn ? ', industries' : ''})`)
+        .select(`id, company_id, title, role, location, country, trades, certs_required, rotation, contract_type, headcount, posted_at, first_seen_at, source_url, via${jpBoard}${jpContact}, companies!inner(name, employer_type, country, domain${coOverride}${coState}${coWsState}${industriesOn ? ', industries' : ''})`)
         .eq('status', 'open').not('company_id', 'is', null);
       // The named companies are filtered HERE rather than on the grouped rows, because this query keeps
       // only the newest 400 postings: a company whose adverts fall outside that window would vanish from
@@ -102,6 +109,12 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
       return inWindow.order('posted_at', { ascending: false, nullsFirst: false }).order('first_seen_at', { ascending: false }).limit(400);
     })()
     : { data: null };
+  // Item 20 step 2b: this workspace's own hiring status and employer-type override are flattened onto
+  // the embedded company ONCE, here, so every use below — the agency filter, the "not for us" filter,
+  // the drawer's state, the override shown in the drawer — reads the workspace's row rather than a
+  // column that is about to belong to everybody. Done at the source rather than at each of the four
+  // sites, because four copies of the same rule is how they drift apart.
+  const postings = ((postingsRaw ?? []) as any[]).map((p) => (p.companies ? { ...p, companies: withCompanyState(p.companies) } : p));
   const { count: boards } = hiring
     ? await sb.from('companies').select('id', { count: 'exact', head: true }).eq('careers_status', 'found')
     : { count: 0 };
@@ -138,8 +151,23 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // 0033: how the website was found and checked. Named only once it exists — a missing column fails the whole query.
   const domainCols = (await hasDomainProvenance(sb)) ? ', domain_source, domain_address_check, domain_checked_address, domain_scope, domain_scope_reason' : '';
   const leadCols = `*, companies(name, domain, country, source, employer_type, size_band, switchboard, switchboard_source_url, general_email, general_email_source_url, contacts_checked_at${coOverride}${domainCols}, contacts(name, title, email, email_status, email_source_url, phone, phone_source_url, source_url, lead_id, linkedin_search_url, google_search_url)), contacts(name, title, quote, email, email_status, email_source_url, phone, phone_source_url, linkedin_search_url, google_search_url), job_posts(role, headcount, certs_required, hiring_pressure, posted_at)`;
+  // Item 20 step 2b: the status filter moves onto the workspace's own state row.
+  //
+  // This is the closure CLAUDE.md names — the table, both source counts and every chip number go
+  // through it — so the filter has to narrow the COUNT and the ROWS identically or the banner counts
+  // one set while the table shows another. That an embedded filter does exactly that on an exact
+  // head count is not assumed: scripts/lead-state-embed-probe.ts proves it against real PostgREST by
+  // closing one lead and watching the count fall by one and come back.
+  //
+  // `!inner` is what makes the filter reachable, and it is also why 0048 gives EVERY lead a state row
+  // and puts a trigger on the table. With a sparse state table this join would silently drop the 207
+  // leads nobody has touched.
+  const statusFilter = (q: any) => (wsState
+    ? q.not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES)
+    : q.not('status', 'in', CLOSED_LEAD_STATUSES));
+  const withState = (cols: string) => (wsState ? `${cols}, ${LEAD_STATE_EMBED}` : cols);
   const openLeads = (cols: string, head = false) => {
-    const q = sb.from('leads').select(cols, head ? { count: 'exact', head: true } : undefined).eq('kind', tab).not('status', 'in', '("stale","not_for_us")');
+    const q = statusFilter(sb.from('leads').select(withState(cols), head ? { count: 'exact', head: true } : undefined).eq('kind', tab));
     const inCountry = country ? q.eq('country', country) : q;
     const inWindow = since ? inCountry.gte('created_at', since) : inCountry;
     // Named leads, in the closure every query and count goes through — the table, both source counts and
@@ -150,7 +178,7 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   };
   // What the same query says with no filter, so the banner can offer the whole list by number.
   const { count: everyOpen } = since || ids.length
-    ? await sb.from('leads').select('id', { count: 'exact', head: true }).eq('kind', tab).not('status', 'in', '("stale","not_for_us")')
+    ? await statusFilter(sb.from('leads').select(withState('id'), { count: 'exact', head: true }).eq('kind', tab))
     : { count: null as number | null };
   const NEWS_ONLY = 'source_url.is.null,source_url.not.ilike.https://ted.europa.eu/*';
   const TENDER_URL = 'https://ted.europa.eu/%';
@@ -163,11 +191,11 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   ]);
   const leadsError = (newsRes as any).error ?? (tenderRes as any).error ?? null;
   const { count: everyIndustry } = !hiring && industryFilter
-    ? await (() => { const q = sb.from('leads').select('id', { count: 'exact', head: true }).eq('kind', tab).not('status', 'in', '("stale","not_for_us")'); return country ? q.eq('country', country) : q; })()
+    ? await (() => { const q = statusFilter(sb.from('leads').select(withState('id'), { count: 'exact', head: true }).eq('kind', tab)); return country ? q.eq('country', country) : q; })()
     : { count: null as number | null };
   const { data: countryRows, error: countriesError } = hiring
     ? { data: null, error: null }
-    : await sb.from('leads').select('country').eq('kind', 'won_work').not('status', 'in', '("stale","not_for_us")').not('country', 'is', null).limit(5000);
+    : await statusFilter(sb.from('leads').select(withState('country')).eq('kind', 'won_work')).not('country', 'is', null).limit(5000);
   const leadCountries = [...new Set(((countryRows ?? []) as any[]).map((r) => String(r.country)))].sort();
   const hasContact = (l: any) => ((l.contacts?.length ?? 0) > 0 ? 1 : 0);
   // Item 17: how old the signal is, from the article the lead stands on. Computed here and never
@@ -180,7 +208,9 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   };
   // The sources behind each lead: read with the service role for the leads this user already loaded,
   // because articles and lead_articles have no read policy until 0025 (src/lib/lead-articles.ts).
-  const loaded = [...((newsRes as any).data ?? []), ...((tenderRes as any).data ?? [])] as any[];
+  // Item 20 step 2b: flattened here, once, at the point the two lists become one — so the "confirmed"
+  // badge in the table and everything the drawer shows read this workspace's own row.
+  const loaded = ([...((newsRes as any).data ?? []), ...((tenderRes as any).data ?? [])] as any[]).map(withLeadState);
   const { byLead, error: linksError } = await articlesByLead(loaded.map((l) => l.id), awardCols);
   for (const l of loaded) l.lead_articles = byLead.get(l.id) ?? [];
   const { byLead: peopleBy, error: peopleError } = await peopleByLead(loaded.map((l) => l.id));

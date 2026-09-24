@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { SENDABLE, STATE_LABEL, type CertState } from '@/lib/verify/routes';
+import { setLeadState } from '@/lib/workspace-state';
 export const maxDuration = 120;
 
 /**
@@ -101,7 +102,14 @@ export async function POST(req: Request) {
     }
     // Only a lead has a status to move. A campaign's own status means something else entirely —
     // whether the batch is still running — and is not this route's to touch.
-    if (target.kind === 'lead') await db.from('leads').update({ status: 'pursue' }).eq('id', target.id);
+    // Item 20 step 2b: "we are pursuing this" is THIS workspace's decision, so it goes to
+    // workspace_lead_state, which is where every read now takes it from. `me.workspace_id` is safe to
+    // pass because the lead was already refused above unless it belongs to it.
+    if (target.kind === 'lead') {
+      const { error } = await setLeadState(db, me.workspace_id, target.id, { status: 'pursue' }, me.id);
+      if (error) return NextResponse.json({ error: `the pack was prepared but the lead was not moved to Pursue: ${error}` }, { status: 500 });
+      await db.from('leads').update({ status: 'pursue' }).eq('id', target.id);
+    }
 
     return NextResponse.json({
       ok: true,

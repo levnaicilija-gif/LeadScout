@@ -143,6 +143,25 @@ code=$?
 if [ "$code" -eq 0 ]; then echo "    pass" | tee -a "$LOG"
 elif [ "$code" -eq 2 ]; then echo "    not judged (0046 not applied)" | tee -a "$LOG"
 else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("outreach-rls"); fi
+# Item 20 step 2b: the app reads lead and company state from the workspace's own tables.
+#
+# The MECHANISM first. `openLeads` in radar/page.tsx is the one closure the Leads table, both source
+# counts and every chip number go through, and 2b moves its status filter onto an EMBEDDED table. If
+# an embedded filter were ignored on an exact head count, the banner would count one set while the
+# table showed another - silently, with no error - which is the failure CLAUDE.md names by name. The
+# probe closes one lead in a throwaway workspace and requires the count to fall by exactly one and
+# come back, so a filter that did nothing could not pass.
+step lead-state-embed npx tsx --env-file=.env.local scripts/lead-state-embed-probe.ts
+# Then whether the REAL screens read the real table. Parity alone proves nothing while 2b dual-writes
+# - the column and the state row agree, so a query never switched at all would match. So the check
+# changes one lead's STATE ROW and leaves its COLUMN alone, and requires the two readings to
+# DISAGREE by one. Exit 2 = 0048 not applied, so an inner join would hide every untouched lead.
+echo "=== lead-state-parity" | tee -a "$LOG"
+npx tsx --env-file=.env.local scripts/lead-state-parity-check.ts >> "$LOG" 2>&1
+code=$?
+if [ "$code" -eq 0 ]; then echo "    pass" | tee -a "$LOG"
+elif [ "$code" -eq 2 ]; then echo "    not judged (0048 not applied)" | tee -a "$LOG"
+else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("lead-state-parity"); fi
 step candidate-dedupe npx tsx scripts/candidate-dedupe-check.ts
 # A newer CV updates a record without overwriting what a recruiter typed: the reading always follows
 # the newest CV, an empty field is filled from it, and a field somebody already filled is LEFT ALONE

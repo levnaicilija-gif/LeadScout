@@ -10,6 +10,7 @@ import { hasRightToWork, hasCandidateCountries, hasColumn } from '@/lib/schema-f
 import { previousEmployer } from '@/lib/previous-employer';
 import { rescoreFor, type CallFlag } from '@/lib/screening';
 import { hasScreeningCalls } from '@/lib/schema-features';
+import { LEAD_STATE_LEFT, setLeadState, withLeadState } from '@/lib/workspace-state';
 export const maxDuration = 120;
 /** POST { lead_id, action: 'jd' | 'questions' | 'score_pool' | 'xray' | 'draft' | 'confirm' | 'status', ... } */
 export async function POST(req: Request) {
@@ -21,13 +22,46 @@ export async function POST(req: Request) {
 type SignedIn = NonNullable<Awaited<ReturnType<typeof currentUser>>>;
 async function handle(req: Request, me: SignedIn) {
   const sb = supabaseServer(); const b = await req.json();
-  const { data: lead } = await sb.from('leads').select('*, companies(*), contacts(*), lead_articles(articles(text))').eq('id', b.lead_id).single();
-  if (!lead) return NextResponse.json({ error: 'not found' }, { status: 404 });
+  // Item 20 step 2b: the workspace's own status, confirmation and job description ride in as an
+  // embed and are flattened onto the row, so everything below this line — the JD, the questions, the
+  // scores, the rescore check — reads what THIS workspace decided rather than a column that is about
+  // to belong to everybody. A LEFT join on purpose: `!inner` would turn a lead whose state row is
+  // somehow missing into a 404, and a lead that cannot be opened is a worse failure than one shown
+  // from its old column. 2c removes the fallback along with the columns.
+  const { data: row } = await sb.from('leads').select(`*, ${LEAD_STATE_LEFT}, companies(*), contacts(*), lead_articles(articles(text))`).eq('id', b.lead_id).single();
+  if (!row) return NextResponse.json({ error: 'not found' }, { status: 404 });
+  const lead = withLeadState(row);
   const articleText = (lead.lead_articles?.[0] as any)?.articles?.text ?? '';
   switch (b.action) {
-    case 'confirm': await sb.from('leads').update({ confirmed_by: me.id, confirmed_at: new Date().toISOString() }).eq('id', lead.id); return NextResponse.json({ ok: true });
-    case 'status': await sb.from('leads').update({ status: b.status, updated_at: new Date().toISOString() }).eq('id', lead.id); return NextResponse.json({ ok: true });
-    case 'jd': { const jd = await jdFromLead({ company: lead.companies?.name, project: lead.project_name, location: lead.project_location, trades: lead.trades_inferred, employer_type: lead.companies?.employer_type }, articleText); await sb.from('leads').update({ job_description: jd.job_description, jd_version: (lead.jd_version ?? 0) + 1 }).eq('id', lead.id); return NextResponse.json(jd); }
+    // Item 20 step 2b: the three writes that record what THIS workspace decided now land in
+    // workspace_lead_state, which is where every read takes them from. They also still write the old
+    // column, so 2b can be rolled back onto data that is current rather than stale; 2c removes the
+    // second half and only then drops the columns.
+    //
+    // The state write's error is READ and returned. The old column's is not, because it is already
+    // the copy — reporting a failure to update a column nothing reads would be reporting a failure
+    // the recruiter cannot act on and that did not affect what they will see.
+    case 'confirm': {
+      const at = new Date().toISOString();
+      const { error } = await setLeadState(sb, me.workspace_id, lead.id, { confirmed_by: me.id, confirmed_at: at }, me.id);
+      if (error) return NextResponse.json({ error: `the confirmation was not saved: ${error}` }, { status: 500 });
+      await sb.from('leads').update({ confirmed_by: me.id, confirmed_at: at }).eq('id', lead.id);
+      return NextResponse.json({ ok: true });
+    }
+    case 'status': {
+      const { error } = await setLeadState(sb, me.workspace_id, lead.id, { status: b.status }, me.id);
+      if (error) return NextResponse.json({ error: `the status was not saved: ${error}` }, { status: 500 });
+      await sb.from('leads').update({ status: b.status, updated_at: new Date().toISOString() }).eq('id', lead.id);
+      return NextResponse.json({ ok: true });
+    }
+    case 'jd': {
+      const jd = await jdFromLead({ company: lead.companies?.name, project: lead.project_name, location: lead.project_location, trades: lead.trades_inferred, employer_type: lead.companies?.employer_type }, articleText);
+      const version = (lead.jd_version ?? 0) + 1;
+      const { error } = await setLeadState(sb, me.workspace_id, lead.id, { job_description: jd.job_description, jd_version: version }, me.id);
+      if (error) return NextResponse.json({ error: `the job description was written but not saved: ${error}` }, { status: 500 });
+      await sb.from('leads').update({ job_description: jd.job_description, jd_version: version }).eq('id', lead.id);
+      return NextResponse.json(jd);
+    }
     case 'questions': {
       const q = await screeningQuestions(lead.job_description ?? `${lead.project_name} — ${lead.trades_inferred?.join(', ')}`);
       // Right to work is asked first, because a "no" ends the call and everything else is wasted.

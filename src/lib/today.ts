@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { IndustryId } from '@/lib/industry';
 import { hasIndustries } from '@/lib/schema-features';
-import { hasPostingContact, hasHiringState, hasAwardDate } from './schema-features';
+import { hasPostingContact, hasHiringState, hasAwardDate, hasWorkspaceState } from './schema-features';
+import { CLOSED_LEAD_STATUSES, COMPANY_STATE_LEFT, LEAD_STATE_EMBED, LEAD_STATE_TABLE, withCompanyState } from './workspace-state';
 import { newsLeadAge, tenderLeadAge, postingAge, reAdverts, roleKey, ageSink, REPOST_WINDOW_DAYS } from './lead-age';
 import { leadSource, primaryArticle } from './lead-source';
 import { articlesByLead } from './lead-articles';
@@ -77,7 +78,8 @@ export async function todayItems(sb: SupabaseClient, followed: IndustryId[] | 'a
     // at all this is every open new lead, and PostgREST stops at 1,000 rows without saying so; ordering
     // is by id here because the ranking below re-sorts every row in memory anyway.
     allRows((from, to) => {
-      const q = sb.from('leads').select(`id, kind, company_id, country, project_name, fit_score, trades_inferred, source_url, created_at, companies(name)${industriesOn ? ', industries' : ''}`).eq('status', 'new');
+      // Item 20 step 2b: "new" — nobody here has touched it — is read from this workspace's state row.
+      const q = sb.from('leads').select(`id, kind, company_id, country, project_name, fit_score, trades_inferred, source_url, created_at, companies(name)${industriesOn ? ', industries' : ''}, ${LEAD_STATE_EMBED}`).eq(`${LEAD_STATE_TABLE}.status`, 'new');
       return (since ? q.gte('created_at', since.toISOString()) : q).order('id').range(from, to);
     }),
     // full_name and the certificate number come along because the renewal draft greets a person and
@@ -333,14 +335,18 @@ export const whenLabel = (item: TodayItem, index: number) => item.at ?? (index =
 async function hiringWorthCalling(sb: SupabaseClient, industriesOn = false, followedFirst: (i: string[] | null | undefined) => number = () => 1): Promise<{ id: string; name: string; why: string; ageing: boolean; newest: string | null }[]> {
   const contacts = await hasPostingContact(sb);
   const state = await hasHiringState(sb);
-  const cols = `company_id, role, title, headcount, posted_at, first_seen_at${contacts ? ', contact_name' : ''}, companies!inner(name${state ? ', hiring_status' : ''}${industriesOn ? ', industries' : ''})`;
-  const { data, error } = await sb.from('job_posts').select(cols as '*')
+  // Item 20 step 2b: "not for us" is THIS workspace's decision, so it is read from its own state row
+  // nested inside the company embed, and flattened before the loop below reads `hiring_status`.
+  const wsState = await hasWorkspaceState(sb);
+  const cols = `company_id, role, title, headcount, posted_at, first_seen_at${contacts ? ', contact_name' : ''}, companies!inner(name${state ? ', hiring_status' : ''}${wsState ? `, ${COMPANY_STATE_LEFT}` : ''}${industriesOn ? ', industries' : ''})`;
+  const { data: rows, error } = await sb.from('job_posts').select(cols as '*')
     .eq('status', 'open').not('company_id', 'is', null).limit(400) as { data: any[] | null; error: any };
-  if (error || !data) return [];
+  if (error || !rows) return [];
+  const data = rows.map((p) => (p.companies ? { ...p, companies: withCompanyState(p.companies) } : p));
 
   const byCompany = new Map<string, any[]>();
   for (const p of data) {
-    if (state && p.companies?.hiring_status === 'not_for_us') continue;
+    if ((state || wsState) && p.companies?.hiring_status === 'not_for_us') continue;
     const k = p.company_id as string;
     (byCompany.get(k) ?? byCompany.set(k, []).get(k)!).push(p);
   }
@@ -446,8 +452,8 @@ export async function last24h(
 
   const [leadsRes, postsRes] = await Promise.all([
     sb.from('leads')
-      .select(`id, kind, company_id, country, project_name, fit_score, source_url, created_at, companies(name)${industriesOn ? ', industries' : ''}`)
-      .eq('kind', 'won_work').not('status', 'in', '("stale","not_for_us")').gte('created_at', since),
+      .select(`id, kind, company_id, country, project_name, fit_score, source_url, created_at, companies(name)${industriesOn ? ', industries' : ''}, ${LEAD_STATE_EMBED}`)
+      .eq('kind', 'won_work').not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES).gte('created_at', since),
     sb.from('job_posts')
       .select(`id, company_id, role, title, headcount, posted_at, first_seen_at, companies!inner(name${industriesOn ? ', industries' : ''})`)
       .eq('status', 'open').not('company_id', 'is', null).gte('first_seen_at', since),

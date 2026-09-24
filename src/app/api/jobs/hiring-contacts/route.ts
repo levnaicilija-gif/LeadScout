@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { crawlWorkspace } from '@/lib/crawl-workspace';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '@/lib/workspace-state';
 import { fetchPage } from '@/lib/fetch-page';
 import { askJson, MODEL_CLASSIFY } from '@/lib/ai/claude';
 import { contactFromPosting } from '@/lib/hiring-contacts';
@@ -44,7 +45,9 @@ const CONTACT = z.object({
 const STALE_DAYS = 30;
 /** Leave headroom under maxDuration so the last company finishes and the answer is returned. */
 const DEADLINE_MS = 230_000;
-const OPEN_LEAD = '("stale","not_for_us")';
+// Kept as a local name because the route reads well with it; the value is the shared one, so a tenth
+// status added to the list reaches here too.
+const OPEN_LEAD = CLOSED_LEAD_STATUSES;
 
 const authorised = (req: Request) => {
   const s = process.env.CRON_SECRET;
@@ -74,7 +77,13 @@ export async function POST(req: Request) {
 
   // Won work: companies behind an open lead, and the people their stories quoted.
   const { data: leads, error: leadsError } = scope === 'hiring' ? { data: [] as any[], error: null } : await db.from('leads')
-    .select('id, company_id').eq('workspace_id', workspaceId).eq('kind', 'won_work').not('status', 'in', OPEN_LEAD).not('company_id', 'is', null).limit(5000);
+    // Item 20 step 2b: the crawl workspace's own view of which leads are open. The embedded
+    // workspace_id is pinned as well as the lead's, because this runs as the SERVICE ROLE — RLS is
+    // not scoping the state rows here, and once leads are shared at step 3 a lead will have one state
+    // row per workspace. Pinning it now means step 3 does not have to come back to this line.
+    .select(`id, company_id, ${LEAD_STATE_EMBED}`).eq('workspace_id', workspaceId).eq('kind', 'won_work')
+    .eq(`${LEAD_STATE_TABLE}.workspace_id`, workspaceId).not(`${LEAD_STATE_TABLE}.status`, 'in', OPEN_LEAD)
+    .not('company_id', 'is', null).limit(5000);
   if (leadsError) return NextResponse.json({ error: `won-work leads could not be read: ${leadsError.message}` }, { status: 500 });
   const leadsBy = new Map<string, string[]>();
   for (const l of leads ?? []) leadsBy.set(l.company_id, [...(leadsBy.get(l.company_id) ?? []), l.id]);

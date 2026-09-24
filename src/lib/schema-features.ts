@@ -64,6 +64,16 @@ export const hasAttachTrail = (sb: SupabaseClient) => hasColumn(sb, 'documents',
 /** Hiring-now contacts, company outreach, row state and test marking arrive with 0020. */
 export const hasPostingContact = (sb: SupabaseClient) => hasColumn(sb, 'job_posts', 'contact_name');
 export const hasHiringState = (sb: SupabaseClient) => hasColumn(sb, 'companies', 'hiring_status');
+
+/**
+ * Item 20 step 2: one workspace's activity lives in its own tables (0047), and a lead has a row in
+ * its one whether or not anybody has touched it (0048).
+ *
+ * Guarded separately from `hasHiringState` on purpose. That one asks whether the OLD column is
+ * there, and 2c removes it — so a read guarded on it would silently stop asking for state the moment
+ * the drop lands. These are two different questions and they diverge.
+ */
+export const hasWorkspaceState = (sb: SupabaseClient) => hasTable(sb, 'workspace_lead_state');
 export const hasCompanyOutreach = (sb: SupabaseClient) => hasColumn(sb, 'outreach', 'company_id');
 export const hasTestFlag = (sb: SupabaseClient) => hasColumn(sb, 'workspaces', 'is_test');
 

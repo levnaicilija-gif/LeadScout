@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { articlesByLead } from './lead-articles';
 import { compoundFor, leadSignal, postingSignals, type Compound, type Signal } from './compound-signals';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from './workspace-state';
 
 /**
  * Item 19's signals for a set of companies, as the signed-in user may read them.
@@ -24,7 +25,8 @@ export async function compoundByCompany(sb: SupabaseClient, companyIds: string[]
   for (let i = 0; i < ids.length; i += 100) {
     const chunk = ids.slice(i, i + 100);
     const [l, p] = await Promise.all([
-      sb.from('leads').select('id, company_id, source_url, created_at').eq('kind', 'won_work').not('status', 'in', '("stale","not_for_us")').in('company_id', chunk),
+      // Item 20 step 2b: open-ness is the reader's own, so it is filtered on their state row.
+      sb.from('leads').select(`id, company_id, source_url, created_at, ${LEAD_STATE_EMBED}`).eq('kind', 'won_work').not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES).in('company_id', chunk),
       sb.from('job_posts').select('company_id, role, title, posted_at, first_seen_at').eq('status', 'open').in('company_id', chunk),
     ]);
     if (l.error) return { byCompany, error: `the company's other leads could not be read: ${l.error.message}` };

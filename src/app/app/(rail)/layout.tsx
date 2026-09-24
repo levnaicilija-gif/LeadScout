@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { requireUser, supabaseServer } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { SignOut } from '@/components/SignOut';
+import { LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '@/lib/workspace-state';
 import { Logo } from '@/components/Logo';
 import { CvDropZone } from '@/components/CvDropZone';
 import { DOT } from '@/lib/tool-colour';
@@ -22,7 +23,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Item 18: a new account chooses its industries before any rail screen (/app/onboarding sits outside the rail).
   if (mustChooseIndustries(me)) redirect('/app/onboarding');
   const sb = supabaseServer();
-  const [{ count: leads }, { count: cands }, { count: camps }] = await Promise.all([sb.from('leads').select('id', { count: 'exact', head: true }).eq('status', 'new'), sb.from('candidates').select('id', { count: 'exact', head: true }), sb.from('campaigns').select('id', { count: 'exact', head: true }).eq('status', 'active')]);
+  // Item 20 step 2b: the rail's "new leads" badge counts this workspace's own untouched leads, from
+  // its state rows. `campaigns.status` is NOT touched — a campaign's status means whether the batch
+  // is still running, which is a fact about the campaign and has nothing to do with lead state.
+  const [{ count: leads }, { count: cands }, { count: camps }] = await Promise.all([sb.from('leads').select(`id, ${LEAD_STATE_EMBED}`, { count: 'exact', head: true }).eq(`${LEAD_STATE_TABLE}.status`, 'new'), sb.from('candidates').select('id', { count: 'exact', head: true }), sb.from('campaigns').select('id', { count: 'exact', head: true }).eq('status', 'active')]);
   const plan = planFor(me.onboarding_day);
   // A screen that has not opened yet is shown, not hidden: a new recruiter should be able to see
   // the shape of the job and when each part of it starts. Hiding it would make the plan a

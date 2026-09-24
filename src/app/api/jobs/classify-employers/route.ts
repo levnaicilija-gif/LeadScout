@@ -107,6 +107,18 @@ async function run(req: Request) {
   if (budget.exhausted) return NextResponse.json({ ok: true, stopped: 'daily budget already spent', spentToday: Number(budget.totalToday.toFixed(4)) });
 
   // Companies with a board that no person has ruled on and this job has not yet read.
+  //
+  // ITEM 20 STEP 2B LEFT THIS ONE SITE ON THE OLD COLUMN, deliberately, and 2c must resolve it.
+  // The predicate here is the ABSENCE of an override — "no person has ruled on it" — and that is a
+  // negative over a table that is sparse by design: 3 rows of 5,889 companies. PostgREST cannot
+  // express "has no state row, OR has one whose override is null" through an embed, and the two ways
+  // round it are both the ceiling the owner rejected for leads on 2026-09-24: excluding the
+  // overridden ids by `.not('id','in',(…))` works at 3 and breaks at roughly 200, and filtering the
+  // batch in memory can hand back a batch that is entirely overridden and do no work.
+  //
+  // It is CORRECT as it stands, because 2b dual-writes: api/company/employer-type writes the state
+  // row and this column together, so the column is current. It is written down rather than quietly
+  // left because a dual-written column stops being current the moment 2c removes the second write.
   let q = db.from('companies').select('id, name, domain, careers_url, employer_type, employer_type_override, employer_type_source')
     .eq('careers_status', 'found').is('employer_type_override', null).is('employer_type_checked_at', null)
     .order('id').limit(batch);

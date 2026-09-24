@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { supabaseServer, supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { followedIndustries, mustChooseIndustries } from '@/lib/industry-follow';
+import { LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '@/lib/workspace-state';
 import { SignOut } from '@/components/SignOut';
 import { todayItems, whenLabel, HOW_THIS_LIST_IS_MADE } from '@/lib/today';
 import { HomeCards } from '@/components/HomeCards';
@@ -57,7 +58,8 @@ export default async function Home() {
     availableNow, freeSoon, prioritySources, spend, radar, lastSweep,
   ] = await Promise.all([
     todayItems(sb, followedIndustries((me as any)?.industry_follow), windowSince),
-    sb.from('leads').select('id', { count: 'exact', head: true }).eq('kind', 'won_work').eq('status', 'new'),
+    // Item 20 step 2b: "new" is this workspace's own untouched, read from its state row.
+    sb.from('leads').select(`id, ${LEAD_STATE_EMBED}`, { count: 'exact', head: true }).eq('kind', 'won_work').eq(`${LEAD_STATE_TABLE}.status`, 'new'),
     sb.from('job_posts').select('id', { count: 'exact', head: true }).eq('status', 'open'),
     sb.from('verifications').select('id', { count: 'exact', head: true }).eq('result', 'valid').gte('checked_at', iso(-7)),
     sb.from('verifications').select('id', { count: 'exact', head: true }).in('result', ['invalid', 'not_found']).gte('checked_at', iso(-7)),
