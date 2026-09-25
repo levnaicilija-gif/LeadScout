@@ -48,8 +48,8 @@ export type Entry = { bucket: Bucket; scope: Scope; why: string };
 
 export const TABLES: Record<string, Entry> = {
   // ---- shared: crawled facts, one copy for everybody --------------------------------------------
-  leads: { bucket: 'shared', scope: { by: 'workspace_id' }, why: 'a discovered project. Its FACTS are shared; status, notes, confirmations and the JD move to workspace_lead_state at step 2' },
-  companies: { bucket: 'shared', scope: { by: 'workspace_id' }, why: 'a company as crawled. hiring_status, overrides and rfbt_history move to workspace_company_state at step 2' },
+  leads: { bucket: 'shared', scope: { by: 'workspace_id' }, why: 'a discovered project, FACTS only since 0049 — status, confirmations and the JD now live in workspace_lead_state and the columns are gone' },
+  companies: { bucket: 'shared', scope: { by: 'workspace_id' }, why: 'a company as crawled. Hiring state and the employer-type override moved to workspace_company_state (0049); sector_note and employer_type_reason stay, both shared crawl facts' },
   articles: { bucket: 'shared', scope: { by: 'none' }, why: 'the page a lead was read from. Reached through lead_articles; 471 of 1,558 back no lead and stay service-only' },
   lead_articles: { bucket: 'shared', scope: { by: 'parent', through: 'leads', fk: 'lead_id' }, why: 'which article backs which lead — a fact about the crawl' },
   lead_people: { bucket: 'shared', scope: { by: 'parent', through: 'leads', fk: 'lead_id' }, why: 'which Industry Contact is at which lead\'s company — a fact' },
@@ -107,6 +107,13 @@ export const TABLES: Record<string, Entry> = {
   // ---- service: the service role's own machinery --------------------------------------------------
   jobs: { bucket: 'service', scope: { by: 'none' }, why: '0027: the worker queue. A signed-in user must read zero rows' },
   job_ticks: { bucket: 'service', scope: { by: 'none' }, why: '0029: the crawl schedule log. A signed-in user must read zero rows' },
+  // 0049's insurance for the one irreversible step in item 20. They carry a workspace_id column, but
+  // it is SERVICE, not private: nothing signed-in may reach them at all, because a backup of one
+  // workspace's private activity readable by a signed-in user would reintroduce the leak the whole
+  // item closes. Temporary by design — the owner drops them once 2c is settled, and the registry
+  // check will then report them stale, which is the reminder working rather than a failure.
+  leads_2c_backup: { bucket: 'service', scope: { by: 'none' }, why: '0049: the five per-workspace columns as they stood at the drop. Service role only; a signed-in user must read zero rows' },
+  companies_2c_backup: { bucket: 'service', scope: { by: 'none' }, why: '0049: the eight per-workspace columns as they stood at the drop. Service role only; a signed-in user must read zero rows' },
 };
 
 /** Tables whose shipped rows belong to nobody — asserted to be 100% workspace_id null. */

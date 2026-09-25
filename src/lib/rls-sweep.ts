@@ -150,7 +150,23 @@ export async function runRlsSweep(opts: { workspaceName?: string } = {}): Promis
 
     // Tables no signed-in user should read at all, by design and by migration. Judged by the user reading
     // none of them, rows or not; the catalogue check above still requires each to have its policy.
-    const SERVICE_ONLY: Record<string, string> = { jobs: '0027, the worker queue', job_ticks: '0029, the crawl schedule log' };
+    // 0049's two backups belong here for the same reason jobs and job_ticks do, and they are the
+    // clearer case: they hold a COPY of what one workspace decided, so a signed-in user reading any
+    // of it would be exactly the leak item 20 exists to close. Without this line the sweep falls
+    // through to the workspace-scoped branch, expects all 5,893 rows, and reports SUSPECT on a table
+    // that is behaving correctly — which is what it did on 2026-09-25.
+    //
+    // They are also REVOKED from anon and authenticated, not merely policy-scoped, so a signed-in
+    // read comes back as an ERROR rather than as zero rows. This branch already handles that: `leak`
+    // is true only for a numeric count above zero, and an error means the table was not read. That is
+    // the 0028 rule — a revoke is the real lock and a policy is the second one — and it is right to
+    // keep both on a table holding a copy of private activity.
+    const SERVICE_ONLY: Record<string, string> = {
+      jobs: '0027, the worker queue',
+      job_ticks: '0029, the crawl schedule log',
+      leads_2c_backup: "0049, the pre-drop copy of leads' per-workspace columns",
+      companies_2c_backup: "0049, the pre-drop copy of companies' per-workspace columns",
+    };
     for (const t of tables) {
       if (SERVICE_ONLY[t]) {
         const seen = await count(user, t);
