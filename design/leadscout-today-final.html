@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LeadScout — Today (final, click-through)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#0E1A2B; --navy-2:#16283F; --ink:#1A2430; --ink-soft:#66707B; --ink-faint:#9AA3AE;
+    --line:#E7E9EE; --panel:#F5F6F9; --white:#FFFFFF;
+    --blue:#2F6FE0; --blue-soft:#EAF1FE; --blue-deep:#1E4FA8;
+    --green:#2E9E5B; --green-soft:#E7F6EC;
+    --amber:#C98A1E; --amber-soft:#FBF1DE;
+    --purple:#7C5CD9; --purple-soft:#F0EBFC;
+    --gray-soft:#EEF0F3; --red:#C0392B;
+    --shadow: 0 1px 2px rgba(16,24,40,0.04), 0 2px 8px rgba(16,24,40,0.04);
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--panel); color:var(--ink); font-family:'Inter',sans-serif; font-size:14px; -webkit-font-smoothing:antialiased; }
+  .wrap{ max-width:1040px; margin:0 auto; padding:30px 24px 56px; }
+  .mockup-banner{ background:var(--amber-soft); color:#7A5010; text-align:center; padding:9px; font-size:12.5px; font-weight:600; border-radius:10px; margin-bottom:20px; }
+
+  .page{ display:none; } .page.active{ display:block; }
+  .back-link{ display:inline-flex; align-items:center; gap:6px; color:var(--blue); font-size:12.5px; font-weight:600; cursor:pointer; margin-bottom:16px; }
+
+  h1{ font-size:22px; font-weight:800; letter-spacing:-0.02em; margin:0 0 4px; }
+  .meta{ font-size:12.5px; color:var(--ink-soft); margin-bottom:22px; }
+
+  .annotate{ font-size:11px; color:var(--blue); font-weight:600; margin-bottom:6px; display:flex; align-items:center; gap:5px; }
+  .annotate::before{ content:"NEW"; background:var(--blue); color:#fff; border-radius:4px; padding:1px 6px; font-size:9px; }
+
+  .top-grid{ display:grid; grid-template-columns:1.1fr 0.85fr 1fr; gap:16px; margin-bottom:16px; align-items:start; }
+
+  .today-card{ background:linear-gradient(155deg, var(--navy) 0%, var(--navy-2) 100%); color:#fff; border-radius:16px; padding:22px; box-shadow:var(--shadow); cursor:pointer; transition:transform .15s; }
+  .today-card:hover{ transform:translateY(-2px); }
+  .today-card h2{ font-size:17px; margin:0 0 3px; }
+  .today-card .sub{ color:#AEBBCC; font-size:12px; margin-bottom:16px; }
+
+  .window{ margin-bottom:14px; }
+  .window-label{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:#8FA1B5; margin-bottom:8px; display:flex; align-items:center; gap:7px; }
+  .window-label .n{ background:rgba(255,255,255,0.12); border-radius:10px; padding:1px 7px; color:#fff; font-weight:700; }
+
+  .t-item{ display:flex; gap:11px; padding:9px 0; border-bottom:1px solid rgba(255,255,255,0.08); }
+  .t-item:last-child{ border-bottom:none; }
+  .t-num{ width:20px; height:20px; border-radius:50%; background:rgba(255,255,255,0.1); color:#C7D2E0; font-size:10.5px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px; }
+  .t-item.live .t-num{ background:var(--blue); color:#fff; }
+  .t-body b{ font-size:13px; font-weight:600; display:block; }
+  .t-body .when{ color:var(--blue-soft); font-size:10.5px; font-weight:600; }
+  .t-item.live .t-body .when{ color:#6FCBEF; }
+  .t-body .detail{ color:#AEBBCC; font-size:11.5px; margin-top:2px; line-height:1.5; }
+
+  .live-badge{ display:inline-flex; align-items:center; gap:5px; background:rgba(111,203,239,0.15); color:#6FCBEF; border-radius:20px; padding:3px 10px; font-size:10px; font-weight:700; margin-top:10px; }
+  .live-badge::before{ content:""; width:6px; height:6px; border-radius:50%; background:#6FCBEF; animation:pulse 1.8s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+
+  .yesterday-card{ background:var(--white); border:1px solid var(--line); border-radius:16px; padding:22px; box-shadow:var(--shadow); cursor:pointer; transition:transform .15s; }
+  .yesterday-card:hover{ transform:translateY(-2px); }
+  .yesterday-card h2{ font-size:16px; margin:0 0 3px; }
+  .yesterday-card .sub{ color:var(--ink-faint); font-size:11.5px; margin-bottom:16px; }
+
+  .activity-row{ display:flex; justify-content:space-between; padding:6px 0; font-size:12.5px; border-bottom:1px solid var(--panel); }
+  .activity-row .l{ color:var(--ink-soft); }
+  .activity-row b{ color:var(--ink); }
+  .activity-row.zero b{ color:var(--ink-faint); }
+  .activity-row.pos b{ color:var(--blue); }
+
+  .followup-head{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-faint); margin:14px 0 8px; padding-top:12px; border-top:1px dashed var(--line); }
+  .followup-item{ display:flex; gap:8px; align-items:flex-start; padding:5px 0; font-size:12px; }
+  .followup-item .fdot{ width:5px; height:5px; border-radius:50%; background:var(--amber); margin-top:6px; flex-shrink:0; }
+  .followup-item span{ color:var(--ink-soft); }
+  .followup-item b{ color:var(--ink); font-weight:600; }
+
+  .leads-card{ background:var(--white); border:1px solid var(--line); border-radius:16px; padding:22px; box-shadow:var(--shadow); cursor:pointer; transition:transform .15s; }
+  .leads-card:hover{ transform:translateY(-2px); }
+  .leads-card .lhead{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:3px; }
+  .leads-card h2{ font-size:16px; margin:0; }
+  .leads-card .badge2{ border-radius:20px; padding:3px 10px; font-size:10.5px; font-weight:700; background:var(--blue-soft); color:var(--blue-deep); }
+  .leads-card .sub{ color:var(--ink-faint); font-size:11.5px; margin-bottom:16px; }
+
+  .lgroup{ margin-bottom:14px; }
+  .lgroup-label{ display:flex; justify-content:space-between; align-items:baseline; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-faint); margin-bottom:8px; }
+  .lgroup-label .n{ font-family:inherit; color:var(--ink); font-weight:800; font-size:13px; text-transform:none; letter-spacing:0; }
+
+  .l-item{ padding:8px 0; border-bottom:1px solid var(--panel); }
+  .l-item:last-child{ border-bottom:none; }
+  .l-item .lname{ font-size:12.5px; font-weight:600; }
+  .l-item .ldetail{ font-size:11px; color:var(--ink-soft); margin-top:2px; line-height:1.5; }
+  .l-item .lboost{ color:var(--blue); font-weight:600; }
+
+  .leads-btn{ width:100%; border:none; border-radius:9px; padding:10px 16px; font-family:inherit; font-weight:600; font-size:12.5px; cursor:pointer; color:#fff; background:var(--blue); margin-top:4px; }
+
+  .verify-flow{ background:var(--white); border:1px solid var(--line); border-radius:16px; padding:22px; box-shadow:var(--shadow); margin-bottom:16px; cursor:pointer; transition:transform .15s; }
+  .verify-flow:hover{ transform:translateY(-2px); }
+  .verify-flow h2{ font-size:17px; margin:0 0 3px; }
+  .verify-flow .sub{ color:var(--ink-soft); font-size:12.5px; margin-bottom:18px; max-width:520px; }
+
+  .flow-steps{ display:grid; grid-template-columns:repeat(5, 1fr); gap:0; position:relative; }
+  .flow-steps::before{ content:""; position:absolute; top:19px; left:40px; right:40px; height:1px; background:var(--line); }
+  .fstep{ text-align:center; position:relative; padding:0 6px; }
+  .fstep .fnum{ width:38px; height:38px; border-radius:50%; background:var(--white); border:2px solid var(--line); color:var(--ink-soft); font-weight:700; font-size:14px; display:flex; align-items:center; justify-content:center; margin:0 auto 9px; position:relative; z-index:1; }
+  .fstep.done .fnum{ background:var(--green-soft); border-color:var(--green); color:var(--green); }
+  .fstep .flabel{ font-size:12px; font-weight:600; margin-bottom:2px; }
+  .fstep .fdetail{ font-size:10.5px; color:var(--ink-faint); line-height:1.4; }
+  .fstep .fdetail b{ color:var(--green); }
+
+  .cards-grid{ display:grid; grid-template-columns:repeat(2, 1fr); gap:16px; margin-bottom:16px; }
+  .card{ border-radius:16px; padding:20px; box-shadow:var(--shadow); background:var(--white); border:1px solid var(--line); transition:box-shadow .15s, transform .15s; cursor:pointer; }
+  .card:hover{ box-shadow:0 4px 12px rgba(16,24,40,0.08); transform:translateY(-1px); }
+  .card .top-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:11px; }
+  .card .icon2{ width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; }
+  .card .badge2{ border-radius:20px; padding:3px 10px; font-size:10.5px; font-weight:700; }
+  .card h3{ margin:0 0 6px; font-size:15.5px; font-weight:700; }
+  .card p{ color:var(--ink-soft); font-size:12px; line-height:1.5; margin:0 0 16px; min-height:52px; }
+  .card .cstats{ display:flex; gap:24px; margin-bottom:16px; }
+  .card .cstat b{ display:block; font-size:20px; font-weight:800; }
+  .card .cstat span{ color:var(--ink-faint); font-size:10.5px; }
+  .card .cstat.amber-num b{ color:var(--amber); }
+  .card-btn2{ border:none; border-radius:9px; padding:10px 16px; font-family:inherit; font-weight:600; font-size:12.5px; cursor:pointer; color:#fff; }
+
+  .footer-note{ text-align:center; color:var(--ink-faint); font-size:11.5px; margin-top:24px; }
+
+  @media (max-width:800px){
+    .top-grid{ grid-template-columns:1fr; }
+    .cards-grid{ grid-template-columns:1fr; }
+    .flow-steps{ grid-template-columns:1fr; gap:14px; }
+    .flow-steps::before{ display:none; }
+  }
+
+  /* ---- destination-page-only styles, matching the same palette ---- */
+  .panel{ background:var(--white); border:1px solid var(--line); border-radius:16px; padding:22px; box-shadow:var(--shadow); margin-bottom:16px; }
+  .panel h2{ font-size:16px; margin:0 0 3px; }
+  .panel .sub{ color:var(--ink-soft); font-size:12.5px; margin-bottom:16px; }
+  table{ width:100%; border-collapse:collapse; background:var(--white); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  thead th{ text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-faint); padding:10px 13px; background:var(--panel); border-bottom:1px solid var(--line); }
+  tbody td{ padding:11px 13px; border-bottom:1px solid var(--line); vertical-align:top; font-size:12.5px; }
+  tbody tr:hover{ background:var(--panel); cursor:pointer; }
+  .tag{ font-size:10px; padding:2px 7px; border-radius:5px; background:var(--panel); border:1px solid var(--line); color:var(--ink-soft); margin-right:3px; display:inline-block; }
+  .muted{ color:var(--ink-faint); }
+  .tabs{ display:inline-flex; background:var(--white); border:1px solid var(--line); border-radius:9px; padding:3px; gap:2px; margin-bottom:14px; }
+  .tabs button{ border:none; background:transparent; padding:7px 15px; border-radius:6px; font-family:inherit; font-size:12.5px; font-weight:500; color:var(--ink-soft); cursor:pointer; }
+  .tabs button.active{ background:var(--navy); color:#fff; }
+  .cert-drop{ border:1.5px dashed var(--line); border-radius:12px; padding:26px; text-align:center; color:var(--ink-soft); font-size:13px; margin-bottom:18px; }
+  .cert-card .raw{ font-family:'SFMono-Regular',Consolas,monospace; font-size:12px; color:var(--ink-soft); background:var(--panel); padding:9px 11px; border-radius:7px; margin-bottom:14px; }
+  .cert-card table.decoded{ width:100%; border:none; font-size:12.5px; margin-bottom:12px; }
+  .cert-card table.decoded td{ padding:5px 6px; border-bottom:1px solid var(--panel); }
+  .fits{ background:var(--green-soft); color:var(--green); border-radius:8px; padding:9px 13px; font-size:12.5px; }
+  .no-candidate-note{ background:var(--amber-soft); color:#7A5010; border-radius:8px; padding:10px 13px; font-size:12px; margin-top:12px; }
+  .pitch-person{ display:flex; gap:16px; align-items:flex-start; }
+  .pitch-code{ background:var(--navy); color:#fff; font-family:'SFMono-Regular',Consolas,monospace; font-weight:700; border-radius:10px; padding:10px 14px; font-size:13px; }
+  .pitch-teaser{ background:var(--panel); border-radius:10px; padding:14px 16px; font-size:12.5px; color:var(--ink-soft); line-height:1.6; margin:12px 0; }
+  .company-match{ display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--panel); font-size:12.5px; }
+  .company-match:last-child{ border-bottom:none; }
+  .match-reason{ color:var(--ink-faint); font-size:11px; }
+  .btn{ border:none; border-radius:9px; padding:9px 15px; font-family:inherit; font-weight:600; font-size:12px; cursor:pointer; color:#fff; }
+  .cd-grid{ display:grid; grid-template-columns:300px 1fr; gap:16px; }
+  .field-row{ display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--panel); font-size:12.5px; }
+  .field-row .l{ color:var(--ink-soft); }
+  .bullet-list{ list-style:none; padding:0; margin:0; }
+  .bullet-list li{ padding:7px 0; border-bottom:1px solid var(--panel); font-size:12.5px; color:var(--ink-soft); }
+  .q-item{ background:var(--panel); border-radius:9px; padding:12px 14px; margin-bottom:8px; font-size:12.5px; }
+  .q-item .qkind{ display:inline-block; font-size:9.5px; text-transform:uppercase; font-weight:700; color:var(--blue); margin-bottom:4px; }
+  .stat-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .stat-box{ background:var(--panel); border-radius:10px; padding:12px 14px; }
+  .stat-box b{ display:block; font-size:20px; font-weight:800; }
+  .stat-box span{ color:var(--ink-faint); font-size:10.5px; }
+  .stat-box.pos b{ color:var(--blue); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<!-- ============================================================= -->
+<!-- PAGE: TODAY (home) — exact preferred design, now clickable    -->
+<!-- ============================================================= -->
+<div class="page active" id="page-today">
+  <div class="mockup-banner">CLICK-THROUGH — click any card below to open its real page. This home design is unchanged.</div>
+
+  <h1>Good morning, Eli</h1>
+  <div class="meta">Friday 18 September · you were last here yesterday at 17:04</div>
+
+  <div class="top-grid">
+    <div class="today-card" onclick="go('leads-filtered')">
+      <div class="annotate" style="color:#6FCBEF;">Merged Today + queue, split by when it happened</div>
+      <h2>Today</h2>
+      <div class="sub">In priority order. Nothing sent without you.</div>
+
+      <div class="window">
+        <div class="window-label">While you were out <span class="n">6</span></div>
+        <div class="t-item">
+          <div class="t-num">1</div>
+          <div class="t-body">
+            <b>Read 11 new leads — Peene-Werft first</b>
+            <div class="when">17:04 to 08:00</div>
+            <div class="detail">4 tender awards, 2 Hiring now postings, incl. Karstensens re-advert</div>
+          </div>
+        </div>
+        <div class="t-item">
+          <div class="t-num">2</div>
+          <div class="t-body">
+            <b>Issuer reply due — Bureau Veritas, day 1</b>
+            <div class="when">overnight</div>
+            <div class="detail">Nudge drafted, blocks one pack</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="window">
+        <div class="window-label">Since 08:00 <span class="n">1</span></div>
+        <div class="t-item live">
+          <div class="t-num">•</div>
+          <div class="t-body">
+            <b>New tender award — Kattner Stahlbau GmbH</b>
+            <div class="when">14 min ago</div>
+            <div class="detail">Scaffolding work, Germany — no contact found yet</div>
+          </div>
+        </div>
+        <div class="live-badge">Live — checking every 5 min while you're here</div>
+      </div>
+    </div>
+
+    <div class="yesterday-card" onclick="go('yesterday')">
+      <div class="annotate">Activity + follow-ups, not a duplicate of Today's queue</div>
+      <h2>Yesterday</h2>
+      <div class="sub">What you actually did — 16 Sept</div>
+
+      <div class="activity-row"><span class="l">Packs prepared</span><b class="zero">0</b></div>
+      <div class="activity-row"><span class="l">CVs sent</span><b class="zero">0</b></div>
+      <div class="activity-row pos"><span class="l">Leads confirmed</span><b>1</b></div>
+      <div class="activity-row pos"><span class="l">Candidates added</span><b>1</b></div>
+
+      <div class="followup-head">Needs your follow-up</div>
+      <div class="followup-item"><span class="fdot"></span><span><b>Bertescu Dumitrel</b> — pack sent to McDermott, no response in 3 days</span></div>
+      <div class="followup-item"><span class="fdot"></span><span><b>M. Marcu</b> — right-to-work answer still "unclear" from screening call</span></div>
+    </div>
+
+    <div class="leads-card" onclick="go('leads')">
+      <div class="annotate">Promoted to sit with Today and Yesterday</div>
+      <div class="lhead">
+        <h2>Leads</h2>
+        <span class="badge2">4 new</span>
+      </div>
+      <div class="sub">Companies that just won work, and companies posting trade jobs right now.</div>
+
+      <div class="lgroup">
+        <div class="lgroup-label"><span>Won work</span><span class="n">164</span></div>
+        <div class="l-item">
+          <div class="lname">Baker Hughes</div>
+          <div class="ldetail">Plaquemines LNG expansion <span class="lboost">boosted x1.1</span></div>
+        </div>
+        <div class="l-item">
+          <div class="lname">Kattner Stahlbau GmbH</div>
+          <div class="ldetail">Scaffolding work, Germany — 3h ago</div>
+        </div>
+      </div>
+
+      <div class="lgroup">
+        <div class="lgroup-label"><span>Hiring now</span><span class="n">52</span></div>
+        <div class="l-item">
+          <div class="lname">Karstensens</div>
+          <div class="ldetail">8 adverts — high pressure, re-advertised</div>
+        </div>
+        <div class="l-item">
+          <div class="lname">AIBEL</div>
+          <div class="ldetail">2 new adverts posted — 9h ago</div>
+        </div>
+      </div>
+
+      <button class="leads-btn" onclick="event.stopPropagation(); go('leads')">See all leads →</button>
+    </div>
+  </div>
+
+  <div class="annotate" style="margin-bottom:6px;">&nbsp;</div>
+  <h2 style="font-size:16px; margin:0 0 3px;">Your tools</h2>
+  <div class="cards-grid">
+    <div class="card" onclick="go('certcheck')">
+      <div class="top-row">
+        <div class="icon2" style="background:var(--purple-soft); color:var(--purple);">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="5"/><path d="M8.5 12.5 7 21l5-2.5 5 2.5-1.5-8.5"/></svg>
+        </div>
+        <span class="badge2" style="background:var(--purple-soft); color:var(--purple);">drop files</span>
+      </div>
+      <h3>Certificate check</h3>
+      <p>Just a certificate, no CV attached? Decoded against the real issuer standard, then checked with the register — what it covers, until when.</p>
+      <div class="cstats">
+        <div class="cstat"><b>0</b><span>checked today</span></div>
+        <div class="cstat"><b>8 of 16</b><span>schemes automatic</span></div>
+      </div>
+      <button class="card-btn2" style="background:var(--purple);" onclick="event.stopPropagation(); go('certcheck')">Check a certificate →</button>
+    </div>
+
+    <div class="card" onclick="go('drop-cv')">
+      <div class="top-row">
+        <div class="icon2" style="background:var(--blue-soft); color:var(--blue);">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 17h6M9 13h3"/></svg>
+        </div>
+        <span class="badge2" style="background:var(--blue-soft); color:var(--blue-deep);">auto</span>
+      </div>
+      <h3>Drop a CV</h3>
+      <p>The same anonymiser Verify already uses — client-ready bullets and a clean PDF, the moment the CV lands, before it's ever matched to a lead. No new logic, just a new front door.</p>
+      <div class="cstats">
+        <div class="cstat"><b>3</b><span>client bullets made</span></div>
+        <div class="cstat"><b>0</b><span>PII leaks caught</span></div>
+      </div>
+      <button class="card-btn2" style="background:var(--blue);" onclick="event.stopPropagation(); go('drop-cv')">Drop a CV →</button>
+    </div>
+
+    <div class="card" onclick="go('pitch')">
+      <div class="top-row">
+        <div class="icon2" style="background:var(--amber-soft); color:var(--amber);">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/></svg>
+        </div>
+        <span class="badge2" style="background:var(--amber-soft); color:var(--amber);">reverse</span>
+      </div>
+      <h3>Pitch</h3>
+      <p>Start from a scarce person. See which companies should hear about them, with a blind teaser for each — a reference code only, never a name.</p>
+      <div class="cstats">
+        <div class="cstat"><b>2</b><span>available now</span></div>
+        <div class="cstat amber-num"><b>0</b><span>free by 17 Oct</span></div>
+      </div>
+      <button class="card-btn2" style="background:var(--amber);" onclick="event.stopPropagation(); go('pitch')">Pitch someone →</button>
+    </div>
+
+    <div class="card" onclick="go('candidates')">
+      <div class="top-row">
+        <div class="icon2" style="background:var(--purple-soft); color:var(--purple);">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c0-3.3 2.5-6 5.5-6s5.5 2.7 5.5 6"/><circle cx="17.5" cy="9" r="2.6"/><path d="M15 14.2c2.3.4 4 2.3 4 5.8"/></svg>
+        </div>
+        <span class="badge2" style="background:var(--purple-soft); color:var(--purple);">all current</span>
+      </div>
+      <h3>Candidates</h3>
+      <p>The pool — who's free, who's verified, who was sent where. Full names and documents stay here; clients only see the anonymised version.</p>
+      <div class="cstats">
+        <div class="cstat"><b>2</b><span>in pool</span></div>
+        <div class="cstat amber-num"><b>0</b><span>certs expiring ≤60d</span></div>
+      </div>
+      <button class="card-btn2" style="background:var(--purple);" onclick="event.stopPropagation(); go('candidates')">Search the pool →</button>
+    </div>
+  </div>
+
+  <div class="verify-flow" onclick="go('assess')">
+    <span class="badge2" style="background:var(--gray-soft); color:var(--ink-soft); float:right;">sample</span>
+    <div class="annotate" style="color:var(--green);">Moved below Your tools — contextual, not daily triage</div>
+    <h2>Assess this candidate</h2>
+    <div class="sub">A worked example — how a candidate moves through the pipeline. Not live data.</div>
+
+    <div class="flow-steps">
+      <div class="fstep done">
+        <div class="fnum">✓</div>
+        <div class="flabel">Anonymised</div>
+        <div class="fdetail"><b>3 bullets</b> ready, PII check passed</div>
+      </div>
+      <div class="fstep done">
+        <div class="fnum">✓</div>
+        <div class="flabel">Certificate</div>
+        <div class="fdetail">CSWIP 3.2 <b>verified</b> with TWI</div>
+      </div>
+      <div class="fstep done">
+        <div class="fnum">✓</div>
+        <div class="flabel">Fit checked</div>
+        <div class="fdetail">Scored <b>71</b> against Karstensens</div>
+      </div>
+      <div class="fstep">
+        <div class="fnum">4</div>
+        <div class="flabel">Questions</div>
+        <div class="fdetail">Same set as the score card — 4 generated</div>
+      </div>
+      <div class="fstep">
+        <div class="fnum">5</div>
+        <div class="flabel">Outreach</div>
+        <div class="fdetail">Draft to Karstensens, not yet sent</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-note">Nothing is invented. Every name, number and date links to the page it came from.</div>
+</div>
+
+<!-- ============================================================= -->
+<!-- PAGE: YESTERDAY / TODAY DETAIL                                 -->
+<!-- ============================================================= -->
+<div class="page" id="page-yesterday">
+  <span class="back-link" onclick="go('today')">← Back to Today</span>
+  <h1>Yesterday &amp; Today's queue</h1>
+  <div class="meta">16–18 September 2026</div>
+
+  <div class="panel">
+    <h2>Yesterday's activity</h2>
+    <div class="sub">16 September — counts only, no targets set yet</div>
+    <div class="stat-grid">
+      <div class="stat-box"><b style="color:var(--ink-faint);">0</b><span>Packs prepared</span></div>
+      <div class="stat-box"><b style="color:var(--ink-faint);">0</b><span>CVs sent</span></div>
+      <div class="stat-box"><b style="color:var(--ink-faint);">0</b><span>Outreach sent</span></div>
+      <div class="stat-box pos"><b>1</b><span>Leads confirmed</span></div>
+      <div class="stat-box pos"><b>1</b><span>Candidates added</span></div>
+      <div class="stat-box"><b style="color:var(--ink-faint);">0</b><span>Verifications*</span></div>
+    </div>
+    <div style="font-size:10.5px; color:var(--ink-faint); margin-top:8px;">*Counted by who uploaded the document — doesn't record who ran the check.</div>
+  </div>
+
+  <div class="panel">
+    <h2>Needs your follow-up</h2>
+    <div class="sub">Not duplicated from the queue below — this is what YOU need to chase. Resolving one keeps it in that candidate's own history — it just stops showing here.</div>
+    <div class="field-row" id="followup-1"><span class="l"><b>Bertescu Dumitrel</b> — pack sent to McDermott</span><span style="display:flex; align-items:center; gap:10px;">no response, 3 days<button class="btn" style="background:var(--navy); padding:5px 11px; font-size:11px;" onclick="resolveFollowup('followup-1')">Mark done</button></span></div>
+    <div class="field-row" id="followup-2"><span class="l"><b>M. Marcu</b> — right-to-work answer</span><span style="display:flex; align-items:center; gap:10px;">still "unclear"<button class="btn" style="background:var(--navy); padding:5px 11px; font-size:11px;" onclick="resolveFollowup('followup-2')">Mark done</button></span></div>
+  </div>
+
+  <div class="panel" id="resolved-panel" style="display:none;">
+    <h2>Resolved</h2>
+    <div class="sub">Kept here on the candidate's own activity history — never deleted</div>
+    <div id="resolved-list"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Today's queue, in full</h2>
+    <div class="sub">A clock time only where a call is actually scheduled</div>
+    <div class="field-row"><span class="l">1 · Read 11 new leads, Peene-Werft first</span><span>Now</span></div>
+    <div class="field-row"><span class="l">2 · Issuer reply due, Bureau Veritas</span><span>Today</span></div>
+    <div class="field-row"><span class="l">3 · New tender award, Kattner Stahlbau</span><span>14 min ago</span></div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- PAGE: LEADS, FILTERED TO SINCE-LAST-VISIT — what Today's card opens -->
+<!-- ============================================================= -->
+<div class="page" id="page-leads-filtered">
+  <span class="back-link" onclick="go('today')">← Back to Today</span>
+  <h1>New since your last visit</h1>
+  <div class="meta">Same Leads page, filtered — not a separate table</div>
+
+  <div class="panel" style="background:var(--blue-soft); border-color:#C7DBFB;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <b style="color:var(--blue-deep);">Showing 7 of 164 open leads</b>
+        <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">Found between 17:04 yesterday and now — your last visit, not a fixed clock time</div>
+      </div>
+      <a href="#" onclick="event.preventDefault(); go('leads');" style="font-size:12.5px; font-weight:600; color:var(--blue);">Clear filter — see all 164 →</a>
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th>Company</th><th>Won / Posted</th><th>Decision-maker</th><th>Trades</th><th>Fit</th><th>Verified</th><th>Found</th></tr></thead>
+    <tbody>
+      <tr><td><b>Kattner Stahlbau GmbH</b><div class="muted">DE · unknown</div></td><td>Tender award — scaffolding work</td><td class="muted">— award notices name no person</td><td><span class="tag">scaffolder</span></td><td>—</td><td><span class="tag">not confirmed</span></td><td>14 min ago</td></tr>
+      <tr><td><b>Peene-Werft GmbH &amp; Co. KG</b><div class="muted">DE · Rheinmetall subsidiary</div></td><td>Tender award — vessel repair</td><td class="muted">no website on file</td><td><span class="tag">welder</span><span class="tag">fitter</span></td><td>—</td><td><span class="tag">not confirmed</span></td><td>17:04</td></tr>
+      <tr><td><b>Navimor Shipyard</b></td><td>Tender award</td><td class="muted">— award notices name no person</td><td><span class="tag">welder</span></td><td>—</td><td><span class="tag">not confirmed</span></td><td>17:04</td></tr>
+      <tr><td><b>Karstensens</b><div class="muted">DK · epc contractor</div></td><td>Role re-advertised, Hiring now</td><td>René Hansen<div class="muted">Production Manager</div></td><td><span class="tag">welder</span></td><td>high</td><td><span class="tag" style="background:var(--green-soft); color:var(--green); border:none;">confirmed</span></td><td>overnight</td></tr>
+      <tr><td><b>AIBEL</b><div class="muted">NO · epc contractor</div></td><td>2 new adverts, Hiring now</td><td>Ann Sæland<div class="muted">Chief HR Officer</div></td><td><span class="tag">electrician</span></td><td>medium</td><td><span class="tag" style="background:var(--green-soft); color:var(--green); border:none;">confirmed</span></td><td>9h ago</td></tr>
+      <tr><td><b>Vattenfall</b></td><td>News mention — Hesselø substation</td><td class="muted">general email</td><td class="muted">—</td><td>—</td><td><span class="tag">not confirmed</span></td><td>14h ago</td></tr>
+      <tr><td><b>StS gruppen</b></td><td>New advert, Hiring now</td><td class="muted">switchboard only</td><td><span class="tag">pipefitter</span></td><td>medium</td><td><span class="tag">not confirmed</span></td><td>overnight</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================= -->
+<!-- PAGE: LEADS                                                    -->
+<!-- ============================================================= -->
+<div class="page" id="page-leads">
+  <span class="back-link" onclick="go('today')">← Back to Today</span>
+  <h1>Leads</h1>
+  <div class="tabs">
+    <button class="active" onclick="ltab('won',event)">Won work</button>
+    <button onclick="ltab('hiring',event)">Hiring now</button>
+  </div>
+
+  <div id="won-tab">
+    <table>
+      <thead><tr><th>Company</th><th>Won</th><th>Decision-maker</th><th>Trades</th><th>Fit</th><th>Verified</th></tr></thead>
+      <tbody>
+        <tr><td><b>Baker Hughes</b><div class="muted">US Gulf · epc contractor</div></td><td>Plaquemines LNG expansion<br><span style="color:var(--blue); font-size:11px;">boosted x1.1</span></td><td>Lorenzo Simonelli</td><td><span class="tag">pipefitter</span></td><td>66</td><td><span class="tag" style="background:var(--green-soft); color:var(--green); border:none;">confirmed</span></td></tr>
+        <tr><td><b>ALLEZ ENERGIES</b><div class="muted">France</div></td><td>Power line construction</td><td class="muted">general email</td><td><span class="tag">electrician</span></td><td>25</td><td><span class="tag">not confirmed</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div id="hiring-tab" style="display:none;">
+    <table>
+      <thead><tr><th>Company</th><th>Roles open</th><th>Where</th><th>Trades</th><th>Pressure</th></tr></thead>
+      <tbody>
+        <tr><td><b>Karstensens</b></td><td>8 adverts</td><td>DK</td><td><span class="tag">welder</span></td><td>high</td></tr>
+        <tr><td><b>AIBEL</b></td><td>2 adverts</td><td>NO</td><td><span class="tag">electrician</span></td><td>medium</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- PAGE: CERTIFICATE CHECK                                        -->
+<!-- ============================================================= -->
+<div class="page" id="page-certcheck">
+  <span class="back-link" onclick="go('today')">← Back to Today</span>
+  <h1>Certificate check</h1>
+  <div class="meta">No CV needed — decode and verify one document on its own</div>
+
+  <div class="cert-drop">Drop a certificate here — decoded automatically, or click to choose</div>
+
+  <div class="panel cert-card">
+    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+      <b>CSWIP 3.2 · No. 4471</b>
+      <span class="tag" style="background:var(--green-soft); color:var(--green); border:none;">Automatic, verified with TWI</span>
+    </div>
+    <div class="raw">CSWIP 3.2 — Senior Welding Inspector, cert 4471, issued 2021</div>
+    <table class="decoded">
+      <tr><td><b>Level</b></td><td>3.2 — Senior Welding Inspector</td></tr>
+      <tr><td><b>Issuer</b></td><td>TWI, checked live via their register</td></tr>
+      <tr><td><b>Valid until</b></td><td>2027-03-14</td></tr>
+    </table>
+    <div class="fits">Qualifies to inspect structural and pipe welds up to senior level</div>
+    <div class="no-candidate-note">Not attached to any candidate. <a href="#" style="color:#7A5010; font-weight:600;">Open a record</a> for the person named on this certificate, or leave it here for later.</div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- PAGE: PITCH                                                    -->
+<!-- ============================================================= -->
+<div class="page" id="page-pitch">
+  <span class="back-link" onclick="go('today')">← Back to Today</span>
+  <h1>Pitch</h1>
+  <div class="meta">Start from a scarce person — see who should hear about them, before they're placed elsewhere</div>
+
+  <div class="panel">
+    <div class="pitch-person">
+      <div class="pitch-code">RFBT-P-0009</div>
+      <div>
+        <b style="font-size:14px;">Plate worker / Plate fitter</b>
+        <div class="muted" style="font-size:11.5px;">Romania - available now - 3 CVs on file</div>
+      </div>
+    </div>
+    <div class="pitch-teaser"><b>Blind teaser:</b> "Plate fitter, 7 years shipyard experience, structural welds up to CSWIP 3.1, available immediately, right to work in EU confirmed." — no name, no CV attached until a company responds.</div>
+
+    <div class="sub" style="margin-top:14px; margin-bottom:6px; font-weight:700; color:var(--ink);">Companies that should hear about this</div>
+    <div class="company-match">
+      <span><b>Karstensens</b> <span class="match-reason">- 8 open adverts, plate fitting named</span></span>
+      <button class="btn" style="background:var(--amber);">Send teaser</button>
+    </div>
+    <div class="company-match">
+      <span><b>MWM Metalltechnik</b> <span class="match-reason">- structural steelworks award, no contact yet</span></span>
+      <button class="btn" style="background:var(--amber);">Send teaser</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- PAGE: CANDIDATES                                               -->
+<!-- ============================================================= -->
+<div class="page" id="page-candidates">
+  <span class="back-link" onclick="go('today')">← Back to Today</span>
+  <h1>Candidates</h1>
+  <table>
+    <thead><tr><th>#</th><th>Name</th><th>Trade</th><th>Stage</th><th>CV sent to</th></tr></thead>
+    <tbody>
+      <tr onclick="go('candidate-detail')"><td class="muted">#9</td><td><b>Bertescu Dumitrel</b></td><td>Plate fitter</td><td>New</td><td>McDermott</td></tr>
+      <tr onclick="go('candidate-detail')"><td class="muted">#4</td><td><b>M. Marcu</b></td><td>Sandblasting Painter</td><td>New</td><td class="muted">—</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="page" id="page-candidate-detail">
+  <span class="back-link" onclick="go('candidates')">← Back to Candidates</span>
+  <h1>#9 · Bertescu Dumitrel</h1>
+  <div class="meta">RFBT-F-0009 · Plate worker / Plate fitter · added via Verify</div>
+  <div class="cd-grid">
+    <div class="panel">
+      <h2>Details</h2>
+      <div class="field-row"><span class="l">Trade</span><span>Plate fitter</span></div>
+      <div class="field-row"><span class="l">Based in</span><span>Romania</span></div>
+      <div class="field-row"><span class="l">Preference</span><span>Contract</span></div>
+    </div>
+    <div class="panel">
+      <h2>CV &amp; certificates</h2>
+      <div class="field-row"><span class="l">CV files</span><span>3, latest current</span></div>
+      <div class="field-row"><span class="l">Certificates</span><span>0 on file</span></div>
+      <button class="btn" style="background:var(--navy); margin-top:10px;" onclick="go('assess')">Open in Assess flow →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- PAGE: DROP A CV — result, showing exactly what got created     -->
+<!-- ============================================================= -->
+<div class="page" id="page-drop-cv">
+  <span class="back-link" onclick="go('today')">← Back to Today</span>
+  <h1>CV processed</h1>
+  <div class="meta">Marko Jovanović — added as candidate, just now</div>
+
+  <div class="panel">
+    <h2>What was created from this CV</h2>
+    <div class="sub">Verify's own anonymiser did this — this page just surfaces it earlier, nothing identifies the candidate</div>
+    <div class="stat-grid">
+      <div class="stat-box pos"><b>3</b><span>client-ready bullets</span></div>
+      <div class="stat-box pos"><b>1</b><span>anonymised PDF</span></div>
+      <div class="stat-box pos"><b>0</b><span>PII leaks found</span></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>The 3 anonymised bullets</h2>
+    <ul class="bullet-list">
+      <li>10 years plate fitting experience across offshore and shipyard projects</li>
+      <li>CSWIP 3.1 certified, valid through 2027</li>
+      <li>Immediately available, right to work in the EU confirmed</li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h2>What's next — this candidate isn't matched to a lead yet</h2>
+    <div class="sub">Both options reuse the same anonymised CV above — nothing is generated twice</div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <button class="btn" style="background:var(--navy);" onclick="go('assess')">Assess against a specific lead →</button>
+      <button class="btn" style="background:var(--amber);" onclick="go('pitch')">Pitch to companies blind →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- PAGE: ASSESS THIS CANDIDATE, FULL DETAIL                       -->
+<!-- ============================================================= -->
+<div class="page" id="page-assess">
+  <span class="back-link" onclick="go('today')">← Back to Today</span>
+  <h1>Assess: Marko Jovanović <span class="badge2" style="background:var(--gray-soft); color:var(--ink-soft); font-size:11px; vertical-align:middle;">sample</span></h1>
+  <div class="meta">A worked example, scored against Karstensens — not live data</div>
+
+  <div class="flow-steps" style="margin-bottom:20px;">
+    <div class="fstep done"><div class="fnum">✓</div><div class="flabel">Anonymised</div></div>
+    <div class="fstep done"><div class="fnum">✓</div><div class="flabel">Certificate</div></div>
+    <div class="fstep done"><div class="fnum">✓</div><div class="flabel">Fit checked</div></div>
+    <div class="fstep"><div class="fnum">4</div><div class="flabel">Questions</div></div>
+    <div class="fstep"><div class="fnum">5</div><div class="flabel">Outreach</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>1 · Anonymised CV — 3 client bullets</h2>
+    <ul class="bullet-list">
+      <li>10 years plate fitting experience across offshore and shipyard projects</li>
+      <li>CSWIP 3.1 certified, valid through 2027</li>
+      <li>Immediately available, right to work in the EU confirmed</li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h2>2 · Certificate — CSWIP 3.1, No. 4471</h2>
+    <div class="fits">Verified live with TWI's register — valid until 2027-03-14</div>
+  </div>
+
+  <div class="panel">
+    <h2>3 · Fit — scored 71 against Karstensens</h2>
+    <div class="field-row"><span class="l">Plate workers and fitters for hull sections</span><span>plate fitting</span></div>
+    <div class="field-row"><span class="l">ISO 9606 an advantage</span><span class="muted">nothing in CV speaks to this</span></div>
+  </div>
+
+  <div class="panel">
+    <h2>4 · Screening questions</h2>
+    <div class="q-item"><span class="qkind">Right to work</span><div>Can you confirm your right to work in Denmark for this contract?</div></div>
+    <div class="q-item"><span class="qkind">Certificate</span><div>Is your CSWIP 3.1 still active — any lapses since issue?</div></div>
+    <button class="btn" style="background:var(--blue);">Start call →</button>
+  </div>
+
+  <div class="panel">
+    <h2>5 · Outreach — draft to Karstensens</h2>
+    <div class="pitch-teaser">"Hi — we have a plate fitter, 10 years shipyard experience, CSWIP 3.1 verified, available immediately. Fits your open plate-fitting roles. Happy to share the anonymised CV."</div>
+    <button class="btn" style="background:var(--green);">Send outreach →</button>
+  </div>
+</div>
+
+</div>
+
+<script>
+  function resolveFollowup(id){
+    var item = document.getElementById(id);
+    var name = item.querySelector('b').textContent;
+    item.remove();
+    document.getElementById('resolved-panel').style.display = 'block';
+    var entry = document.createElement('div');
+    entry.className = 'field-row';
+    entry.innerHTML = '<span class="l" style="color:var(--ink-faint);"><b style="color:var(--ink-faint);">' + name + '</b> — marked done, just now</span><span style="color:var(--green); font-size:11px; font-weight:600;">✓ Resolved</span>';
+    document.getElementById('resolved-list').appendChild(entry);
+  }
+
+  function go(id){
+    document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); });
+    document.getElementById('page-'+id).classList.add('active');
+    window.scrollTo(0,0);
+  }
+  function ltab(t, e){
+    document.querySelectorAll('.tabs button').forEach(function(b){ b.classList.remove('active'); });
+    e.target.classList.add('active');
+    document.getElementById('won-tab').style.display = t==='won' ? 'block' : 'none';
+    document.getElementById('hiring-tab').style.display = t==='hiring' ? 'block' : 'none';
+  }
+</script>
+
+</body>
+</html>
