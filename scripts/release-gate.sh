@@ -158,6 +158,29 @@ else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("outreach-rls"); fi
 # while six live sites still named it.
 step column-exists-selftest npx tsx --env-file=.env.local scripts/column-exists-check.ts --self-test
 step column-exists npx tsx --env-file=.env.local scripts/column-exists-check.ts
+# Item 20 step 3b (0052): the entitlement function, which is CALLED FROM NOTHING yet.
+#
+# The boundary is keyed on industry_limit, NOT on the follow: an UNLIMITED account that follows one
+# industry must still see everything, or ?industries=all becomes a filter nobody can clear. A CAPPED
+# account gets its followed industries and nothing else - the branch with ZERO live examples, since all
+# three real accounts are unlimited, so it exists only in this probe.
+#
+# Two rules are asserted rather than inherited. UNCLASSIFIED ROWS STAY VISIBLE even to a capped account
+# (owner's decision 2026-09-25): 5,653 of 5,893 companies carry industries '{}', so getting it backwards
+# removes 96% of the book. And NO SESSION SEES NOTHING, or a 3c policy of can_see_industries() alone
+# would open the pool to anon.
+#
+# It also reads BOTH copies of one rule: a follow of "wind" covers offshore_wind and onshore_wind, and
+# that mapping lives in TypeScript AND in SQL. The probe compares industry_follow_leaves() against
+# followedIndustries() for every id 0032 allows, because a drift in one id is what would slip through.
+#
+# Exit 2 = 0052 not applied yet: not judged.
+echo "=== entitlement" | tee -a "$LOG"
+npx tsx --env-file=.env.local scripts/entitlement-probe.ts >> "$LOG" 2>&1
+code=$?
+if [ "$code" -eq 0 ]; then echo "    pass" | tee -a "$LOG"
+elif [ "$code" -eq 2 ]; then echo "    not judged (0052 not applied)" | tee -a "$LOG"
+else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("entitlement"); fi
 # Item 20 step 3a (0051): a workspace records state against a lead it can SEE, and nothing else.
 #
 # 0047's WITH CHECK keyed on OWNERSHIP, which becomes a LOCK the moment leads are shared - every
