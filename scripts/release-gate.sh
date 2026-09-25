@@ -158,6 +158,20 @@ else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("outreach-rls"); fi
 # while six live sites still named it.
 step column-exists-selftest npx tsx --env-file=.env.local scripts/column-exists-check.ts --self-test
 step column-exists npx tsx --env-file=.env.local scripts/column-exists-check.ts
+# Item 20 step 3a (0051): a workspace records state against a lead it can SEE, and nothing else.
+#
+# 0047's WITH CHECK keyed on OWNERSHIP, which becomes a LOCK the moment leads are shared - every
+# workspace but the crawl's own would read a shared lead and be unable to mark it. 0051 keys it on
+# VISIBILITY, because a subquery inside a policy is itself subject to the referenced table's RLS, so the
+# entitlement function will govern writes without this policy being touched again.
+#
+# The two are the SAME SET today, so this probe cannot prove they differ and does not claim to - it
+# passed 12 for 12 against 0047 before 0051 existed. What it proves is that the 0041 property survives:
+# B cannot file state against a lead it cannot see, with its own workspace id on the row OR with A's.
+# It also proves RLS on leads is genuinely ON, which everything in step 3 rests on, and that the
+# refusals are the POLICY - the same write succeeds for the service role, without which a probe holding
+# a wrong id would report a clean pass.
+step state-write-visibility npx tsx --env-file=.env.local scripts/state-write-visibility-probe.ts
 # A recruiter's employer-type override survives the classifier re-reading the company.
 #
 # classify-employers used to SKIP any company a person had ruled on, because the override and the
