@@ -1163,3 +1163,81 @@ WHERE IT LIVES TODAY — read from the code on 2026-09-25 while recording this i
   since then would change the answer.
 
 Documentation only. Commit on its own, two lines.
+
+-------------------------------------------------------------------------------
+27. WEBSITE DISCOVERY + CONTACT/JOB EXTRACTION — APPLIES TO ALL LEADS, NOT JUST TENDERS
+-------------------------------------------------------------------------------
+STATUS: real gap, owner sign-off to build, QUEUED AFTER ITEM 20. Not started.
+
+A real gap found by the owner by hand, with a complete worked example. Schiffswerft Fischer GmbH — a real TED tender-award winner already in the app — had NO WEBSITE ON FILE, so contact discovery never ran against it at all. The owner searched Google, found the real official site (schiffswerft-fischer.de), and its contact page carried exactly the kind of general phone and email the app's existing "no named person quoted" fallback already knows how to display. Nothing was missing from the display logic; the site was simply never found, so the chain had no URL to start from.
+
+SCOPE — GENERAL, NOT TENDER-SPECIFIC. It applies to any company or lead missing a website whatever its source: tender awards, news-sourced won-work leads and Hiring now companies alike. Anywhere the app today reads "no website on file" is in scope. The original framing of this capability was tender-only (item 21's 103 winners), and that subset is the reason it stalled; the capability itself is not tender-shaped.
+
+  1. For a company with no website on file, search for the real official site — the same thing the owner
+     did manually through Google.
+  2. Once found, run the EXISTING contact-discovery chain against it: contact/careers page, then the
+     leadership or organisation page, then the named-person search. THIS IS NOT NEW DISCOVERY LOGIC. It
+     is the documented chain finally reaching sites that were unreachable because no URL existed.
+  3. If no named person is found, extract and show the GENERAL contact info instead — phone, email,
+     company address — the same fallback already shown for a company that has a website but no named
+     contact.
+  4. ALSO read the discovered site for JOB POSTINGS, whatever the lead's original source, and feed any
+     found into Hiring now explicitly linked back to the same company — connecting signal types the way
+     compound-signals already links a tender award to a Hiring now posting for boosted fit.
+
+THIS RESOLVES THE LONG-OPEN ITEM 21 DECISION — "paying to find their sites is the owner's call on this yield" — with the same capability scoped to ALL leads rather than one subset, a concrete worked example, and sign-off to build.
+
+SEQUENCING: explicitly AFTER item 20's remaining steps close — the company-classification investigation first, then 3d, 3e, 3f and step 4 — per the owner's own sequencing decision, 2026-09-25. Not started now. Recorded here so it is not lost.
+
+WHEN PICKED UP, INVESTIGATE BEFORE BUILDING, the same discipline as everything else: confirm how many companies across ALL lead sources lack a website, not just the 103 originally scoped for tenders; confirm the existing contact-discovery chain's real entry points; and MEASURE the real cost of one search plus one read against ONE REAL COMPANY rather than estimating it. Report before building.
+
+READ OUT OF THE CODE ON 2026-09-25 while recording this item. A STARTING POINT, NOT A FINDING — every line re-checked when the item is picked up:
+
+  THE ENTRY POINTS EXIST AND ARE NAMED. The search is `lookupDomain` (src/lib/domain-lookup.ts:57), already lifted
+  out of resolve-domains and already taking an optional address. The chain is `discoverAtCompany`
+  (src/lib/company-contact-discovery.ts:46), driven by api/jobs/hiring-contacts, which already takes `ids` so
+  named companies can be read. `scripts/resolve-wonwork-domains.ts` is already resumable and already stops at
+  the daily cap. So steps 1 and 2 are mostly WIRING TWO EXISTING PIECES TOGETHER over a wider queue, which is
+  what should make this cheap to build and is also what makes the counting question below the real work.
+
+  "COMPANIES WITH NO WEBSITE" IS NOT `domain is null`, AND COUNTING IT THAT WAY WILL GET THE SCOPE WRONG.
+  resolve-domains' own queue (src/app/api/jobs/resolve-domains/route.ts:76) filters
+  `careers_status.is.null,careers_status.neq.no_domain_found`, so a company already marked no_domain_found is
+  PERMANENTLY EXCLUDED from it — deliberately, since 0033 made a miss final only on the SECOND lookup and
+  `domain_lookups` counts them. The investigation must therefore separate three populations that all read
+  "no website on file" on screen: never looked up; looked up once and missed, so a retry is due; and marked
+  no_domain_found, which is a decision already taken and must not be silently paid for again. Item 21's "103"
+  is a tender-only figure from 2026-09-15 and is not any of these three today.
+
+  STEP 4 MAY ALREADY BE WIRED, WHICH IS THE CHEERFUL FINDING. careers-discovery-batch selects
+  `.not('domain', 'is', null)` with `.is('careers_checked_at', null)` (src/lib/jobs/careers-discovery-batch.ts:133),
+  and the tick runs that unit while any company is unchecked — so a company GAINING A DOMAIN becomes eligible
+  for careers/ATS discovery by itself, and its postings then flow through job-posts-batch into Hiring now on
+  the existing path. Checked specifically because it is the obvious way for this to go wrong: the miss path
+  writes only `domain_lookups` and `domain_looked_up_at` (route.ts:95) and does NOT stamp `careers_checked_at`,
+  so a domainless company has not been silently marked "already checked" and will not be skipped once it has a
+  site. CONFIRM THIS RATHER THAN TRUST IT — if anything does stamp that column, step 4 needs `recheck=1` and
+  the automatic path is an illusion. Note also that batch deliberately excludes `employer_type =
+  'staffing_agency'`.
+
+  WHAT THE YIELD HONESTLY LOOKS LIKE, so this is not oversold before it starts. The measured run over the 26
+  won-work companies that DID have a site produced 10 of 149 leads gaining a contact, EVERY ONE a switchboard
+  or a general email, and ZERO named people with an email or phone. That is precisely the shape of the owner's
+  worked example — a contact page with general phone and email — so step 3 is the expected outcome and step 2's
+  named-person arm is the exception, not the rule. Budget: batch 1 measured EUR 0.0230 a company over 35
+  companies (EUR 0.8067), close to the EUR 0.021 of the earlier sample, so a hundred-odd lookups is roughly
+  EUR 2.20 — MORE THAN ONE DAY'S EUR 2.00 CAP, which is why the existing script is resumable and cap-aware and
+  why a single pass is the wrong shape.
+
+  THE FAILURE MODE TO PRESERVE: a wrongly-found site attaches ANOTHER COMPANY'S switchboard to this lead.
+  src/lib/site-scope.ts and src/lib/site-trust.ts exist for exactly that — colas.com for COLAS FRANCE,
+  bechtel.com, damen.com are group sites, not the local winner's — and the drawer already distinguishes
+  "Confirmed: the site prints the notice's address" from "Not confirmed — check it is the right company before
+  calling". Widening the queue must not widen it past those two, and a source with no notice address to check
+  against is the weaker case, not the same case.
+
+  ALSO CHECK BEFORE CLAIMING A CLEAN START: the original won-work pass was left half done — roughly 69
+  companies were still pending after the cap stopped batch 1, and that remainder is absorbed by this item
+  rather than being separate work. Confirm the real number from the database with a dry run before quoting it.
+
+Documentation only. Commit on its own, two lines.
