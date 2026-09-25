@@ -1178,9 +1178,11 @@ SCOPE — GENERAL, NOT TENDER-SPECIFIC. It applies to any company or lead missin
   2. Once found, run the EXISTING contact-discovery chain against it: contact/careers page, then the
      leadership or organisation page, then the named-person search. THIS IS NOT NEW DISCOVERY LOGIC. It
      is the documented chain finally reaching sites that were unreachable because no URL existed.
-  3. If no named person is found, extract and show the GENERAL contact info instead — phone, email,
-     company address — the same fallback already shown for a company that has a website but no named
-     contact.
+  3. ALWAYS extract and show the official general phone number and the official general email address,
+     REGARDLESS of whether a named person is also found. THIS IS NOT A FALLBACK shown only when nobody is
+     named: show it ALONGSIDE a named contact, because a recruiter may want the company general line even
+     when a specific person is known. If neither a phone nor an email is found, SAY SO rather than showing
+     nothing.
   4. ALSO read the discovered site for JOB POSTINGS, whatever the lead's original source, and feed any
      found into Hiring now explicitly linked back to the same company — connecting signal types the way
      compound-signals already links a tender award to a Hiring now posting for boosted fit.
@@ -1223,8 +1225,9 @@ READ OUT OF THE CODE ON 2026-09-25 while recording this item. A STARTING POINT, 
   WHAT THE YIELD HONESTLY LOOKS LIKE, so this is not oversold before it starts. The measured run over the 26
   won-work companies that DID have a site produced 10 of 149 leads gaining a contact, EVERY ONE a switchboard
   or a general email, and ZERO named people with an email or phone. That is precisely the shape of the owner's
-  worked example — a contact page with general phone and email — so step 3 is the expected outcome and step 2's
-  named-person arm is the exception, not the rule. Budget: batch 1 measured EUR 0.0230 a company over 35
+  worked example — a contact page with general phone and email — so what step 3 shows is in practice the ONLY thing
+  most companies will yield, and step 2's named-person arm is the exception rather than the rule. That is an
+  argument for step 3 being unconditional rather than a fallback, which is how the owner revised it. Budget: batch 1 measured EUR 0.0230 a company over 35
   companies (EUR 0.8067), close to the EUR 0.021 of the earlier sample, so a hundred-odd lookups is roughly
   EUR 2.20 — MORE THAN ONE DAY'S EUR 2.00 CAP, which is why the existing script is resumable and cap-aware and
   why a single pass is the wrong shape.
@@ -1239,5 +1242,38 @@ READ OUT OF THE CODE ON 2026-09-25 while recording this item. A STARTING POINT, 
   ALSO CHECK BEFORE CLAIMING A CLEAN START: the original won-work pass was left half done — roughly 69
   companies were still pending after the cap stopped batch 1, and that remainder is absorbed by this item
   rather than being separate work. Confirm the real number from the database with a dry run before quoting it.
+
+  STEP 3 REVISED BY THE OWNER, 2026-09-25, AFTER THIS ITEM WAS FIRST WRITTEN: the general phone and email are
+  shown ALWAYS, not as a fallback for when nobody is named. Two things in the existing code bear on it, and
+  they pull in opposite directions.
+
+  THE EXTRACTION SIDE ALREADY DOES THIS, which is the easy half. discoverAtCompany reads the contact/careers
+  page FIRST and unconditionally (company-contact-discovery.ts:55-69), before the organisation page and before
+  any named-person crawl, and nothing short-circuits it when a person is found — the org-page loop's only early
+  exit, on orgFound, stops reading FURTHER ORG PAGES and does not skip the general details already taken. So
+  "always extract" is close to current behaviour rather than a change to it, and the work is on the display side.
+
+  BUT THE WRITE IS DELIBERATELY CONDITIONAL, AND ONE FIELD IS NOT WHAT ITS NAME SAYS. Every general detail is
+  written ONLY INTO A BLANK, and the comment says why: "A detail already on the company was confirmed once;
+  this does not get to quietly replace it with something read off a different page." So a value already on file
+  is never refreshed by a later, better page, and "always show" must not be read as "always re-fetch and
+  overwrite", which would throw that rule away. And general_email falls back to an HR ADDRESS when no general
+  one is printed, so the field labelled "general email" is sometimes an HR mailbox. Shown unconditionally beside
+  a named person it should say WHICH of the two it is, or a recruiter is told "general" about an address that is
+  not.
+
+  "IF NEITHER IS FOUND, SAY SO" MUST NOT BECOME AN ABSENCE NOBODY CHECKED. The chain does not read the whole
+  site: it reads at most TWO of the three candidate contact/careers URLs, plus the home page for organisation
+  links, and it skips any page that does not come back live. So the honest sentence is "no phone or email on the
+  pages we read", naming them — NOT "nothing anywhere on the site". This repo already has the rule that a screen
+  must never report an absence it did not check, and a confident negative drawn from a two-page read is exactly
+  the shape it forbids. Reading more of the site is a real decision with a real cost, to be taken explicitly
+  rather than implied by the word "anywhere".
+
+  ONE AMBIGUITY TO SETTLE WHEN PICKED UP, not now. "Display alongside" is clear for the lead DRAWER, whose
+  "From the company own site" block already lists people, switchboard and general email together, each with its
+  page. It is not clear for the Decision-maker CELL on the table, which holds ONE value and today falls back
+  through a named person, then a company-site person, then the switchboard. A cell cannot show two things
+  without becoming two cells, so confirm whether the requirement reaches the table or only the drawer.
 
 Documentation only. Commit on its own, two lines.
