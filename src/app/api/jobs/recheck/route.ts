@@ -35,10 +35,21 @@ export async function POST(req: Request) {
   // Item 20 step 2b: only leads somebody still considers open are re-fetched, read from the state row.
   //
   // THE WORKSPACE IS PINNED, and from 0054 it has to be. This runs as the SERVICE ROLE, so RLS does not
-  // narrow workspace_lead_state to one row — and 0054 gives every workspace a row for every lead. Without
-  // the pin this join returns one row PER WORKSPACE per lead: the same lead re-fetched several times, the
-  // 200 limit covering a fraction of the distinct leads it used to, and the filter meaning "open in ANY
-  // workspace" rather than in this one. Found by lead-state-parity going red on exactly that shape.
+  // narrow workspace_lead_state to one row — and 0054 gives every workspace a row for every lead.
+  //
+  // WHAT GOES WRONG WITHOUT THE PIN, measured on production 2026-09-26 rather than reasoned about, because
+  // the first version of this comment got the mechanism wrong and the wrong version is the more alarming
+  // one. It does NOT return one row per workspace per lead: PostgREST does not multiply the parent row, so
+  // each lead comes back ONCE carrying an ARRAY of state rows — two today, one per workspace. The 200 limit
+  // therefore still covers 200 distinct leads, and nothing is re-fetched twice in a run.
+  //
+  // The real defect is the FILTER, and it is quieter than that. `.not(state.status, 'in', CLOSED)` against
+  // an unpinned embed means "not closed in ANY workspace": measured, 229 leads match unpinned against 224
+  // pinned, and those 5 are exactly the leads THIS workspace has marked stale or not_for_us while another
+  // workspace still reads them as new. So the crawl keeps re-fetching pages for leads its own workspace has
+  // closed, on another workspace's opinion — wasted budget, and a decision leaking across the boundary item
+  // 20 exists to draw. The second, latent half: any caller that reads a value OUT of this embed would get
+  // whichever workspace's row came back first. This route only filters on it, which is why nothing broke.
   //
   // A FAILURE HERE IS REPORTED, NOT SWALLOWED. crawlWorkspace throws rather than returning null, and
   // catching it to null would silently restore the exact cross-workspace fan-out this pin exists to stop —
