@@ -12,6 +12,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { classifyAward, classifyNews, classifyCompany, repeatedSentences, INDUSTRIES, type IndustryEvidence, type IndustryId } from '../src/lib/industry';
 import { leadSource } from '../src/lib/lead-source';
+import { LEAD_STATE_LEFT, withLeadState } from '../src/lib/workspace-state';
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 const write = process.argv.includes('--write');
@@ -36,7 +37,7 @@ async function all<T>(build: (from: number, to: number) => PromiseLike<{ data: T
   const stored = await all<{ url: string; text: string | null }>((a, b) => db.from('articles').select('url, text').order('id').range(a, b), 200);
   const chrome = repeatedSentences(stored);
 
-  const leads = await all<any>((a, b) => db.from('leads').select('id, company_id, status, kind, project_name, source_url, is_test').eq('is_test', false).order('id').range(a, b));
+  const leads = await all<any>((a, b) => db.from('leads').select(`id, company_id, kind, project_name, source_url, is_test, ${LEAD_STATE_LEFT}`).eq('is_test', false).order('id').range(a, b));
   const links = await all<any>((a, b) => db.from('lead_articles').select('lead_id, articles(url, title, text)').order('lead_id').range(a, b));
   const arts = new Map<string, any[]>();
   for (const r of links) (arts.get(r.lead_id) ?? arts.set(r.lead_id, []).get(r.lead_id)!).push(r.articles);

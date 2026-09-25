@@ -24,6 +24,7 @@ import { findPeopleOnSites, searchPagesNaming, personOnPage } from '../src/lib/p
 import { fetchPage } from '../src/lib/fetch-page';
 import { Budget } from '../src/lib/cost';
 import { recordPersonContact, addToQuotedContact } from '../src/lib/person-contact';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 const search = process.argv.includes('--search');
@@ -52,7 +53,7 @@ type Quoted = { id: string; name: string; email: string | null; phone: string | 
     if (data.length < 1000) break;
   }
   const { data: posts } = await db.from('job_posts').select('company_id, companies!inner(id, name, domain)').eq('status', 'open').eq('is_test', false);
-  const { data: leads } = await db.from('leads').select('id, company_id, companies!inner(id, name, domain)').eq('workspace_id', W).eq('kind', 'won_work').eq('is_test', false).not('status', 'in', '("stale","not_for_us")');
+  const { data: leads } = await db.from('leads').select(`id, company_id, companies!inner(id, name, domain), ${LEAD_STATE_EMBED}`).eq('workspace_id', W).eq('kind', 'won_work').eq('is_test', false).not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES);
   const targets = new Map<string, Target>();
   const asTarget = (c: any, set: string): Target => ({ id: c.id, name: c.name, domain: c.domain ?? null, set });
   if (!wonWorkOnly) for (const p of posts ?? []) targets.set((p as any).company_id, asTarget((p as any).companies, 'Hiring now'));

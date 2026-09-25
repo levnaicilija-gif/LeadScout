@@ -47,7 +47,7 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
   const { data: lead } = await admin.from('leads').insert({
     workspace_id: workspace, company_id: co!.id, kind: 'won_work', project_name: 'Smoke frame agreement',
     project_location: 'Norwegian Continental Shelf', country: 'NO', trades_inferred: ['welder'],
-    fit_score: 75, status: 'new', source_url: 'https://example.invalid/smoke', source_fetched_at: new Date().toISOString(),
+    fit_score: 75, source_url: 'https://example.invalid/smoke', source_fetched_at: new Date().toISOString(),
   }).select().single();
   // Item 21: the quoted person's address was recovered from the company's own site, so it carries that page as its source.
   // The article is the source of the name (contacts require one); the company's team page is the source of the address.
@@ -84,12 +84,12 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
   await markTest(admin, 'companies', [groupCo!.id]);
   const { data: groupLead } = await admin.from('leads').insert({
     workspace_id: workspace, company_id: groupCo!.id, kind: 'won_work', project_name: 'Smoke groupe award',
-    project_location: 'FRA', country: 'FR', trades_inferred: ['scaffolder'], fit_score: 50, status: 'new', is_test: true,
+    project_location: 'FRA', country: 'FR', trades_inferred: ['scaffolder'], fit_score: 50, is_test: true,
     source_url: `https://ted.europa.eu/en/notice/-/detail/smoke-groupe-${Date.now()}`, source_fetched_at: new Date().toISOString(),
   }).select().single();
   const { data: tenderLead } = await admin.from('leads').insert({
     workspace_id: workspace, company_id: tenderCo!.id, kind: 'won_work', project_name: 'Smoke quay award',
-    project_location: 'DNK', country: 'DK', trades_inferred: ['welder'], fit_score: 70, status: 'new',
+    project_location: 'DNK', country: 'DK', trades_inferred: ['welder'], fit_score: 70,
     source_url: `https://ted.europa.eu/en/notice/-/detail/smoke-${Date.now()}`, source_fetched_at: new Date().toISOString(),
   }).select().single();
   await markTest(admin, 'leads', [lead!.id, tenderLead!.id]);
@@ -100,7 +100,7 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
   await markTest(admin, 'companies', [compoundCo!.id]);
   const { data: compoundLead } = await admin.from('leads').insert({
     workspace_id: workspace, company_id: compoundCo!.id, kind: 'won_work', project_name: 'Smoke compound award',
-    project_location: 'Bergen', country: 'NO', trades_inferred: ['welder'], fit_score: 60, status: 'new', is_test: true,
+    project_location: 'Bergen', country: 'NO', trades_inferred: ['welder'], fit_score: 60, is_test: true,
     source_url: `https://ted.europa.eu/en/notice/-/detail/smoke-compound-${Date.now()}`, source_fetched_at: new Date().toISOString(),
   }).select().single();
   const { error: compoundJobErr } = await admin.from('job_posts').insert({

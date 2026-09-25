@@ -24,6 +24,7 @@ import { quotedInText } from '../src/lib/quoted-contacts';
 import { leadSource } from '../src/lib/lead-source';
 import { canonCompany } from '../src/lib/company-identity';
 import { hasRadarVerdicts } from '../src/lib/schema-features';
+import { LEAD_STATE_EMBED, LEAD_STATE_LEFT, LEAD_STATE_TABLE, withLeadState } from '../src/lib/workspace-state';
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 const NADARA = '5324198d-3df2-400c-95f9-95db88c2f7bf';
@@ -33,14 +34,23 @@ const WRITE = process.argv.includes('--write');
 
 (async () => {
   // Target accounts, narrow as decided: an active lead, or pursued hiring.
-  const { data: active } = await db.from('leads').select('companies(name)').in('status', ACTIVE);
-  const { data: pursued } = await db.from('companies').select('name').eq('hiring_status', 'pursued');
+  // 0049: both halves of "target account" are per-workspace state now, so both are read from the
+  // state tables — the lead's status through its embed, the company's hiring status through its own.
+  const { data: active } = await db.from('leads')
+    .select(`companies(name), ${LEAD_STATE_EMBED}`)
+    .in(`${LEAD_STATE_TABLE}.status`, ACTIVE);
+  const { data: pursued } = await db.from('companies')
+    .select('name, workspace_company_state!inner(hiring_status)')
+    .eq('workspace_company_state.hiring_status', 'pursued');
   const targets = new Set<string>([...(active ?? []).map((l: any) => l.companies?.name), ...(pursued ?? []).map((c: any) => c.name)].filter(Boolean).map((n) => canonCompany(n)));
 
-  const { data: leads, error } = await db.from('leads')
-    .select('id, workspace_id, status, project_name, project_location, source_url, is_test, companies(name, domain), contacts(name, title), lead_articles(articles(id, url, title, text, published_at, fetched_at))')
+  // 0049 dropped leads.status; it is read from the workspace's state row and flattened, so `surfaced`
+  // below still tests `l.status`.
+  const { data: leadRows, error } = await db.from('leads')
+    .select(`id, workspace_id, project_name, project_location, source_url, is_test, companies(name, domain), contacts(name, title), lead_articles(articles(id, url, title, text, published_at, fetched_at)), ${LEAD_STATE_LEFT}`)
     .eq('kind', 'won_work').eq('is_test', false);
   if (error) { console.error(error.message); process.exit(1); }
+  const leads = (leadRows ?? []).map(withLeadState);
 
   const news = (leads ?? []).filter((l: any) => leadSource(l.source_url) === 'news' && !String(l.source_url ?? '').includes('example.invalid'));
   const tenders = (leads ?? []).length - news.length;

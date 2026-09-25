@@ -13,6 +13,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { writeFileSync } from 'fs';
 import { leadSource } from '../src/lib/lead-source';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 const saveAt = process.argv.includes('--save') ? process.argv[process.argv.indexOf('--save') + 1] : null;
@@ -20,8 +21,8 @@ const saveAt = process.argv.includes('--save') ? process.argv[process.argv.index
 (async () => {
   const { data: ws } = await db.from('workspaces').select('id').eq('name', 'RFBT Recruitment').single();
   const { data: leads, error } = await db.from('leads')
-    .select('id, company_id, source_url, project_name, companies(id, name, domain, contacts_checked_at, switchboard, general_email, contact_page_url)')
-    .eq('workspace_id', ws!.id).eq('kind', 'won_work').eq('is_test', false).not('status', 'in', '("stale","not_for_us")').limit(5000);
+    .select(`id, company_id, source_url, project_name, companies(id, name, domain, contacts_checked_at, switchboard, general_email, contact_page_url), ${LEAD_STATE_EMBED}`)
+    .eq('workspace_id', ws!.id).eq('kind', 'won_work').eq('is_test', false).not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES).limit(5000);
   if (error) throw new Error(error.message);
   const ids = (leads ?? []).map((l) => l.id);
   const coIds = [...new Set((leads ?? []).map((l) => l.company_id).filter(Boolean))] as string[];

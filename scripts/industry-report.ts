@@ -6,6 +6,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { INDUSTRIES, classifyAward, classifyNews, classifyCompany, repeatedSentences, type Classification } from '../src/lib/industry';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 const showEvidence = process.argv.includes('--evidence');
@@ -13,7 +14,7 @@ const showEvidence = process.argv.includes('--evidence');
 (async () => {
   const { data: ws } = await db.from('workspaces').select('id').eq('name', 'RFBT Recruitment').single();
   const W = ws!.id;
-  const { data: leads, error } = await db.from('leads').select('id, project_name, source_url, companies(name)').eq('workspace_id', W).eq('kind', 'won_work').eq('is_test', false).not('status', 'in', '("stale","not_for_us")');
+  const { data: leads, error } = await db.from('leads').select(`id, project_name, source_url, companies(name), ${LEAD_STATE_EMBED}`).eq('workspace_id', W).eq('kind', 'won_work').eq('is_test', false).not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES);
   if (error) throw new Error(error.message);
   const { data: links } = await db.from('lead_articles').select('lead_id, articles(url, title, text)').in('lead_id', (leads ?? []).map((l) => l.id));
   const arts = new Map<string, any[]>();

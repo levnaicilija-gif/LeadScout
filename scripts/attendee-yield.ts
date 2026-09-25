@@ -14,6 +14,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { attendeeMatch } from '../src/lib/attendee-match';
 import { fromAttendeeList } from '../src/lib/hiring-contacts';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 const relink = process.argv.includes('--relink');
@@ -33,7 +34,7 @@ const relink = process.argv.includes('--relink');
 
   const { data: posts } = await db.from('job_posts').select('company_id, companies!inner(name)').eq('status', 'open').eq('is_test', false);
   const hiring = [...new Map((posts ?? []).map((p: any) => [p.company_id, p.companies.name])).values()] as string[];
-  const { data: leads } = await db.from('leads').select('id, company_id, companies!inner(name)').eq('workspace_id', W).eq('kind', 'won_work').eq('is_test', false).not('status', 'in', '("stale","not_for_us")');
+  const { data: leads } = await db.from('leads').select(`id, company_id, companies!inner(name), ${LEAD_STATE_EMBED}`).eq('workspace_id', W).eq('kind', 'won_work').eq('is_test', false).not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES);
   const won = [...new Map((leads ?? []).map((l: any) => [l.company_id, l.companies.name])).values()] as string[];
 
   const matchNew = (name: string) => people.filter((p) => attendeeMatch(name, p.company_name)).map((p) => ({ ...p, match: attendeeMatch(name, p.company_name)! }))
@@ -70,7 +71,7 @@ const relink = process.argv.includes('--relink');
   // Keeps every link that still matches, removes only another company's people, and tops a lead up to ten.
   // The first version rebuilt each lead's ten from scratch: on 2026-09-14 it removed 70 links, 30 of them wrong and
   // 40 to the right company's people who were swapped for others at the same company.
-  const { data: allLeads } = await db.from('leads').select('id, companies(name)').eq('workspace_id', W).eq('is_test', false);
+  const { data: allLeads } = await db.from('leads').select(`id, companies(name), ${LEAD_STATE_EMBED}`).eq('workspace_id', W).eq('is_test', false);
   let removed = 0, added = 0, kept = 0;
   for (const l of allLeads ?? []) {
     const name = (l as any).companies?.name ?? '';

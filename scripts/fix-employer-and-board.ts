@@ -14,6 +14,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { detectEmployerType } from '../src/lib/agency-detector';
+import { COMPANY_STATE_LEFT, withCompanyState } from '../src/lib/workspace-state';
 
 const write = process.argv.includes('--write');
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
@@ -23,14 +24,20 @@ const s = (v: any) => (typeof v === 'string' ? v : JSON.stringify(v ?? ''));
   const all: any[] = [];
   for (let f = 0; ; f += 1000) {
     const { data, error } = await db.from('companies')
-      .select('id, name, employer_type, employer_type_override, employer_type_source, employer_type_reason, employer_type_evidence, ats_type, ats_slug, careers_url, careers_fingerprint')
+      // 0049 moved the override to workspace_company_state; employer_type_reason STAYED, because the
+      // crawl writes it as a shared explanation of the detected type on 525 companies that have no
+      // override at all. So one of these two comes from the embed and the other from the row.
+      .select(`id, name, employer_type, employer_type_source, employer_type_reason, employer_type_evidence, ats_type, ats_slug, careers_url, careers_fingerprint, ${COMPANY_STATE_LEFT}`)
       .order('id').range(f, f + 999);
     if (error) throw new Error(error.message);
-    if (!data?.length) break; all.push(...data); if (data.length < 1000) break;
+    if (!data?.length) break; all.push(...data.map(withCompanyState)); if (data.length < 1000) break;
   }
-  const { data: agencies } = await db.from('companies').select('name')
-    .or('employer_type_override.eq.staffing_agency,and(employer_type_override.is.null,employer_type.eq.staffing_agency)');
-  const agencyNames = (agencies ?? []).map((a: any) => a.name);
+  // The `.or(…)` this replaced cannot be written as a filter any more: half of it is on another table
+  // and PostgREST's or() has no reach across an embed. The same rule is applied in memory instead —
+  // the override where there is one, else the detected type, which is what effectiveEmployerType does.
+  const agencyNames = all
+    .filter((c: any) => (c.employer_type_override ?? c.employer_type) === 'staffing_agency')
+    .map((c: any) => c.name);
 
   // 1 — DOF
   const dof = all.find((c) => c.name === 'DOF');

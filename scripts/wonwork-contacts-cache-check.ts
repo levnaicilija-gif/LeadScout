@@ -9,6 +9,7 @@
  *   - for companies behind two or more leads, the same: one stamp, reads no higher than for a single-lead company.
  */
 import { createClient } from '@supabase/supabase-js';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 const sinceAt = process.argv.indexOf('--since');
@@ -16,8 +17,8 @@ const since = sinceAt > 0 ? process.argv[sinceAt + 1] : new Date(Date.now() - 6 
 
 (async () => {
   const { data: ws } = await db.from('workspaces').select('id').eq('name', 'RFBT Recruitment').single();
-  const { data: leads, error } = await db.from('leads').select('id, company_id, companies(id, name, domain, careers_url, contact_page_url, contacts_checked_at)')
-    .eq('workspace_id', ws!.id).eq('kind', 'won_work').eq('is_test', false).not('status', 'in', '("stale","not_for_us")').not('company_id', 'is', null).limit(5000);
+  const { data: leads, error } = await db.from('leads').select(`id, company_id, companies(id, name, domain, careers_url, contact_page_url, contacts_checked_at), ${LEAD_STATE_EMBED}`)
+    .eq('workspace_id', ws!.id).eq('kind', 'won_work').eq('is_test', false).not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES).not('company_id', 'is', null).limit(5000);
   if (error) throw new Error(error.message);
   const byCo = new Map<string, { name: string; leads: number; site: boolean; stampedSince: boolean }>();
   for (const l of leads ?? []) {

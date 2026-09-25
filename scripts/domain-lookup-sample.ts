@@ -16,6 +16,7 @@ import { Budget } from '../src/lib/cost';
 import { crawlWorkspace } from '../src/lib/crawl-workspace';
 import { lookupDomain, type LookupResult } from '../src/lib/domain-lookup';
 import { fetchNoticeXml, publicationNumber, winnerAddress, type WinnerAddress } from '../src/lib/tender/winner-address';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
 
 const arg = (k: string, d: string) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const N = Number(arg('--n', '8'));
@@ -51,8 +52,8 @@ async function verify(domain: string, a: WinnerAddress): Promise<string> {
 
 (async () => {
   const workspaceId = await crawlWorkspace(db);
-  const { data: leads, error } = await db.from('leads').select('source_url, companies!inner(id, name, domain)')
-    .eq('workspace_id', workspaceId).eq('kind', 'won_work').eq('is_test', false).not('status', 'in', '("stale","not_for_us")')
+  const { data: leads, error } = await db.from('leads').select(`source_url, companies!inner(id, name, domain), ${LEAD_STATE_EMBED}`)
+    .eq('workspace_id', workspaceId).eq('kind', 'won_work').eq('is_test', false).not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES)
     .ilike('source_url', 'https://ted.europa.eu/%').is('companies.domain', null).limit(5000);
   if (error) throw new Error(error.message);
   const byCompany = new Map<string, { name: string; notice: string }>();

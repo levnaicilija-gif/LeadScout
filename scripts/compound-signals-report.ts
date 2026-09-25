@@ -10,13 +10,14 @@
 import { createClient } from '@supabase/supabase-js';
 import { compoundFor, boostedFit, boostedPressure, leadSignal, postingSignals, SIGNAL_WINDOW_DAYS, type Signal } from '../src/lib/compound-signals';
 import { groupByCompany } from '../src/components/HiringNow';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 const OPEN = '("stale","not_for_us")';
 
 (async () => {
-  const { data: leads, error } = await db.from('leads').select('id, company_id, country, fit_score, source_url, created_at, project_name, companies(name)')
-    .eq('kind', 'won_work').not('status', 'in', OPEN).eq('is_test', false).not('company_id', 'is', null).limit(5000);
+  const { data: leads, error } = await db.from('leads').select(`id, company_id, country, fit_score, source_url, created_at, project_name, companies(name), ${LEAD_STATE_EMBED}`)
+    .eq('kind', 'won_work').not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES).eq('is_test', false).not('company_id', 'is', null).limit(5000);
   if (error) throw new Error(error.message);
   const links: any[] = [];
   const ids = (leads ?? []).map((l) => l.id);

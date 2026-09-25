@@ -16,6 +16,7 @@ import { chromium, type Page } from 'playwright';
 import { followAllForProbe, markWorkspaceTest, removeProbe } from '../src/lib/test-data';
 import { attendeeMatch } from '../src/lib/attendee-match';
 import { isOps } from '../src/lib/contact-choice';
+import { LEAD_STATE_LEFT, withLeadState } from '../src/lib/workspace-state';
 
 const BASE = process.argv[2] ?? 'http://localhost:3100';
 const EMAIL = `industry-contacts-probe+${Date.now()}@rfbt-recruitment.com`;
@@ -28,11 +29,14 @@ const oldWord = (page: Page) => page.evaluate(() => { const t = document.body.in
 
 (async () => {
   const { data: ws } = await admin.from('workspaces').select('id').eq('name', 'RFBT Recruitment').single();
-  const { data: links } = await admin.from('lead_people').select('lead_id, leads!inner(id, kind, status, source_url, workspace_id, companies(name))').eq('leads.workspace_id', ws!.id).eq('leads.kind', 'won_work').limit(400);
-  const leadIds = [...new Set((links ?? []).filter((l: any) => !['stale', 'not_for_us'].includes(l.leads.status)).map((l: any) => l.lead_id))];
+  // 0049 dropped leads.status; it comes from the workspace's state row, nested a level deeper inside
+  // the lead embed. Each lead is flattened ONCE here so both `l.leads.status` reads below are unchanged.
+  const { data: linkRows } = await admin.from('lead_people').select(`lead_id, leads!inner(id, kind, source_url, workspace_id, companies(name), ${LEAD_STATE_LEFT})`).eq('leads.workspace_id', ws!.id).eq('leads.kind', 'won_work').limit(400);
+  const links = (linkRows ?? []).map((l: any) => ({ ...l, leads: withLeadState(l.leads) }));
+  const leadIds = [...new Set(links.filter((l: any) => !['stale', 'not_for_us'].includes(l.leads.status)).map((l: any) => l.lead_id))];
   const { data: quoted } = leadIds.length ? await admin.from('contacts').select('lead_id').in('lead_id', leadIds) : { data: [] as any[] };
   const withQuote = new Set((quoted ?? []).map((q: any) => q.lead_id));
-  const leadLink: any = (links ?? []).find((l: any) => !withQuote.has(l.lead_id) && !['stale', 'not_for_us'].includes(l.leads.status));
+  const leadLink: any = links.find((l: any) => !withQuote.has(l.lead_id) && !['stale', 'not_for_us'].includes(l.leads.status));
   const { data: posts } = await admin.from('job_posts').select('company_id, companies!inner(name, workspace_id)').eq('status', 'open').eq('companies.workspace_id', ws!.id).limit(400);
   const { data: people } = await admin.from('people').select('company_name, title').eq('workspace_id', ws!.id).eq('ops_relevant', true).limit(20000);
   const hiringCo: any = (posts ?? []).find((p: any) => (people ?? []).some((x: any) => isOps(x.title) && attendeeMatch(p.companies.name, x.company_name)));

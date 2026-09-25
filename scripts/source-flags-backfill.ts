@@ -13,6 +13,7 @@ import { fetchPage } from '../src/lib/fetch-page';
 import { sourceFlag } from '../src/lib/source-quality';
 import { hasSourceFlag } from '../src/lib/schema-features';
 import { leadSource } from '../src/lib/lead-source';
+import { LEAD_STATE_LEFT, withLeadState } from '../src/lib/workspace-state';
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 const WRITE = process.argv.includes('--write');
@@ -20,7 +21,10 @@ const WRITE = process.argv.includes('--write');
 (async () => {
   const flagOn = await hasSourceFlag(db);
   if (WRITE && !flagOn) { console.error('leads.source_flag does not exist yet — apply migration 0023 first'); process.exit(1); }
-  const { data: leads, error } = await db.from('leads').select('id, source_url, status, companies(name), sources:lead_articles(articles(source_id))').eq('is_test', false).not('source_url', 'is', null);
+  // 0049 dropped leads.status; it is read from the workspace's state row and flattened, so the
+  // report line below still prints `l.status`.
+  const { data: leadRows, error } = await db.from('leads').select(`id, source_url, companies(name), sources:lead_articles(articles(source_id)), ${LEAD_STATE_LEFT}`).eq('is_test', false).not('source_url', 'is', null);
+  const leads = (leadRows ?? []).map(withLeadState);
   if (error) { console.error(error.message); process.exit(1); }
   const { data: paywalled } = await db.from('sources').select('id').eq('paywalled', true);
   const paywalledIds = new Set((paywalled ?? []).map((s: any) => s.id));

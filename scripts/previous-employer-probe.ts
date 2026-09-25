@@ -81,12 +81,18 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     }).select('id').single(), 'company').id as string;
 
     const lead = must(await admin.from('leads').insert({
-      // lead_status is ('new','pursue','contacted','replied','call','trial','framework','not_for_us','stale') — no 'open'.
-      workspace_id: W, company_id: company, kind: 'won_work', status: 'new',
+      workspace_id: W, company_id: company, kind: 'won_work',
       project_name: 'Probe hull section', country: 'RO', trades_inferred: ['plate worker'],
-      job_description: 'Plate workers and fitters for hull sections in Brăila. ISO 9606 an advantage.',
-      jd_version: 1, is_test: true,
+      is_test: true,
     }).select('id').single(), 'lead').id as string;
+    // 0049 moved the job description and its version to the workspace's own state row, so they are
+    // set there rather than on the lead. The row already exists — 0048's trigger made it on insert —
+    // so this is an update, and its error is READ: a probe that seeded no JD would go on to test the
+    // JD path against nothing and pass for the wrong reason.
+    const { error: jdErr } = await admin.from('workspace_lead_state')
+      .update({ job_description: 'Plate workers and fitters for hull sections in Brăila. ISO 9606 an advantage.', jd_version: 1 })
+      .eq('workspace_id', W).eq('lead_id', lead);
+    if (jdErr) throw new Error(`the probe lead's job description was not stored: ${jdErr.message}`);
 
     const base = { trade: 'Plate worker', trade_code: 'F', skills: ['plate fitting'], languages: ['Romanian'], certificates_claimed: [], pii: {} };
     const MATCH = code('8801');

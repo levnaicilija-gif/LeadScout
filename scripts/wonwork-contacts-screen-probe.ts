@@ -14,6 +14,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { chromium, type Page } from 'playwright';
 import { followAllForProbe, markWorkspaceTest, removeProbe } from '../src/lib/test-data';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
 
 const BASE = process.argv[2] ?? 'http://localhost:3100';
 const NAMES = process.argv.slice(3);
@@ -43,8 +44,8 @@ const readDrawer = (page: Page) => page.evaluate(() => {
 (async () => {
   const { data: ws } = await admin.from('workspaces').select('id').eq('name', 'RFBT Recruitment').single();
   const { data: leads, error } = await admin.from('leads')
-    .select('id, source_url, companies!inner(id, name, switchboard, switchboard_source_url, general_email, general_email_source_url)')
-    .eq('workspace_id', ws!.id).eq('kind', 'won_work').eq('is_test', false).not('status', 'in', '("stale","not_for_us")').limit(5000);
+    .select(`id, source_url, companies!inner(id, name, switchboard, switchboard_source_url, general_email, general_email_source_url), ${LEAD_STATE_EMBED}`)
+    .eq('workspace_id', ws!.id).eq('kind', 'won_work').eq('is_test', false).not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES).limit(5000);
   if (error) throw new Error(error.message);
   const withSite = (leads ?? []).filter((l: any) => l.companies.switchboard || l.companies.general_email);
   const chosen = new Map<string, any>();

@@ -148,7 +148,7 @@ const settled = (p: Page) => p.waitForFunction(
       { name: before, created_at: at(-2 * 60 * 1000), fit: 99 },
       ...inside.map((name, i) => ({ name, created_at: at((i + 1) * 2 * 60 * 1000), fit: 90 - i })),
     ].map((r) => ({
-      workspace_id: who.workspace, company_id: idOf.get(r.name), kind: 'won_work', status: 'new',
+      workspace_id: who.workspace, company_id: idOf.get(r.name), kind: 'won_work',
       country: 'DK', project_name: `Priority window ${r.name}`, trades_inferred: ['welder'],
       fit_score: r.fit, created_at: r.created_at, is_test: true,
     }));

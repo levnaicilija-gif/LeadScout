@@ -71,7 +71,7 @@ const seen = async (q: PromiseLike<{ data: any; error: any }>) => {
 
     // --- A's data, seeded with the service role so the writes themselves are not what is tested.
     const co = (await admin.from('companies').insert({ workspace_id: A.workspace, name: `Outreach RLS Co ${stamp}`, country: 'DK', is_test: true }).select('id').single()).data!;
-    const lead = (await admin.from('leads').insert({ workspace_id: A.workspace, company_id: co.id, kind: 'won_work', status: 'new', country: 'DK', project_name: `Outreach RLS project ${stamp}`, is_test: true }).select('id').single()).data!;
+    const lead = (await admin.from('leads').insert({ workspace_id: A.workspace, company_id: co.id, kind: 'won_work', country: 'DK', project_name: `Outreach RLS project ${stamp}`, is_test: true }).select('id').single()).data!;
     const cand = (await admin.from('candidates').insert({ workspace_id: A.workspace, full_name: `Outreach RLS Person ${stamp}`, reference_code: `RFBT-O-${String(stamp).slice(-6)}` }).select('id').single()).data!;
     const doc = (await admin.from('documents').insert({ workspace_id: A.workspace, candidate_id: cand.id, type: 'certificate', cert_body: 'cswip', storage_path: `test/${stamp}/o.pdf`, is_test: true }).select('id').single()).data!;
     const ver = (await admin.from('verifications').insert({ document_id: doc.id, method: 'browser_lookup', result: 'valid', state: 'verified_register', checked_at: new Date().toISOString() }).select('id').single()).data!;

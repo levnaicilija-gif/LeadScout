@@ -158,7 +158,7 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     ...Array.from({ length: RECENT }, (_, i) => ({ days: 1, n: OLD + i })),
     ...Array.from({ length: IN_WINDOW_LEADS }, (_, i) => ({ days: 1 / 24, n: OLD + RECENT + i })),
   ].map(({ days, n }) => ({
-    workspace_id: who.workspace, company_id: company, kind: 'won_work', status: 'new',
+    workspace_id: who.workspace, company_id: company, kind: 'won_work',
     country: 'DK', project_name: `Probe project ${n}`, trades_inferred: ['welder'],
     fit_score: 60 + n, created_at: iso(days), is_test: true,
   }));

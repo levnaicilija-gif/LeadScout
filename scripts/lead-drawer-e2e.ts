@@ -57,7 +57,7 @@ const check = (ok: boolean, what: string, detail = '') => {
     workspace_id: workspace, company_id: co!.id, kind: 'won_work',
     project_name: 'Maintenance and modification frame agreement',
     project_location: 'Norwegian Continental Shelf', country: 'NO',
-    trades_inferred: ['welder', 'pipefitter', 'scaffolder'], fit_score: 80, status: 'new',
+    trades_inferred: ['welder', 'pipefitter', 'scaffolder'], fit_score: 80,
     source_url: 'https://example.invalid/probe-award', source_fetched_at: new Date().toISOString(),
   }).select().single();
   await admin.from('contacts').insert({

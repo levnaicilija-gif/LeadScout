@@ -61,7 +61,9 @@ async function main() {
 
     // Four leads of one kind, so every query below can pin `kind` the way openLeads does and never
     // see another test's rows. Three get a state row; the FOURTH deliberately gets none.
-    const mk = (n: string) => ({ workspace_id: ws.id, company_id: co?.id ?? null, kind: 'won_work', project_name: n, status: 'new' });
+    // No status: 0049 dropped leads.status, and 0048's trigger gives every new lead a state row whose
+    // status defaults to 'new'. That default is what the probe relies on below.
+    const mk = (n: string) => ({ workspace_id: ws.id, company_id: co?.id ?? null, kind: 'won_work', project_name: n });
     const { data: leads, error: leadErr } = await db.from('leads').insert([mk('Embed A'), mk('Embed B'), mk('Embed C'), mk('Embed D')]).select('id, project_name');
     if (leadErr || !leads) throw new Error(`could not create probe leads: ${leadErr?.message}`);
     const byName = new Map(leads.map((l: any) => [l.project_name as string, l.id as string]));
@@ -91,14 +93,18 @@ async function main() {
     };
 
     // ---- 1. the embed carries the state row's status, not the lead's column ----------------------
-    // Set them APART first, so a value that came from `leads.status` is distinguishable from one that
-    // came from the state row. Reading 'new' from both would have proven nothing.
+    // This used to set the state row and the COLUMN apart, and assert the embed reported the state
+    // row's value rather than the column's. 0049 dropped leads.status, so there is no longer a column
+    // to be echoing — that comparison is not merely impossible now, it is meaningless.
+    //
+    // What still has to hold, and still discriminates: the embed reports the value actually WRITTEN
+    // rather than the 'new' every row is created with. A read that returned the default, or nothing,
+    // fails here.
     await db.from('workspace_lead_state').update({ status: 'pursue' }).eq('workspace_id', ws.id).eq('lead_id', byName.get('Embed A')!);
     const aRow = (await rowsJoined(false)).find((r) => r.project_name === 'Embed A');
     const aState = Array.isArray(aRow?.workspace_lead_state) ? aRow.workspace_lead_state[0] : aRow?.workspace_lead_state;
-    const { data: aLead } = await db.from('leads').select('status').eq('id', byName.get('Embed A')!).single();
-    check('embed reads the state row', aState?.status === 'pursue' && aLead?.status === 'new',
-      `state row says "${aState?.status}" while leads.status still says "${aLead?.status}" — the embed is not echoing the column`);
+    check('the embed reports what was written, not the default', aState?.status === 'pursue',
+      `the row was created with 'new' and set to 'pursue', and the embed says "${aState?.status}"`);
 
     // ---- 2. !inner drops a lead with no state row ------------------------------------------------
     const joinedAll = await rowsJoined(false);

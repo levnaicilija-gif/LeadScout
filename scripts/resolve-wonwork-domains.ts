@@ -27,6 +27,7 @@ import { fetchNoticeXml, publicationNumber, winnerAddress, type WinnerAddress } 
 import { leadSource } from '../src/lib/lead-source';
 import { siteScope } from '../src/lib/site-scope';
 import { hasDomainProvenance } from '../src/lib/schema-features';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
 
 const write = process.argv.includes('--write');
 const retriesOnly = process.argv.includes('--retries-only');
@@ -66,8 +67,8 @@ async function addressCheck(domain: string, a: WinnerAddress | null): Promise<Ch
   if (write && !provenance) { console.log('0033 has not been applied yet: nothing is written. Apply supabase/migrations/0033_domain_provenance.sql first.'); process.exitCode = 2; return; }
   const workspaceId = await crawlWorkspace(db);
   const cols = `id, name, domain, careers_status${provenance ? ', domain_lookups' : ''}`;
-  const { data: leads, error } = await db.from('leads').select(`source_url, country, companies!inner(${cols})`)
-    .eq('workspace_id', workspaceId).eq('kind', 'won_work').eq('is_test', false).not('status', 'in', '("stale","not_for_us")')
+  const { data: leads, error } = await db.from('leads').select(`source_url, country, companies!inner(${cols}), ${LEAD_STATE_EMBED}`)
+    .eq('workspace_id', workspaceId).eq('kind', 'won_work').eq('is_test', false).not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES)
     .is('companies.domain', null).limit(5000) as { data: any[] | null; error: any };
   if (error) throw new Error(error.message);
   const todo = new Map<string, { id: string; name: string; notice: string | null; leadCountry: string | null; lookups: number; final: boolean }>();

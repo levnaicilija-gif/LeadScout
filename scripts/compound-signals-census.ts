@@ -10,14 +10,17 @@
 import { createClient } from '@supabase/supabase-js';
 import { reAdverts, roleKey } from '../src/lib/lead-age';
 import { leadSource } from '../src/lib/lead-source';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 const DAY = 86_400_000;
 const within = (d: string | null | undefined, days = 60) => !!d && Date.now() - Date.parse(String(d).slice(0, 10)) <= days * DAY;
 
 (async () => {
-  const { data: leads, error } = await db.from('leads').select('id, company_id, kind, source_url, created_at, fit_score, status, is_test, companies(name)')
-    .eq('kind', 'won_work').not('status', 'in', '("stale","not_for_us")').eq('is_test', false).limit(5000);
+  // leads.status was dropped by 0049 and this census never read it, so it is simply gone from the
+  // select rather than fetched from the state row for nothing.
+  const { data: leads, error } = await db.from('leads').select(`id, company_id, kind, source_url, created_at, fit_score, is_test, companies(name), ${LEAD_STATE_EMBED}`)
+    .eq('kind', 'won_work').not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES).eq('is_test', false).limit(5000);
   if (error) throw new Error(error.message);
   const { data: links } = await db.from('lead_articles').select('lead_id, articles(url, published_at, award_date)').in('lead_id', (leads ?? []).map((l) => l.id));
   const arts = new Map<string, any[]>();

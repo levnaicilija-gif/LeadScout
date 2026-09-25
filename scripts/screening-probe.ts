@@ -73,11 +73,18 @@ async function signIn(p: Page, a: { email: string; password: string }) {
   try {
     company = (await admin.from('companies').insert({ workspace_id: W, name: `Screening Probe Yard ${stamp}`, country: 'DK', is_test: true }).select('id').single()).data!.id;
     lead = (await admin.from('leads').insert({
-      workspace_id: W, company_id: company, kind: 'won_work', status: 'new', country: 'DK',
+      workspace_id: W, company_id: company, kind: 'won_work', country: 'DK',
       project_name: 'Probe hull repair', trades_inferred: ['welder'],
-      job_description: 'Welders for hull repair in Esbjerg. ISO 9606 135/136 required, 6G an advantage. Offshore medical and BOSIET needed. EU passport required. 2:2 rotation, start within three weeks.',
-      jd_version: 2, is_test: true,
+      is_test: true,
     }).select('id').single()).data!.id;
+    // 0049 moved the job description and its version onto the workspace's own state row. 0048's
+    // trigger already created that row, so this updates it — and the error is READ, because a probe
+    // that silently seeded no JD would test the whole scoring path against an empty one and pass.
+    const { error: jdErr } = await admin.from('workspace_lead_state').update({
+      job_description: 'Welders for hull repair in Esbjerg. ISO 9606 135/136 required, 6G an advantage. Offshore medical and BOSIET needed. EU passport required. 2:2 rotation, start within three weeks.',
+      jd_version: 2,
+    }).eq('workspace_id', W).eq('lead_id', lead);
+    if (jdErr) throw new Error(`the probe lead's job description was not stored: ${jdErr.message}`);
 
     // No EU passport on file, so checkRightToWork raises its question — the one whose kind is certain.
     cand = (await admin.from('candidates').insert({
@@ -209,7 +216,7 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       check(flagged === 1, 'only the candidate who was called is flagged', `${flagged} flag(s)`);
 
       // ---- and it stops speaking the moment the JD is rewritten (owner's caveat, 2026-09-17)
-      await admin.from('leads').update({ jd_version: 3 }).eq('id', lead);
+      await admin.from('workspace_lead_state').update({ jd_version: 3 }).eq('workspace_id', W).eq('lead_id', lead);
       await p.goto(`${BASE}/app/radar?tab=won&lead=${lead}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await hydrated(p);
       await p.getByRole('button', { name: /^2 · Score the pool$/ }).click();
@@ -218,7 +225,7 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       await p.waitForTimeout(1500);
       const afterRewrite = await p.locator('[data-rescore-asked]').count();
       check(afterRewrite === 0, 'a call answered against version 2 says nothing about version 3 — the flag does not survive a rewrite', `${afterRewrite} flag(s)`);
-      await admin.from('leads').update({ jd_version: 2 }).eq('id', lead);
+      await admin.from('workspace_lead_state').update({ jd_version: 2 }).eq('workspace_id', W).eq('lead_id', lead);
 
       await ctx.close();
     }

@@ -111,7 +111,7 @@ async function signIn(p: Page, a: { email: string; password: string }) {
   // Won work: one company carrying every lead keeps the table's first column readable per row.
   const wonCompany = await mkCompany('Won');
   const leadRows = Array.from({ length: ALL_LEADS }, (_, n) => ({
-    workspace_id: who.workspace, company_id: wonCompany.id, kind: 'won_work', status: 'new',
+    workspace_id: who.workspace, company_id: wonCompany.id, kind: 'won_work',
     country: 'DK', project_name: `Queue project ${n}`, trades_inferred: ['welder'],
     fit_score: 60 + n, created_at: iso(3), is_test: true,
   }));

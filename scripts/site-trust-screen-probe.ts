@@ -14,6 +14,7 @@ import { createClient } from '@supabase/supabase-js';
 import { chromium, type Page } from 'playwright';
 import { followAllForProbe, markWorkspaceTest, removeProbe } from '../src/lib/test-data';
 import { siteTrust } from '../src/lib/site-trust';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
 
 const BASE = process.argv[2] ?? 'http://localhost:3100';
 const NAMES = process.argv.slice(3).length ? process.argv.slice(3) : ['ALLEZ ENERGIES', 'COLAS FRANCE', 'Aellia Belgium NV (anciennement Intero the Sniffers)'];
@@ -71,7 +72,7 @@ const readDrawer = (page: Page) => page.evaluate(() => {
       const co = (cos ?? []).find((c) => c.name === name);
       if (!co) { check(false, `${name}: on file`, 'no such company'); continue; }
       const expected = siteTrust(co);
-      const { data: lead } = await admin.from('leads').select('id, source_url').eq('company_id', co.id).eq('kind', 'won_work').not('status', 'in', '("stale","not_for_us")').limit(1).maybeSingle();
+      const { data: lead } = await admin.from('leads').select(`id, source_url, ${LEAD_STATE_EMBED}`).eq('company_id', co.id).eq('kind', 'won_work').not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES).limit(1).maybeSingle();
       console.log(`\n${name} · ${co.domain} · database: check ${co.domain_address_check ?? '—'}${co.domain_checked_address ? ` (${co.domain_checked_address})` : ''} · scope ${co.domain_scope ?? '—'}${co.domain_scope_reason ? ` — ${co.domain_scope_reason}` : ''}`);
       if (!lead) { check(false, `${name}: has an open Won work lead`, 'none'); continue; }
       const source = /ted\.europa\.eu/.test(String(lead.source_url)) ? 'tender' : 'news';

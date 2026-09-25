@@ -113,7 +113,7 @@ const code = (tag: string) => `SCREEN${stamp.toString().slice(-5).replace(/\d/g,
 
     // The same hole, by the other two references a call can carry.
     const { data: leadA } = await admin.from('leads').insert({
-      workspace_id: A.workspace, kind: 'won_work', status: 'new', project_name: 'Screening probe lead', is_test: true,
+      workspace_id: A.workspace, kind: 'won_work', project_name: 'Screening probe lead', is_test: true,
     }).select('id').single();
     const pointingLead = await rows(B.client.from('screening_calls').insert({
       workspace_id: B.workspace, candidate_id: candB, lead_id: leadA!.id, started_by: B.uid,

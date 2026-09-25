@@ -10,6 +10,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { canonCompany, canonDomain, sameCompany } from '../src/lib/company-identity';
+import { COMPANY_STATE_LEFT, withCompanyState } from '../src/lib/workspace-state';
 
 const write = process.argv.includes('--write');
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
@@ -32,10 +33,12 @@ const weight = (c: any) =>
   const all: any[] = [];
   for (let from = 0; ; from += 1000) {
     const { data } = await db.from('companies')
-      .select('id, workspace_id, name, domain, country, sector, employer_type, employer_type_override, careers_status, careers_url, ats_type, ats_slug')
+      // 0049 moved the override to workspace_company_state; it is read from there and flattened, so
+      // the score above still reads `c.employer_type_override`.
+      .select(`id, workspace_id, name, domain, country, sector, employer_type, careers_status, careers_url, ats_type, ats_slug, ${COMPANY_STATE_LEFT}`)
       .range(from, from + 999);
     if (!data?.length) break;
-    all.push(...data);
+    all.push(...data.map(withCompanyState));
     if (data.length < 1000) break;
   }
   console.log(`${all.length} companies\n`);

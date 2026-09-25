@@ -15,6 +15,7 @@ import { createClient } from '@supabase/supabase-js';
 import { chromium, type Page } from 'playwright';
 import { followAllForProbe, markWorkspaceTest, removeProbe } from '../src/lib/test-data';
 import { compoundFor, leadSignal, postingSignals, boostedFit, type Signal } from '../src/lib/compound-signals';
+import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
 
 const BASE = process.argv[2] ?? 'http://localhost:3100';
 const HIRING = process.argv.includes('--hiring');
@@ -26,8 +27,8 @@ let failures = 0;
 const check = (ok: boolean, what: string, detail = '') => { if (!ok) failures++; console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${what}${detail ? ` — ${detail}` : ''}`); };
 
 async function boostedCompanies(workspaceId: string) {
-  const { data: leads } = await admin.from('leads').select('id, company_id, country, fit_score, source_url, created_at, project_name, companies(name)')
-    .eq('workspace_id', workspaceId).eq('kind', 'won_work').not('status', 'in', '("stale","not_for_us")').not('company_id', 'is', null).limit(5000);
+  const { data: leads } = await admin.from('leads').select(`id, company_id, country, fit_score, source_url, created_at, project_name, companies(name), ${LEAD_STATE_EMBED}`)
+    .eq('workspace_id', workspaceId).eq('kind', 'won_work').not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES).not('company_id', 'is', null).limit(5000);
   const ids = (leads ?? []).map((l) => l.id);
   const links: any[] = [];
   for (let i = 0; i < ids.length; i += 100) links.push(...((await admin.from('lead_articles').select('lead_id, articles(url, published_at, award_date, award_date_basis)').in('lead_id', ids.slice(i, i + 100))).data ?? []));

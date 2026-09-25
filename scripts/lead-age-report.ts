@@ -10,6 +10,7 @@ import { createClient } from '@supabase/supabase-js';
 import { newsLeadAge, tenderLeadAge, postingAge, reAdverts, roleKey, AGE_RULES, REPOST_WINDOW_DAYS, REPOSTS_TO_BOOST, type Age, type AgeState } from '../src/lib/lead-age';
 import { leadSource, primaryArticle } from '../src/lib/lead-source';
 import { awardDateFromText } from '../src/lib/tender/award';
+import { COMPANY_STATE_LEFT, LEAD_STATE_EMBED, withCompanyState, withLeadState } from '../src/lib/workspace-state';
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 const STATES: AgeState[] = ['fresh', 'flagged', 'stale', 'unknown'];
@@ -36,9 +37,9 @@ const count = <T>(xs: T[], key: (x: T) => string) => xs.reduce<Record<string, nu
 
   // ------------------------------------------------------------------ won-work leads
   const leads = await all<any>((f) => db.from('leads')
-    .select('id, status, source_url, project_name, companies(name), lead_articles(articles(url, published_at, text))')
+    .select(`id, source_url, project_name, companies(name), lead_articles(articles(url, published_at, text)), ${LEAD_STATE_EMBED}`)
     .eq('kind', 'won_work').eq('is_test', false).range(f, f + 999));
-  const rows = leads.map((l) => {
+  const rows = leads.map(withLeadState).map((l) => {
     const a: any = primaryArticle(l.lead_articles, l.source_url);
     const src = leadSource(l.source_url);
     const award = src === 'tender' ? awardDateFromText(String(a?.text ?? '')) : null;
@@ -67,9 +68,12 @@ const count = <T>(xs: T[], key: (x: T) => string) => xs.reduce<Record<string, nu
 
   // ------------------------------------------------------------------ hiring now
   const posts = await all<any>((f) => db.from('job_posts')
-    .select('id, company_id, role, title, location, posted_at, first_seen_at, duplicate_of, companies!inner(name, employer_type, employer_type_override, hiring_status)')
+    // 0049 moved the override and the hiring status to workspace_company_state, nested inside the
+    // company embed here and flattened below, so `p.companies.hiring_status` still reads.
+    .select(`id, company_id, role, title, location, posted_at, first_seen_at, duplicate_of, companies!inner(name, employer_type, ${COMPANY_STATE_LEFT})`)
     .eq('status', 'open').not('company_id', 'is', null).eq('is_test', false).range(f, f + 999));
-  const live = posts.filter((p) => !p.duplicate_of && p.companies?.hiring_status !== 'not_for_us');
+  const withState = posts.map((p: any) => (p.companies ? { ...p, companies: withCompanyState(p.companies) } : p));
+  const live = withState.filter((p) => !p.duplicate_of && p.companies?.hiring_status !== 'not_for_us');
   const agency = (p: any) => (p.companies?.employer_type_override ?? p.companies?.employer_type) === 'staffing_agency';
 
   console.log('\nHIRING NOW                                       total   by age');

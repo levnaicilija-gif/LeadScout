@@ -13,25 +13,33 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { detectEmployerType } from '../src/lib/agency-detector';
+import { COMPANY_STATE_LEFT, withCompanyState } from '../src/lib/workspace-state';
 
 const write = process.argv.includes('--write');
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 
 (async () => {
-  const { data: agencies } = await db.from('companies').select('name')
-    .or('employer_type_override.eq.staffing_agency,and(employer_type_override.is.null,employer_type.eq.staffing_agency)');
-  const agencyNames = (agencies ?? []).map((a: any) => a.name);
+  // 0049 moved the employer-type override to workspace_company_state, so the `.or(…)` that used to
+  // express "overridden to agency, OR detected as one with no override" cannot be written as a filter
+  // any more: half of it is on another table and PostgREST's or() grammar has no reach across an
+  // embed. The rows are fetched with the state embed and the same rule is applied IN MEMORY —
+  // effectiveEmployerType, which is exactly what the app uses. 5,893 companies, one pass, no ceiling.
+  const { data: allCos } = await db.from('companies').select(`name, employer_type, ${COMPANY_STATE_LEFT}`);
+  const agencyNames = (allCos ?? []).map(withCompanyState)
+    .filter((c: any) => (c.employer_type_override ?? c.employer_type) === 'staffing_agency')
+    .map((c: any) => c.name);
   console.log(`${agencyNames.length} companies are already known agencies\n`);
 
-  const { data: withBoards } = await db.from('companies')
-    .select('id, name, employer_type, employer_type_override')
+  const { data: boardRows } = await db.from('companies')
+    .select(`id, name, employer_type, ${COMPANY_STATE_LEFT}`)
     .eq('careers_status', 'found');
+  const withBoards = (boardRows ?? []).map(withCompanyState);
 
   const counts: Record<string, number> = {};
   const changes: { name: string; from: string; to: string; why: string }[] = [];
   let skipped = 0;
 
-  for (const c of (withBoards ?? []) as any[]) {
+  for (const c of withBoards as any[]) {
     if (c.employer_type_override) { skipped++; continue; }   // a person has already decided
     const det = detectEmployerType(c.name, agencyNames);
     counts[det.employerType] = (counts[det.employerType] ?? 0) + 1;
