@@ -261,6 +261,29 @@ else
   # Today's queue item opens the leads it names and nothing else: ?ids= on each tab, the cross-link between
   # the two halves, "Clear filter" back to the whole list, and both tabs unchanged with no ids at all.
   step queue-ids npx tsx --env-file=.env.local scripts/queue-ids-probe.ts "$BASE"
+  # Item 20 step 3c (0053): discovery is shared - a second workspace sees a COMPLETE lead and cannot
+  # touch it, and learns nothing about what the first workspace decided.
+  #
+  # SEVEN policies, not two. Five tables scope through a lead's or a company's OWNERSHIP with a literal
+  # my_workspace() in their own policy - job_posts, contacts, lead_articles, articles, lead_people - so
+  # swapping only leads and companies would show a second workspace every lead in the pool STRIPPED of
+  # its contacts, postings and article, and therefore of its AGE, which is computed from the article's
+  # published_at. Unverifiable rather than unsafe, which is why the step covers all seven.
+  #
+  # It is also the step that could have opened a hole: those policies were `for all` with no WITH CHECK,
+  # so widening USING would have handed every entitled workspace UPDATE and DELETE on the whole pool.
+  # They are now `for select` with no write policy at all - safe because an inventory found NOT ONE
+  # signed-in write to any of the seven anywhere in src/.
+  #
+  # THE BASELINE IS RECORDED BECAUSE IT PROVES THE PROBE IS NOT VACUOUS: before 0053 it scored 9 pass
+  # and 9 fail, and the nine failures were exactly the nine "B sees ..." assertions. After 0053 all
+  # eighteen must pass. Exit 2 = 0052/0053 not applied yet: not judged.
+  echo "=== shared-pool" | tee -a "$LOG"
+  npx tsx --env-file=.env.local scripts/shared-pool-probe.ts "$BASE" >> "$LOG" 2>&1
+  code=$?
+  if [ "$code" -eq 0 ]; then echo "    pass" | tee -a "$LOG"
+  elif [ "$code" -eq 2 ]; then echo "    not judged (0052/0053 not applied)" | tee -a "$LOG"
+  else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("shared-pool"); fi
   # Today itself: the three cards, the four tool cards, the visit split, the follow-up round trip — and from
   # 2026-09-18 the view toggle, including the check that no anchor sits inside another one, which is what took
   # Today down at 390px. This probe existed since the redesign and was NEVER a gate step: every screen it

@@ -21,7 +21,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium, type Page } from 'playwright';
-import { followAllForProbe, markWorkspaceTest, removeProbe } from '../src/lib/test-data';
+import { capProbeToOneIndustry, markWorkspaceTest, removeProbe } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'http://localhost:3163';
 const stamp = Date.now();
@@ -87,7 +87,7 @@ async function account() {
   // has not chosen industries, so (rail)/layout.tsx:23 sends it to /app/onboarding for the whole run, and
   // every content check then fails with [] and -1 while "renders — no error boundary" and "no nested
   // anchor" still PASS, because an empty page satisfies an absence check. Nothing in the output said so.
-  const followProblem = await followAllForProbe(admin, uid);
+  const followProblem = await capProbeToOneIndustry(admin, uid);
   if (followProblem) throw new Error(followProblem);
   await admin.from('users').update({ role: 'senior', onboarding_day: 30 }).eq('id', uid);
   return { uid, email, password, workspace: me?.workspace_id as string };
@@ -350,8 +350,39 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       const pageText = flat(await p.locator('body').innerText());
       const wonShown = flat(await p.locator('[data-lead-count="won"]').innerText().catch(() => ''));
       const hiringShown = flat(await p.locator('[data-lead-count="hiring"]').innerText().catch(() => ''));
+      // Item 20 step 3c: these cards no longer count THIS workspace's own rows. Discovery is shared, so
+      // Hiring now counts every company with an open posting the reader is entitled to — 58 where this
+      // probe seeded 4 — and Won work happens to still match the seed only because every lead read joins
+      // workspace_lead_state, which 0054 now populates per (workspace, lead), so the join no longer
+      // narrows either. Both are pool-wide.
+      //
+      // So the card is checked against what the SAME READER can see, computed live, rather than against
+      // what the probe planted. That keeps the real property — the card does not invent a number — and
+      // drops the isolation assumption, which is the thing 3c removed. A count hardcoded to the seed
+      // would fail on a correct screen; a count of ">= seeded" would pass on a card showing nonsense.
+      // Computed with the service role but SCOPED THE WAY THE PAGE SCOPES IT — won-work leads joined to
+      // THIS workspace's own state rows, open postings pool-wide — so it mirrors the query behind the
+      // card rather than re-deriving a number from the seed. The reader is unlimited, so entitlement
+      // admits everything and the only narrowing left is the state join.
+      // WON WORK IS EXACT AGAIN, and for the right reason: this workspace is capped to one industry no
+      // real lead carries, and every real lead IS classified, so the entitlement hides all 229 and the
+      // card counts the seeded leads and nothing else. That is also what a real sign-up looks like — RFBT
+      // is the only unlimited account and it is grandfathered.
       check(wonShown === String(won), `Won work reads this workspace's own total (${won})`, `card says "${wonShown}"`);
-      check(hiringShown === String(openPosts), `Hiring now reads this workspace's own total (${openPosts})`, `card says "${hiringShown}"`);
+      // HIRING NOW IS EXACT TOO, and the reason is worth writing down because it was predicted wrongly.
+      // The card counts open postings, which reach entitlement through their COMPANY, and 5,653 of 5,893
+      // companies carry no industry — which a capped account is deliberately allowed to see. So the board
+      // was expected to be pool-wide. Measured instead (2026-09-25): ALL 54 open postings belong to
+      // CLASSIFIED companies and NONE to an unclassified one, so a capped account following an unused
+      // industry sees none of them, and this card reads the seeded 4.
+      //
+      // Asserted EXACTLY rather than permissively, which is the stronger choice: the residual gap is real
+      // — an unclassified company that gains an open posting becomes visible to every capped account — and
+      // an exact count makes that arrive as a LOUD failure here instead of being silently tolerated for
+      // ever by an assertion written to accommodate it. If this line starts failing with a number larger
+      // than the seed, the recorded precondition has begun to bite and the companies need classifying.
+      check(hiringShown === String(openPosts), `Hiring now reads this workspace's own total (${openPosts})`,
+        `card says "${hiringShown}" — every company with an open posting is classified, so a capped account sees only its own`);
       check(/4 of 16/.test(pageText), 'the certificate card says 4 of 16 searched automatically — counted, not the mockup\'s 8 of 16');
       check(!/8 of 16/.test(pageText), 'and never 8 of 16');
 

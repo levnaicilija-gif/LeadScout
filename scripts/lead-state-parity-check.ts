@@ -52,12 +52,18 @@ async function main() {
     db.from('leads').select('id', { count: 'exact', head: true }).not('workspace_id', 'is', null),
     db.from(LEAD_STATE_TABLE).select('lead_id', { count: 'exact', head: true }),
   ]);
+  // 0054 CHANGED WHAT "TOTAL" MEANS. 0048 made the table total per LEAD — one row, for the creating
+  // workspace — and this check asserted state == leads. 0053 shared the pool and that shape left a new
+  // workspace's Leads screen EMPTY, because every read joins the state table with `!inner`. So 0054 made
+  // it total per (WORKSPACE, LEAD), and the count is now workspaces × leads.
+  const { count: wsTotal } = await db.from('workspaces').select('id', { count: 'exact', head: true });
+  const expectTotal = (wsTotal ?? 0) * (leadsTotal ?? 0);
   if ((stateTotal ?? 0) < (leadsTotal ?? 0)) {
     console.error(`NOT JUDGED: ${leadsTotal} lead(s) but only ${stateTotal} state row(s) — 0048 is not applied, so an inner join would hide the rest`);
     process.exitCode = 2; return;
   }
-  check('the lead state table is total', stateTotal === leadsTotal,
-    `${leadsTotal} lead(s), ${stateTotal} state row(s) — every lead survives an inner join`);
+  check('the lead state table is total per (workspace, lead)', stateTotal === expectTotal,
+    `${wsTotal} workspace(s) × ${leadsTotal} lead(s) = ${expectTotal}, table holds ${stateTotal} — so every lead survives an inner join FOR EVERY WORKSPACE, which is what 0054 fixed`);
 
   // ---- 2. the copies refuse what the originals refused -------------------------------------------
   // 0047 created these columns as `text` where the sources were typed, so they accepted values the
@@ -92,16 +98,30 @@ async function main() {
   // read from an unswitched one. It no longer needs a column to disagree with: if the open count falls
   // by exactly one when one state row closes, and returns when it reopens, the count is reading that
   // row and nothing else.
+  // THE WORKSPACE IS PINNED, and from 0054 it must be. This runs as the SERVICE ROLE, so RLS does not
+  // narrow the state table to one row per lead — every workspace has one. Unpinned, the join returns a
+  // row per workspace and the filter means "open in ANY workspace", so closing ONE workspace's row moved
+  // the count by nothing and this assertion went red on correct behaviour. It also found the same bug in
+  // production code: api/jobs/recheck read this shape unpinned and would have re-fetched each lead once
+  // per workspace.
+  const { data: pinWs } = await db.from('workspaces').select('id').order('id').limit(1).maybeSingle();
+  const ws = pinWs?.id as string;
   const openWon = () => db.from('leads')
     .select(`id, ${LEAD_STATE_EMBED}`, { count: 'exact', head: true })
-    .eq('kind', 'won_work').not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES);
+    .eq('kind', 'won_work')
+    .eq(`${LEAD_STATE_TABLE}.workspace_id`, ws)
+    .not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES);
 
   const before = await n(openWon(), 'open won-work (before)');
-  check('open won-work leads can be counted through the state row', before >= 0, `${before} open`);
+  check('open won-work leads can be counted through one workspace\'s state rows', before >= 0, `${before} open for workspace ${String(ws).slice(0, 8)}`);
 
+  // The victim is chosen in the SAME workspace the count is pinned to, or the mutation below would move
+  // a row the count is not looking at.
   const { data: victim, error: vErr } = await db.from('leads')
     .select(`id, project_name, workspace_id, ${LEAD_STATE_EMBED}`)
-    .eq('kind', 'won_work').eq(`${LEAD_STATE_TABLE}.status`, 'new').not('workspace_id', 'is', null)
+    .eq('kind', 'won_work')
+    .eq(`${LEAD_STATE_TABLE}.workspace_id`, ws)
+    .eq(`${LEAD_STATE_TABLE}.status`, 'new')
     .order('id').limit(1).maybeSingle();
   if (vErr || !victim) {
     check('a lead could be found to mutate', false, vErr?.message ?? 'no open won-work lead exists to test with');
@@ -110,7 +130,7 @@ async function main() {
     const was = state?.status ?? 'new';
     try {
       const { error: upErr } = await db.from(LEAD_STATE_TABLE).update({ status: 'not_for_us' })
-        .eq('workspace_id', victim.workspace_id).eq('lead_id', victim.id);
+        .eq('workspace_id', ws).eq('lead_id', victim.id);
       if (upErr) throw new Error(`the state row could not be changed: ${upErr.message}`);
 
       const after = await n(openWon(), 'open won-work (after)');
@@ -118,12 +138,12 @@ async function main() {
         `${before} open, then one state row set to not_for_us, then ${after} — the count moved with the row, by exactly one`);
     } finally {
       const { error: reErr } = await db.from(LEAD_STATE_TABLE).update({ status: was })
-        .eq('workspace_id', victim.workspace_id).eq('lead_id', victim.id);
+        .eq('workspace_id', ws).eq('lead_id', victim.id);
       const restored = await n(openWon(), 'open won-work (restored)');
       check('and reopening it restores the count', !reErr && restored === before,
         reErr ? reErr.message : `back to ${restored} — the fall was caused by the status, not by anything else in the query`);
       const { data: back } = await db.from(LEAD_STATE_TABLE).select('status')
-        .eq('workspace_id', victim.workspace_id).eq('lead_id', victim.id).maybeSingle();
+        .eq('workspace_id', ws).eq('lead_id', victim.id).maybeSingle();
       check('the lead was put back exactly as it was', back?.status === was,
         `${victim.project_name ?? victim.id} reads "${back?.status}" again`);
     }

@@ -145,9 +145,23 @@ const must = <T,>(r: { data: T | null; error: { message: string } | null }, what
     const expected = BOARD.filter((j) => j.survives).map((j) => j.role);
 
     console.log('');
-    check(json.shortlisted === expected.length,
-      `the pre-filter keeps ${expected.length} of the ${BOARD.length} seeded — it narrows, it does not pass through`, `${json.shortlisted} kept`);
-    check(expected.every((r) => roles.includes(r)), 'and both of the plausible postings were scored', roles.join(' · '));
+    // Item 20 step 3c: the route reads the SHARED pool, so the shortlist is no longer drawn from this
+    // probe's eight seeded postings alone — it kept 10 where 2 were seeded as plausible. What still has
+    // to hold is that it NARROWS: a filter that passed everything through would spend the daily cap on
+    // the first CV of the morning, which is the whole reason it exists.
+    check(json.shortlisted < json.considered && json.shortlisted > 0,
+      'the pre-filter narrows the pool rather than passing it through',
+      `${json.shortlisted} kept of ${json.considered} considered — ${BOARD.length} of those were seeded here`);
+
+    // THIS ASSERTION IS WEAKER THAN IT WAS, and the loss is stated rather than hidden. It used to be
+    // that BOTH seeded plausible postings were scored. With a shared pool the route scores the top
+    // SHOW=5 of a shortlist that now contains other workspaces' adverts, so whether a seeded posting
+    // reaches the top five is not this probe's to control — it depends on RFBT's board. At least one
+    // must still get through, or the pre-filter is dropping plausible work. The assertions that carry
+    // the weight here are the ABSENCE ones below: they are what prove each gate fires, and none of them
+    // is affected by the pool.
+    check(expected.some((r) => roles.includes(r)),
+      'at least one plausible seeded posting is still scored', `${roles.join(' · ')} — seeded plausible: ${expected.join(' · ')}`);
     check(!roles.includes('Browse job offers'), 'the navigation row is NEVER offered as a match — step 3\'s gate, on real rows');
     check(!roles.includes('Stillasbygger') && !roles.includes('Elektriker'), 'a scaffolding or electrical job is not suggested to a welder');
     check(!roles.includes('Industrial painter'), 'and an UNCONFIRMED certificate widens nothing — the painter job stays out');
@@ -165,8 +179,15 @@ const must = <T,>(r: { data: T | null; error: { message: string } | null }, what
     // so every one must fall back to its title rather than fail or invent.
     check(json.matches.every((m: any) => ['description', 'fetched', 'title'].includes(m.from)),
       'every match says where its job text came from');
-    check(json.matches.every((m: any) => m.from === 'title'),
-      'an advert that cannot be read falls back to its title instead of losing the job', json.matches.map((m: any) => m.from).join(','));
+    // Scoped to the SEEDED adverts: those are the ones deliberately made unreachable, so those are the
+    // ones that must fall back to their title. A pool advert that fetched successfully reads 'fetched'
+    // and is not this assertion's business — before 3c there were no pool adverts in the list to confuse
+    // it, and afterwards `every` failed on a route doing exactly the right thing.
+    const seededRoles = BOARD.map((j) => j.role);
+    const seededMatches = json.matches.filter((m: any) => seededRoles.includes(m.role));
+    check(seededMatches.length > 0 && seededMatches.every((m: any) => m.from === 'title'),
+      'a SEEDED advert that cannot be read falls back to its title instead of losing the job',
+      seededMatches.length ? seededMatches.map((m: any) => `${m.role}:${m.from}`).join(', ') : 'no seeded advert reached the top five, so this could not be judged');
     check(json.matches.every((m: any) => typeof m.score === 'number'), 'and each carries a score');
 
     ok = failures === 0;

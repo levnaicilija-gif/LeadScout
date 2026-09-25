@@ -26,7 +26,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium, type Page } from 'playwright';
-import { followAllForProbe, markWorkspaceTest, removeProbe } from '../src/lib/test-data';
+import { capProbeToOneIndustry, markWorkspaceTest, removeProbe } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'http://localhost:3163';
 const stamp = Date.now();
@@ -68,7 +68,13 @@ async function account() {
   const uid = data.user!.id;
   const { data: me } = await admin.from('users').select('workspace_id').eq('id', uid).maybeSingle();
   await markWorkspaceTest(admin, me?.workspace_id);
-  await followAllForProbe(admin, uid);
+  // READ the returned problem. It never throws — deliberately, so the caller decides — and this called it
+  // bare, which is the defect today-probe's own comment describes: an account whose follow write failed
+  // has not chosen industries, so the rail sends it to /app/onboarding for the whole run and every content
+  // check fails with [] while the absence checks still pass. It now also refuses when a real lead has
+  // started carrying the probe industry, which would silently end this probe's isolation.
+  const capProblem = await capProbeToOneIndustry(admin, uid);
+  if (capProblem) throw new Error(capProblem);
   await admin.from('users').update({ role: 'senior', onboarding_day: 30 }).eq('id', uid);
   return { uid, email, password, workspace: me?.workspace_id as string };
 }
@@ -293,9 +299,15 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       check(await page.locator('[data-row-href]').count() === ALL_COMPANIES, `and all ${ALL_COMPANIES} companies are back`, `${await page.locator('[data-row-href]').count()} row(s)`);
 
       // 5 — Clear filter returns to the whole list, on each tab.
-      for (const [label, url, want, count, rowSel] of [
-        ['Won work', wonUrl, ALL_LEADS, async () => (await wonRows(page)).length, 'table.tbl tbody tr'],
-        ['Hiring now', hiringUrl, ALL_COMPANIES, async () => page.locator('[data-row-href]').count(), '[data-row-href]'],
+      // `poolWide` marks the tab whose totals this probe CANNOT predict. Won work is exact again now that
+      // the workspace is capped: every real lead is classified and none carries the probe industry, so the
+      // entitlement hides all 229 and only the seeded five remain. Hiring now is NOT, and the reason is the
+      // recorded blocking precondition rather than anything to fix here — it reads job_posts through
+      // companies, and 5,653 of 5,893 companies carry no industry at all, which a capped account is
+      // deliberately allowed to see. So its totals include the whole board until those are classified.
+      for (const [label, url, want, count, rowSel, poolWide] of [
+        ['Won work', wonUrl, ALL_LEADS, async () => (await wonRows(page)).length, 'table.tbl tbody tr', false],
+        ['Hiring now', hiringUrl, ALL_COMPANIES, async () => page.locator('[data-row-href]').count(), '[data-row-href]', true],
       ] as const) {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
         await hydrated(page);
@@ -306,7 +318,18 @@ async function signIn(p: Page, a: { email: string; password: string }) {
         // click below spent 30 s and killed the run — on an error-boundary page whose reference was on
         // screen the whole time. The boundary is read first, so a transient names itself here.
         const clearWhy = offer ? '' : (await boundaryWhy(page)) || 'no [data-clear-since] link on the page';
-        check(new RegExp(`see all ${want}`).test(offer), `${label}: "Clear filter" offers the real total (${want})`, offer || clearWhy);
+        // Item 20 step 3c: the total is no longer THIS workspace's seeded count. Discovery is shared, so
+        // "see all N" counts every lead or company the reader is entitled to — the pool — and asserting
+        // `see all 3` now fails on a screen that is behaving correctly. What must still hold is the
+        // RELATIONSHIP: the offer names a real number, and that number covers at least everything this
+        // probe seeded. Hardcoding a pool total would be worse than useless, because the crawl moves it.
+        const offered = Number(/see all (\d+)/.exec(offer)?.[1] ?? NaN);
+        check(Number.isFinite(offered) && (poolWide ? offered >= want : offered === want),
+          poolWide
+            ? `${label}: "Clear filter" offers a total covering the ${want} seeded (pool-wide until companies are classified)`
+            : `${label}: "Clear filter" offers the real total (${want})`,
+          offer ? `offers ${offered}, seeded ${want}${poolWide ? ' — the surplus is the unclassified-company board, the recorded precondition' : ''}` : clearWhy);
+        const filtered = await count();
         if (!offer) {
           check(false, `${label}: the clear-filter round trip could not run`, 'there was no link to click — the line above says why');
           continue;
@@ -328,13 +351,22 @@ async function signIn(p: Page, a: { email: string; password: string }) {
         // catch does, and CLAUDE.md had already recorded the comment as wrong. It cost a gate the same day:
         // the auth transient (digests 1786437619, 273046742) left this reading "0 row(s)" and nothing else,
         // while the identical loop in section 7 — fixed ten lines below — would have named the timing loss.
+        // Waits for the list to GROW past the filtered count rather than for an exact number, for the
+        // same reason as above: post-3c the unfiltered list is the pool and its size is not this probe's
+        // to know. Growth past `filtered` is the property the round trip is actually about — the filter
+        // was hiding rows and clearing it brings them back.
+        // Exact where the tab is isolated, "grew past the filtered count" where it is not.
         const settled = await page.waitForFunction(
-          ([sel, n]) => document.querySelectorAll(sel as string).length === (n as number),
-          [rowSel, want] as const, { timeout: 30000 },
+          ([sel, n, exact]) => {
+            const seen = document.querySelectorAll(sel as string).length;
+            return exact ? seen === (n as number) : seen > (n as number);
+          },
+          [rowSel, poolWide ? filtered : want, !poolWide] as const, { timeout: 30000 },
         ).then(() => true).catch(() => false);
         const back = await count();
-        check(back === want, `${label}: the full list is back — all ${want}`,
-          `${back} row(s)${settled ? '' : ' — and the wait for that count timed out, so this is a timing loss rather than missing data'}`);
+        check(poolWide ? (back > filtered && back >= want) : back === want,
+          poolWide ? `${label}: clearing the filter brings the hidden rows back` : `${label}: the full list is back — all ${want}`,
+          `${filtered} filtered → ${back} unfiltered, seeded ${want}${settled ? '' : ' — and the wait timed out, so this is a timing loss rather than missing data'}`);
       }
       await ctx.close();
     }

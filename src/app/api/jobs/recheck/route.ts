@@ -7,6 +7,7 @@ import { leadSource } from '@/lib/lead-source';
 import { sourceFlag } from '@/lib/source-quality';
 import { hasSourceFlag } from '@/lib/schema-features';
 import { runRlsSweep, recordRlsSweep, sweepSummary } from '@/lib/rls-sweep';
+import { crawlWorkspace } from '@/lib/crawl-workspace';
 export const maxDuration = 300;
 /**
  * Nightly: (0) the RLS sweep, recorded for Home (src/lib/rls-sweep.ts);
@@ -32,7 +33,22 @@ export async function POST(req: Request) {
   const sweep = await runRlsSweep();
   const sweepNotKept = await recordRlsSweep(db, sweep, 'cron');
   // Item 20 step 2b: only leads somebody still considers open are re-fetched, read from the state row.
-  const { data: leads } = await db.from('leads').select(`id, source_url, kind, created_at, ${LEAD_STATE_EMBED}`).not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES).limit(200);
+  //
+  // THE WORKSPACE IS PINNED, and from 0054 it has to be. This runs as the SERVICE ROLE, so RLS does not
+  // narrow workspace_lead_state to one row — and 0054 gives every workspace a row for every lead. Without
+  // the pin this join returns one row PER WORKSPACE per lead: the same lead re-fetched several times, the
+  // 200 limit covering a fraction of the distinct leads it used to, and the filter meaning "open in ANY
+  // workspace" rather than in this one. Found by lead-state-parity going red on exactly that shape.
+  //
+  // A FAILURE HERE IS REPORTED, NOT SWALLOWED. crawlWorkspace throws rather than returning null, and
+  // catching it to null would silently restore the exact cross-workspace fan-out this pin exists to stop —
+  // a nightly job quietly re-fetching duplicates and covering half the leads, with nothing anywhere saying
+  // so. That is the class this repo keeps being bitten by, so the reason travels out in the response.
+  let unpinned: string | null = null;
+  const crawlWs = await crawlWorkspace(db).catch((e: any) => { unpinned = String(e?.message ?? e).slice(0, 120); return null; });
+  const leadQ = db.from('leads').select(`id, source_url, kind, created_at, ${LEAD_STATE_EMBED}`)
+    .not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES);
+  const { data: leads } = await (crawlWs ? leadQ.eq(`${LEAD_STATE_TABLE}.workspace_id`, crawlWs) : leadQ).limit(200);
   const flagOn = await hasSourceFlag(db);
   for (const l of leads ?? []) {
     if (!l.source_url) continue;
@@ -57,6 +73,9 @@ export async function POST(req: Request) {
   }
   return NextResponse.json({
     ok: true, leads: leads?.length ?? 0, certs: vs?.length ?? 0,
+    // Null on every healthy run. Set only when the crawl workspace could not be read, in which case the
+    // lead count above is inflated by one row per workspace per lead and covers fewer distinct leads.
+    ...(unpinned ? { leadsNotPinned: unpinned } : {}),
     rls: { ok: sweep.ok, summary: sweepSummary(sweep), recorded: sweepNotKept === null, notRecorded: sweepNotKept },
   });
 }

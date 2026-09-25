@@ -204,6 +204,70 @@ export const testFlagAvailable = (db: SupabaseClient) => haveFlag(db);
  * From 0032 a new account is sent to choose industries before any other screen. Before 0032 there is nothing to
  * set; any other failure is returned for the caller to report.
  */
+/**
+ * The industry a probe workspace follows, chosen because NO real lead carries it.
+ *
+ * Not a trick: `pharma_life_sciences` is one of the sixteen industries a real account may follow, and
+ * the reason it is safe is checked rather than assumed — capProbeToOneIndustry refuses if a real lead
+ * ever turns up carrying it. A crawl that starts classifying pharma work would otherwise rot every
+ * probe's isolation quietly, months from now, in a way that looks like a product bug.
+ */
+export const PROBE_INDUSTRY = 'pharma_life_sciences';
+
+/**
+ * A probe account follows ONE industry and is CAPPED, because that is what a real sign-up looks like.
+ *
+ * WHY THIS REPLACED followAllForProbe IN THE SCREEN PROBES (2026-09-25). They used to follow 'all' with
+ * no cap, which is RFBT's shape — and RFBT is the ONLY unlimited account, grandfathered. Every future
+ * sign-up chooses one industry at onboarding (0032) and is capped from its first screen. So an unlimited
+ * throwaway workspace was testing an account type that will never sign up again.
+ *
+ * It matters from item 20 step 3c, when discovery became shared: an unlimited workspace sees the whole
+ * entitled pool, so `smoke`, `today` and `queue-ids` started asserting counts against 229 of RFBT's real
+ * leads mixed into their own handful — 16, 11 and 6 failures, every one of them the screen behaving
+ * correctly. A capped workspace sees the pool its entitlement admits, which for PROBE_INDUSTRY is
+ * nothing real, so the assertions mean again what they were written to mean.
+ *
+ * WHAT IT DOES NOT FIX, and this is deliberately left visible rather than worked around: Hiring now
+ * reads job_posts through companies, and 5,653 of 5,893 companies carry no industry at all. An
+ * unclassified row stays visible to a capped account — the owner's decision of 2026-09-25 — so the
+ * board is still pool-wide. That is the recorded blocking precondition for the first real capped
+ * customer, not something to paper over with a test-only branch in can_see_industries().
+ */
+export async function capProbeToOneIndustry(db: SupabaseClient, uid: string, industry = PROBE_INDUSTRY): Promise<string | null> {
+  // The guard first. If a real lead carries this industry the probe is no longer isolated, and every
+  // count it asserts becomes a coin toss — so it fails here, loudly, naming what changed.
+  const { count, error: checkErr } = await db.from('leads')
+    .select('id', { count: 'exact', head: true })
+    .contains('industries', [industry])
+    .or('is_test.is.null,is_test.eq.false');
+  if (checkErr && checkErr.code !== '42703') return `could not check whether ${industry} is still unused by real leads: ${checkErr.message}`;
+  if ((count ?? 0) > 0) {
+    return `${count} REAL lead(s) now carry "${industry}", so a probe following it is no longer isolated — pick another unused industry for PROBE_INDUSTRY and re-check, or these probes will assert counts against real data`;
+  }
+  // THE SECOND CONDITION, and the one more likely to break. Isolation holds because every real lead is
+  // CLASSIFIED — 229 of 229 on 2026-09-25 — so a capped account following an unused industry sees none of
+  // them. An UNCLASSIFIED lead is visible to a capped account too (the owner's decision that an
+  // unclassified row is never hidden), so the first real lead that misses classification would start
+  // appearing in every probe's counts, intermittently, looking like flake. classifyAndStoreLead runs
+  // inline in the crawl, so this is a failure of that call rather than a normal state.
+  const { count: unclassified, error: unErr } = await db.from('leads')
+    .select('id', { count: 'exact', head: true })
+    .or('industries.is.null,industries.eq.{}')
+    .or('is_test.is.null,is_test.eq.false');
+  if (unErr && unErr.code !== '42703') return `could not check for unclassified real leads: ${unErr.message}`;
+  if ((unclassified ?? 0) > 0) {
+    return `${unclassified} real lead(s) carry no industry, and an unclassified lead is visible to a capped account — so this probe's counts would include them. Classify them (scripts/industry-backfill.ts) or this isolation is not real`;
+  }
+  // Both fields together: 0032's trigger refuses 'all' beside a limit, and a limit under the list size.
+  const { error } = await db.from('users')
+    .update({ industry_follow: [industry], industry_limit: 1, industry_follow_set_at: new Date().toISOString() })
+    .eq('id', uid);
+  if (!error) return null;
+  if (error.code === '42703' || (/industry_follow/.test(error.message) && /does not exist|schema cache/i.test(error.message))) return null;
+  return `the probe account could not be capped to ${industry}: ${error.message}`;
+}
+
 export async function followAllForProbe(db: SupabaseClient, uid: string): Promise<string | null> {
   const { error } = await db.from('users').update({ industry_follow: ['all'], industry_follow_set_at: new Date().toISOString() }).eq('id', uid);
   if (!error || error.code === '42703' || /industry_follow/.test(error.message) && /does not exist|schema cache/i.test(error.message)) return null;

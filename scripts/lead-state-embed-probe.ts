@@ -76,16 +76,26 @@ async function main() {
     );
     await db.from('workspace_lead_state').delete().eq('workspace_id', ws.id).eq('lead_id', byName.get('Embed D')!);
 
+    // THE EMBED IS PINNED TO THIS WORKSPACE TOO, and from 0054 it must be. This probe runs as the
+    // SERVICE ROLE, so RLS does not narrow workspace_lead_state — and 0054 gives EVERY workspace a row
+    // for every lead, so each of these four leads now carries one per workspace. Pinning only `leads`
+    // left the join returning a row per workspace: the counts read 4 where 3 were expected, and the
+    // embed reported another workspace's default 'new' instead of the 'pursue' written here. Correct
+    // behaviour, wrong query — and the same omission was live in api/jobs/recheck.
     const inWs = (q: any) => q.eq('workspace_id', ws.id).eq('kind', 'won_work');
+    // Applied ONLY to the queries that embed the state table: a filter on an embedded column in a query
+    // that does not embed it is not a narrower query, it is a broken one — which is what it did to the
+    // plain count when this pin was first added to inWs itself.
+    const pinState = (q: any) => q.eq('workspace_lead_state.workspace_id', ws.id);
     const countJoined = async (closed: boolean) => {
-      let q = inWs(db.from('leads').select('id, workspace_lead_state!inner(status)', { count: 'exact', head: true }));
+      let q = pinState(inWs(db.from('leads').select('id, workspace_lead_state!inner(status)', { count: 'exact', head: true })));
       if (closed) q = q.not('workspace_lead_state.status', 'in', CLOSED);
       const { count, error } = await q;
       if (error) throw new Error(`embedded count failed: ${error.code ?? '?'} ${error.message}`);
       return count ?? -1;
     };
     const rowsJoined = async (closed: boolean) => {
-      let q = inWs(db.from('leads').select('id, project_name, workspace_lead_state!inner(status)'));
+      let q = pinState(inWs(db.from('leads').select('id, project_name, workspace_lead_state!inner(status)')));
       if (closed) q = q.not('workspace_lead_state.status', 'in', CLOSED);
       const { data, error } = await q;
       if (error) throw new Error(`embedded select failed: ${error.code ?? '?'} ${error.message}`);
@@ -140,7 +150,7 @@ async function main() {
     // Radar chains `.or('source_url.is.null,source_url.not.ilike...')` onto the same builder. An `or`
     // on the PARENT alongside a filter on an EMBEDDED table is the one combination most likely to be
     // mis-parsed, and it is on the live path for both news and tender counts.
-    const { count: orCount, error: orErr } = await inWs(db.from('leads').select('id, workspace_lead_state!inner(status)', { count: 'exact', head: true }))
+    const { count: orCount, error: orErr } = await pinState(inWs(db.from('leads').select('id, workspace_lead_state!inner(status)', { count: 'exact', head: true })))
       .not('workspace_lead_state.status', 'in', CLOSED)
       .or('source_url.is.null,source_url.not.ilike.https://ted.europa.eu/*');
     check('or() on the parent survives an embedded filter', !orErr && orCount === openBefore,

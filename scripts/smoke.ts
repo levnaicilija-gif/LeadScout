@@ -11,7 +11,7 @@ import fs from 'fs';
 import { execSync } from 'node:child_process';
 import { createClient } from '@supabase/supabase-js';
 import { chromium, type Page } from 'playwright';
-import { markWorkspaceTest, markTest, removeProbe, followAllForProbe } from '../src/lib/test-data';
+import { markWorkspaceTest, markTest, removeProbe, capProbeToOneIndustry } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'https://leadscout-rfbt.vercel.app';
 const EMAIL = `smoke+${Date.now()}@rfbt-recruitment.com`;
@@ -39,7 +39,7 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
   // record even if the scoping below is wrong.
   await markWorkspaceTest(admin, workspace);
   // From 0032 a new account chooses industries before any screen; this probe checks other screens, so it follows all.
-  const followProblem = await followAllForProbe(admin, uid);
+  const followProblem = await capProbeToOneIndustry(admin, uid);
   if (followProblem) throw new Error(followProblem);
 
   const { data: co } = await admin.from('companies').insert({ workspace_id: workspace, name: 'Smoke Offshore AS', employer_type: 'end_client', country: 'NO' }).select().single();
@@ -582,8 +582,16 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       'a role advertised on three days inside 180 is raised to the top and badged', JSON.stringify({ index: rowAt('Smoke Readvert AS'), row: raisedRow ?? 'not found' }));
     const agedRow = hiringRows[rowAt('Smoke Aged Hiring AS')];
     const agedDays = daysOldNow(agedAdvertOn);
-    check(agedRow?.age === 'flagged' && agedRow.label.includes(`ageing · ${agedDays} days`) && agedRow.opacity === '0.8' && rowAt('Smoke Aged Hiring AS') === hiringRows.length - 1,
-      `a company whose newest advert is ${agedDays} days old reads "ageing", is dimmed and sorts last`, JSON.stringify({ index: rowAt('Smoke Aged Hiring AS'), of: hiringRows.length, row: agedRow ?? 'not found' }));
+    // Item 20 step 3c: Hiring now shows the SHARED pool, so this workspace's seeded companies are mixed
+    // in among the real ones and "last row on the page" is no longer this probe's to predict — it read
+    // index 28 of 30 on a correctly sorted screen. The property being tested is that an ageing company
+    // SINKS, so it is asserted among the rows this probe planted, which is what it was always really
+    // about. Comparing against the whole page would now be asserting something about RFBT's data.
+    const smokeIdx = hiringRows.map((r, i) => ({ i, name: r.name })).filter((r) => /Smoke /.test(r.name)).map((r) => r.i);
+    const agedLastOfOurs = smokeIdx.length > 1 && rowAt('Smoke Aged Hiring AS') === Math.max(...smokeIdx);
+    check(agedRow?.age === 'flagged' && agedRow.label.includes(`ageing · ${agedDays} days`) && agedRow.opacity === '0.8' && agedLastOfOurs,
+      `a company whose newest advert is ${agedDays} days old reads "ageing", is dimmed and sorts last of the seeded`,
+      JSON.stringify({ index: rowAt('Smoke Aged Hiring AS'), seeded: smokeIdx, of: hiringRows.length, row: agedRow ?? 'not found' }));
     const freshRow = hiringRows[rowAt('Smoke Offshore AS')];
     const freshDays = daysOldNow(freshSeenOn);
     check(freshRow?.age === 'fresh' && freshRow.opacity === '1' && freshRow.label.includes(`${freshDays} day${freshDays === 1 ? '' : 's'} old`),
@@ -638,7 +646,11 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
       const toggle = Array.from(document.querySelectorAll('a')).find((a) => /Show agencies/.test(a.textContent ?? '')) as HTMLAnchorElement | undefined;
       return /[?&]sort=latest/.test(toggle?.href ?? '');
     });
-    const agedLast = hiringLatest.findIndex((r) => r.name.includes('Smoke Aged Hiring AS')) === hiringLatest.length - 1;
+    // Among the SEEDED rows, for the same reason as the sort check above: the pool is shared from 3c, so
+    // "last on the page" now depends on RFBT's companies rather than on this probe's.
+    const latestOurs = hiringLatest.map((r, i) => ({ i, name: r.name })).filter((r) => /Smoke /.test(r.name)).map((r) => r.i);
+    const agedLast = latestOurs.length > 1
+      && hiringLatest.findIndex((r) => r.name.includes('Smoke Aged Hiring AS')) === Math.max(...latestOurs);
     check(!!hiringLatest[0]?.name.includes('Smoke Readvert AS') && hiringLatest[0].boosted && inLatestOrder(hiringLatest.filter((r) => !r.boosted)) && agedLast && toggleKeepsSort,
       'Hiring now, Latest activity: re-advertised first, then fresh before ageing, newest first; the agencies toggle keeps the sort',
       JSON.stringify({ toggleKeepsSort, rows: hiringLatest.map((r) => `${r.name}:${r.boosted ? 'raised' : r.age}:${r.date || '-'}`) }));
