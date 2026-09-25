@@ -1120,3 +1120,46 @@ WHAT A REAL DROP COSTS, measured separately the same day over 20 real open posti
 (Corrected the same day: an earlier note here read the probe's title-only fallback as evidence that real adverts were not re-reading at all, and concluded the feature was cheap because the data was thin. It is not — the data is fine and the probe is synthetic.)
 
 Nothing is auto-attached, auto-sent or auto-confirmed: suggestions are shown, and a recruiter acts. Report cost per drop from cost_log rather than an estimate, and probe with a seeded CV whose trade and certificates make exactly one job a plausible match and the rest implausible, so a suggestion list that returns everything fails rather than passes. Commit after each step, two lines per step.
+
+-------------------------------------------------------------------------------
+26. SHARED OUTREACH CONTEXT CACHING
+-------------------------------------------------------------------------------
+STATUS: idea recorded, not investigated, deliberately deferred. Nothing below is measured.
+
+Owner's idea (2026-09-25): outreach message generation currently produces one message per (workspace, lead) pair from scratch. The message genuinely has two halves — facts about the LEAD ITSELF ("Congratulations on winning the Puerto Real coating contract…"), and THIS WORKSPACE'S OFFER ("we have 5 CSWIP-certified welders available now"). The first half is a shared fact, identical for every workspace reaching out about the same lead. The second half is private business information — this workspace's actual candidate bench — and must never be shared or cached across workspaces.
+
+PROPOSED DESIGN: split generation into a cacheable SHARED half (lead context, generated once per lead, reused by any workspace) and a PRIVATE half (this workspace's offer, generated fresh every time, never cached and never reused). It is the same shared/private split as everything else in item 20, applied to a COST OPTIMISATION rather than to a data-access boundary — which is the one thing to keep hold of when picking it up: a mistake here leaks private data while looking like a caching bug.
+
+RULED OUT OF SCOPE, PERMANENTLY: screening questions. Unlike outreach, they are generated from ONE SPECIFIC CANDIDATE'S CV GAPS and are inherently private — reusing another workspace's screening questions would expose derived information about a private candidate. Do not investigate or build this under any framing, including "cache only the generic ones" or "cache the standard seven": the standard seven are already written in code and cost nothing to begin with (item 5), so the only thing left to cache there is the part that must never be cached.
+
+WHY DEFERRED: this produces real savings only once a genuine second workspace exists to share the cache with. With RFBT the only real workspace today there is nobody to share with, so building it now adds complexity for zero payoff. Revisit after item 20's remaining steps (3d-4, company classification) are closed AND a real second workspace exists.
+
+WHEN PICKED UP, INVESTIGATE BEFORE BUILDING: how outreach generation currently splits (or does not) lead-context from workspace-offer; measure the real saving from caching only the shared half; and confirm the split reintroduces no cross-workspace leak.
+
+WHERE IT LIVES TODAY — read from the code on 2026-09-25 while recording this item, so the investigation does not start from nothing. It is a starting point, NOT a finding, and every line of it must be re-checked when the item is picked up rather than trusted:
+
+  `draftOutreach(ctx: object)` in src/lib/ai/documents.ts:771 is ONE call taking ONE flat context object,
+  so there is no split to extend — the halves are mixed at the call site, api/lead/route.ts:135. Reading
+  that object, the fields fall either side of the line the owner describes almost cleanly: company,
+  project, phase, trades, sector_note, recipient and hook (the quoted person and their quote) are facts
+  about the lead and its shared contacts, while `packs` (named in the request) and `pool` are this
+  workspace's own. `pool: await poolEvidence(sb, me.workspace_id)` is the unambiguous one — it is
+  workspace-scoped by construction and is exactly the "5 CSWIP-certified welders" half.
+
+  THE AUDIT LOOP IS THE PART THAT WILL BITE, and it is not obvious from the design. The route calls
+  `draftOutreachChecked`, which audits the finished draft against the only data behind it and re-drafts
+  once with a correction naming the unsupported claims (documents.ts:792). The `pool` field exists
+  precisely because that audit is keyed on it: the comment above it records that without the pool the
+  draft invents certificates nobody holds — "verified welders EN 9606, NDT Level II" against nothing on
+  file. So splitting generation forces a decision nobody has taken yet: whether the audit runs on the
+  JOINED message, on each half separately, or twice. A shared half audited against a workspace's private
+  pool would be a leak wearing a cost optimisation's clothes; a joined message audited once cannot be
+  cached without caching the audit's verdict too, which is per-workspace.
+
+  THERE IS ALSO NO COST DATA TO SAVE ON YET. CLAUDE.md's item 16 entry records the outreach draft and
+  outreach audit among the calls NOT YET MADE since metering began, so cost_log holds nothing for either
+  and "measure the real saving" starts by generating the baseline, not by querying it. Confirm that is
+  still true before quoting it — item 16 metering has been live since 2026-09-15 and a single real draft
+  since then would change the answer.
+
+Documentation only. Commit on its own, two lines.
