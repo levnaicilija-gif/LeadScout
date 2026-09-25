@@ -1270,10 +1270,19 @@ READ OUT OF THE CODE ON 2026-09-25 while recording this item. A STARTING POINT, 
   the shape it forbids. Reading more of the site is a real decision with a real cost, to be taken explicitly
   rather than implied by the word "anywhere".
 
-  ONE AMBIGUITY TO SETTLE WHEN PICKED UP, not now. "Display alongside" is clear for the lead DRAWER, whose
-  "From the company own site" block already lists people, switchboard and general email together, each with its
-  page. It is not clear for the Decision-maker CELL on the table, which holds ONE value and today falls back
-  through a named person, then a company-site person, then the switchboard. A cell cannot show two things
-  without becoming two cells, so confirm whether the requirement reaches the table or only the drawer.
+  THE TABLE CELL IS DECIDED (owner, 2026-09-25, asked because a cell holds one value and "show both alongside"
+  cannot mean two things in one cell): the Decision-maker cell shows the NAMED PERSON when one exists, and
+  OTHERWISE the general phone or email — and it is NEVER BLANK while either is available. The owner's reasoning,
+  which is the part to keep: the table is the FAST-SCAN view, and a lead carrying only general contact info must
+  look exactly as actionable there as one with a named person. That follows from the same day's step 3 decision,
+  which treats the general details as a real, confident answer rather than a lesser one. So the drawer shows
+  person AND general together, while the cell is a precedence — the two are not in conflict.
+
+  THE CONCRETE DELTA, because "never blank" is where the work is. The cell today falls back through a named
+  person, then a company-site person, then the SWITCHBOARD — so a company printing only an email address and no
+  phone still reads blank. The decision closes that: the general EMAIL is part of the chain, not just the
+  switchboard, and the cell is empty only when the site yielded neither. When it IS empty it should say which
+  case it is — nothing found on the pages read, versus no website on file — since those are different states and
+  this item exists because the second was being shown as though it were the first.
 
 Documentation only. Commit on its own, two lines.
