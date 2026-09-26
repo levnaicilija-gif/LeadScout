@@ -49,6 +49,16 @@ check(/\.neq\('type',\s*'job_board'\)/.test(repairQuery),
 console.log('\n--- and they ARE read by their own pipeline ---');
 const boards = code('src/lib/jobs/job-boards-batch.ts');
 check(/\.eq\('type',\s*'job_board'\)/.test(boards), "job-boards-batch reads only job_board sources");
+
+// ITEM 20: THE BOARD CRAWL MUST CLASSIFY THE COMPANY OF EVERY ADVERT IT KEEPS. From 0053 an empty
+// industries array is visible to EVERY capped account (an unclassified row is never hidden, the owner's
+// decision), and read_job_posts asks whether the posting's COMPANY is visible — so a board-sourced advert
+// on an unclassified company exposes that company and its posting to everyone. The careers/ATS crawl has
+// always done this (job-posts-batch.ts, right after it writes postings); this path never did, and it is
+// the only other writer of job_posts. Asserted in two parts because either half alone is useless: the
+// company must be COLLECTED when an advert is kept, and the classifier must actually be CALLED.
+check(/touched\.add\(companyId\)/.test(boards), 'job-boards-batch records the company of each advert it keeps, for classification');
+check(/refreshCompanyIndustries\(db,\s*id\)/.test(boards), 'job-boards-batch classifies those companies — otherwise a board posting shows its company to every capped account');
 check(/\.eq\('enabled',\s*true\)/.test(boards), 'and only enabled ones');
 
 const tick = code('src/lib/jobs/tick.ts');

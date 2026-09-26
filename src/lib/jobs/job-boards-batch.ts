@@ -11,6 +11,7 @@ import { inferTrades } from '@/lib/trades';
 import { countryFromJobLocation, isEuropean } from '@/lib/geo';
 import { detectEmployerType } from '@/lib/agency-detector';
 import { findOrCreateCompany } from '@/lib/find-or-create-company';
+import { refreshCompanyIndustries } from '@/lib/industry-store';
 import { hasJobBoardFields } from '@/lib/schema-features';
 import { cleanTitle } from '@/lib/job-title';
 import { z } from 'zod';
@@ -117,7 +118,20 @@ export async function runJobBoardsBatch(req: Request) {
   const byName = new Map(known.map((c: any) => [canon(c.name), c]));
   const agencyNames = known.filter((c: any) => (c.employer_type_override ?? c.employer_type) === 'staffing_agency').map((c: any) => c.name);
 
-  const stats = { boards: 0, linksSeen: 0, alreadyHad: 0, read: 0, notTrade: 0, kept: 0, agencyPosted: 0, employerNamed: 0, outsideEurope: 0, secondary: 0, noTitle: 0 };
+  const stats = { boards: 0, linksSeen: 0, alreadyHad: 0, read: 0, notTrade: 0, kept: 0, agencyPosted: 0, employerNamed: 0, outsideEurope: 0, secondary: 0, noTitle: 0, classified: 0 };
+  // ITEM 20: A POSTING WRITTEN HERE USED TO LEAVE ITS COMPANY UNCLASSIFIED, AND FROM 0053 THAT IS A
+  // VISIBILITY HOLE RATHER THAN A TIDINESS ONE. The careers/ATS crawl classifies the company right after
+  // it writes postings (job-posts-batch.ts:372) — this path, item 4's board crawl, never did, and it is
+  // the only other writer of job_posts. can_see_industries() treats an EMPTY industries array as visible
+  // to everyone (the owner's decision that an unclassified row is never hidden), and read_job_posts asks
+  // whether the posting's COMPANY is visible, so a board-sourced advert on an unclassified company shows
+  // that company and its posting to every capped account. Measured 2026-09-26: 0 of 5,651 unclassified
+  // companies currently hold an open posting, and via='board' rows are still 0 of 87, so this is the gap
+  // being closed BEFORE it is first exercised rather than after.
+  //
+  // Collected per company and run after the loop, not per posting: one board can carry several adverts
+  // for one employer, and refreshCompanyIndustries re-reads that company's whole open set each time.
+  const touched = new Set<string>();
   const found: any[] = [];
   const problems: string[] = [];
 
@@ -224,6 +238,9 @@ export async function runJobBoardsBatch(req: Request) {
 
         if (up) { problems.push(`${url}: ${up.code ?? ''} ${up.message}`.slice(0, 140)); continue; }
         stats.kept++;
+        // Only when the advert is tied to a company: an unnamed employer has nothing to classify, and
+        // poster_type 'unknown' rows are reachable through their workspace rather than a company.
+        if (companyId) touched.add(companyId);
         found.push({ role, employer: x.employer ?? '(not named)', poster: x.poster ?? '(not named)', agency: posterIsAgency, where: x.location ?? country, duplicate: !!duplicateOf });
       }
 
@@ -249,7 +266,17 @@ export async function runJobBoardsBatch(req: Request) {
     }
   }
 
-  console.log(`[job-boards] boards=${stats.boards} read=${stats.read} kept=${stats.kept} agency=${stats.agencyPosted} spent=EUR${budget.totalToday.toFixed(2)}`);
+  // The company of every advert kept, classified from its open adverts and the quoted words on its own
+  // page — the same pure, free, no-model-call function the careers crawl uses. Reported and never fatal,
+  // exactly as at job-posts-batch.ts:373: a classification that fails must not discard adverts already
+  // written, and a silent failure here would put the visibility hole straight back.
+  for (const id of touched) {
+    const problem = await refreshCompanyIndustries(db, id);
+    if (problem) problems.push(problem.slice(0, 200));
+    else stats.classified++;
+  }
+
+  console.log(`[job-boards] boards=${stats.boards} read=${stats.read} kept=${stats.kept} classified=${stats.classified} agency=${stats.agencyPosted} spent=EUR${budget.totalToday.toFixed(2)}`);
   return NextResponse.json({
     ok: true, stats, chained,
     spentToday: Number(budget.totalToday.toFixed(4)), cap,
