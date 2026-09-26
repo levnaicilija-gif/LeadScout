@@ -514,8 +514,19 @@ WHAT IS DONE:
             it was ever exercised — via='board' rows are still 0 of 87.
 
 WHAT REMAINS, genuinely untouched as of 2026-09-26:
-  step 3d   sources -> service-only, radar_runs -> service. Neither table is in
-            table-registry.ts yet, so the registry check cannot judge them.
+  step 3d   sources -> PRIVATE, radar_runs -> SERVICE. CORRECTED 2026-09-26: this
+            line previously said neither table was in table-registry.ts and that
+            the registry check could not judge them. BOTH WERE WRONG. Both are
+            registered, both as bucket shared (table-registry.ts:61-62), and the
+            check asserts every live table is registered, so it has judged them
+            since step 0. The false claim came from grepping for quoted keys while
+            the registry uses bare ones — the kind of error that reads as a finding
+            rather than as a missed match, which is why it survived a status audit
+            and got written down. The real work is a RE-classification plus the
+            policy fix: sources is registered shared, meaning readable across
+            workspaces, while the policy it needs makes it private, and a registry
+            that asserts what the database contradicts is the one thing that file
+            exists to prevent.
   step 3e   revoke the TABLE grants themselves. 0053's own comment says so; the
             revokes in 0052-0054 cover the new FUNCTIONS only.
   step 3f   the workspace_id auth checks in send-pack and company/employer-type.
