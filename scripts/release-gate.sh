@@ -72,6 +72,13 @@ step prospect-scope npx tsx scripts/prospect-scope-check.ts
 # survived a passing sweep. Measured before 0056: three tables — people, company_email_patterns and
 # radar_verdicts — passed BOTH the grant and the policy and were stopped only by a NOT NULL constraint.
 # Exit 2 = 0056 not applied yet: not judged.
+# Item 20 step 4: a brand-new workspace reads NOTHING that is not its own, across every table the registry
+# calls private. Registry-driven on purpose — a table added as private is covered the moment it is added,
+# because a survey found 21 of the private tables merely MENTIONED by some probe, which is not the same as
+# asserted. Proved by mutation: reading as the service role instead of as B reports 10 leaks, including
+# workspace_lead_state's exact 476 foreign rows (two other workspaces x 238).
+step private-leak npx tsx --env-file=.env.local scripts/private-leak-probe.ts
+
 echo "=== shared-write" | tee -a "$LOG"
 npx tsx --env-file=.env.local scripts/shared-write-probe.ts >> "$LOG" 2>&1
 code=$?
