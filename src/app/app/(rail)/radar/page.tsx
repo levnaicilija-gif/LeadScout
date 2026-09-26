@@ -291,7 +291,9 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const agencyFiltered = (showAgencies ? live : live.filter((p: any) => !isAgency(p))) as any[];
   const groupsAll = hiring ? groupByCompany(agencyFiltered as any, compoundsByCompany) : [];
   const options = {
-    countries: [...new Set(groupsAll.map((g) => g.country).filter(Boolean))].sort() as string[],
+    // Every country each company advertises in, not just its first posting's — a company hiring in GB and
+    // DE must be reachable by BOTH chips, and until 2026-09-27 the GB posting had no chip at all.
+    countries: [...new Set(groupsAll.flatMap((g) => g.countries))].filter(Boolean).sort() as string[],
     trades: [...new Set(groupsAll.flatMap((g) => g.trades))].sort(),
     employers: [...new Set(groupsAll.map((g) => g.employerType ?? 'unknown'))].sort(),
   };

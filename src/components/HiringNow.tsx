@@ -41,6 +41,15 @@ type Group = {
   company: string;
   employerType: string | null;
   country: string | null;
+  /**
+   * EVERY country this company advertises in, not just the first posting's. `country` above is the primary
+   * one and stays for the right-to-work line, which is a rule about ONE country; this is what the filter and
+   * the chips use. Until 2026-09-27 both were `ps[0].country`, so a company advertising in two countries
+   * contributed only one and the other had no chip at all: Gardline (NL) had an open GB posting and an open
+   * DE one, resolved to DE, and the GB posting was in the database and unreachable by any country filter.
+   * Lhoist, a BE company advertising in DE, lost BE the same way.
+   */
+  countries: string[];
   postings: Posting[];
   roles: { name: string; n: number }[];
   trades: string[];
@@ -115,6 +124,7 @@ export function groupByCompany(postings: Posting[], compounds?: Record<string, C
       company: ps[0].companies?.name ?? 'Unknown company',
       employerType: ps[0].companies?.employer_type ?? null,
       country: ps[0].country ?? ps[0].companies?.country ?? null,
+      countries: [...new Set(ps.map((p) => p.country ?? p.companies?.country).filter(Boolean) as string[])].sort(),
       postings: ps,
       roles,
       trades: [...new Set(ps.flatMap((p) => p.trades ?? []))],
@@ -179,7 +189,7 @@ export function HiringNow({
   const all = groupByCompany(postings, compounds);
   const f = filters ?? {};
   const groups = all.filter((g) =>
-    (!f.country || g.country === f.country)
+    (!f.country || g.countries.includes(f.country))
     && (!f.trade || g.trades.includes(f.trade))
     && (!f.employer || (g.employerType ?? 'unknown') === f.employer)
     && (!f.pressure || g.pressure === f.pressure));
@@ -246,7 +256,7 @@ export function HiringNow({
               <td>
                 <a href={`?tab=hiring&company=${g.companyId}${showAgencies ? '&agencies=1' : ''}${sortQs}`} className="flex items-center gap-1.5 font-medium whitespace-nowrap text-accent">{g.company}<OpenChevron /></a>
                 <div className="text-ink3 text-[12px]">
-                  {[g.country, g.employerType?.replace(/_/g, ' ')].filter(Boolean).join(' · ')}
+                  {[g.countries.join(' · ') || g.country, g.employerType?.replace(/_/g, ' ')].filter(Boolean).join(' · ')}
                   {g.employerType === 'staffing_agency' && <span className="text-warn"> · agency</span>}
                 </div>
                 <div data-age-label title={g.age.why} className={`text-[12px] ${AGE_TEXT[g.age.state]}`}>{g.age.label}</div>
@@ -264,7 +274,10 @@ export function HiringNow({
               <td className="text-[13px]">
                 {g.places.slice(0, 3).join(', ') || g.country || '—'}
                 {g.places.length > 3 && <div className="text-ink3 text-[12px]">+{g.places.length - 3} more</div>}
-                {g.country && rightToWork?.[g.country] && <div className="text-ink3 text-[12px] mt-0.5">{rightToWork[g.country]}</div>}
+                {/* Only when the company advertises in ONE country: the right-to-work rule is keyed on where
+                    the work is, so showing one rule for a company hiring in two would assert something false
+                    about the other. */}
+                {g.countries.length === 1 && rightToWork?.[g.countries[0]] && <div className="text-ink3 text-[12px] mt-0.5">{rightToWork[g.countries[0]]}</div>}
               </td>
               <td>
                 {g.trades.map((t) => <span key={t} className="inline-block text-[12px] px-2 py-0.5 rounded-md bg-line2 text-ink2 mr-1 mb-1">{t}</span>)}
