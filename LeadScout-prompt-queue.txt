@@ -379,6 +379,44 @@ looks thin relative to the others. Do NOT auto-add sources to fix a thin
 category — flag it explicitly in the report as a candidate for a future,
 deliberately-scoped source-addition item.
 
+MEASURED 2026-09-26, AND THE ANSWER IS THAT 40% "OTHER" ON TENDER AWARDS IS CORRECT.
+Recorded here because it is an obvious-LOOKING bug that was investigated in full
+and deliberately rejected, and a finding like that gets silently re-litigated and
+shipped wrong if it only lives in a conversation. If you are reading this because
+"66 of 167 award leads are Other/Uncategorized" looks broken: it is not.
+
+  the codes, pinned and counted: 33 of the 66 carry 45262100 Scaffolding work and
+    22 carry 45223210 Structural steelworks, 3 more 45262420 steel erection —
+    55 of 66, 83%, in two codes
+  item 12's trade list holds 42 codes; 35 map to an industry and the 7 that do
+    not are exactly the trades and the turbine codes (scaffolding, welding,
+    structural steelworks, metal structures, steel erection, turbine works,
+    turbine installation). industry.ts already says why in its own comment.
+  A TRADE CODE NAMES A TRADE, NOT AN INDUSTRY. Scaffolding is scaffolding on a
+    refinery, a shipyard, a hospital or a school. The turbine codes cover gas and
+    hydro as much as wind. There is no true mapping to add.
+  the company names settle it: Hess Gerüstbau, Fleck Gerüstbau, GSB Gerüstbau,
+    Montera Bau, Kattner Stahlbau, Kratzer Metallbau, M Metall, stacon — German
+    scaffolding and steel-fabrication firms winning MUNICIPAL BUILDING WORK.
+    There is no energy industry behind them to discover.
+  the words fallback was measured and REJECTED: classifying those 66 by the
+    notice's own words instead would give a real industry to 7 of 66 (11%) —
+    Infrastructure +4, Marine & Offshore +2, Renewable general +1 — and the other
+    59 return nothing at all. Adding a second classification path to awards for an
+    11% yield would import the failure mode words already have on news (site
+    chrome, a company's paragraph about itself, "energy transition" as background)
+    in exchange for almost nothing.
+
+So the note at the top of this item applies exactly as written: a lead that does
+not clearly fit a category stays Other, that is the correct answer, and the
+classifier must not be tuned to shrink the bucket. The prediction going in was
+that the turbine codes would dominate and words would help; both were wrong, and
+the measurement is what said so.
+
+WHAT THE 40% ACTUALLY POINTS AT IS ITEM 29, NOT THIS ITEM. The reason 55 municipal
+scaffolding awards are in the book at all is item 12's admission rule, which is a
+lead-qualification question rather than a classification one.
+
 Commit after each step, two lines per step. Full release gate before every
 commit, screen checks as a signed-in user, both widths. Report: classification
 hit rate per category, confirmation of the Wind grouping and any other
@@ -1450,3 +1488,60 @@ free even though classification is: 5,053 have no domain, so a website must be
 found first (item 27, EUR 0.0230 each, about EUR 116) before a page can be read.
 
 Nothing to build without the decision above. Commit after each step, two lines.
+
+-------------------------------------------------------------------------------
+29. TENDER-AWARD LEAD QUALIFICATION — IS A TOWN-HALL SCAFFOLDER A LEAD?
+-------------------------------------------------------------------------------
+STATUS: found by measurement 2026-09-26, not investigated, no decision taken.
+
+Item 12 admits a TED notice as a lead when its procedure's MAIN CPV code is on the
+42-code trade list. That rule was written to stop the opposite problem, and it
+worked: matching ANY code on a notice had been making leads of tilers,
+landscapers and a lift company on school builds, so the rule was narrowed to the
+main classification only. What it does NOT ask is what the work is FOR.
+
+THE MEASURED CONSEQUENCE (item 18's part-5 diagnostic, 2026-09-26): of 167 open
+award leads, 66 classify as Other/Uncategorized, and 55 of those 66 carry
+scaffolding or structural-steelworks as their main code. Reading the winners makes
+it concrete — Hess Gerüstbau, Fleck Gerüstbau, GSB Gerüstbau, Montera Bau,
+Kattner Stahlbau, Kratzer Metallbau, M Metall, stacon: German scaffolding and
+steel-fabrication firms winning municipal building work. Scaffolding on a town
+hall is a real trade award and a real company, and it is almost certainly not work
+RFBT would place welders, blasters or rope-access technicians on.
+
+That makes roughly a THIRD of the won-work book municipal building work, which has
+three costs even though none of it is wrong: it fills Leads and the fit ranking
+with rows a recruiter scrolls past, it is most of what makes the Other bucket 40%,
+and every one of those companies is a candidate for the website-discovery and
+contact-discovery spend in item 27.
+
+WHY THIS IS THE SAME SHAPE AS A DECISION ALREADY TAKEN. The below-threshold
+tender investigation was STOPPED on 2026-09-19 for exactly this reasoning: below
+the EU threshold means small, small means local, and local means town councils
+rather than offshore, marine or fabrication work — eleven qualifying awards in 60
+days, all eleven municipal, six of them scaffolding on town buildings. That
+conclusion was about which SOURCES to add. This item is the same judgement applied
+to what the existing source already ingests.
+
+WHEN PICKED UP, INVESTIGATE BEFORE BUILDING, and note that the obvious filters are
+the dangerous ones:
+  - the BUYER is the strongest available signal — a municipality, a school board
+    or a county council buying scaffolding is a different thing from a port
+    authority, a utility or an operator buying it. The notice names the
+    contracting authority, and place-of-performance is already stored.
+  - do NOT filter on the trade code itself. Scaffolding and steelworks ARE RFBT's
+    trades; the code is the reason these notices are relevant at all, and dropping
+    them by code would throw away the offshore and yard awards with the town halls.
+  - do NOT reach for the model first. This is a rules question about who the buyer
+    is, and item 12 deliberately costs EUR 0 per notice.
+  - decide whether a disqualified notice is NOT INGESTED or ingested and RANKED
+    DOWN. Item 14's radar_verdicts precedent argues for the second: every
+    judgement, rejection included, is recorded and nothing is silently dropped.
+  - measure the yield before and after on the real 167, and report how many of the
+    66 Other awards a buyer-based rule would disqualify.
+
+NOT a classification change. Item 18's note forbids tuning the classifier to
+shrink the Other bucket, and this item must not become that by another route: if a
+buyer rule disqualifies a notice the lead should not exist, not be relabelled.
+
+Commit after each step, two lines per step.
