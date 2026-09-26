@@ -58,8 +58,8 @@ export const TABLES: Record<string, Entry> = {
   company_email_patterns: { bucket: 'shared', scope: { by: 'workspace_id' }, why: 'the email shape a company uses, observed from its own site' },
   job_posts: { bucket: 'shared', scope: { by: 'workspace_id' }, why: 'an advert as crawled, with its trades and certs_required. `status` is open/closed from the crawl, not anyone\'s activity' },
   radar_verdicts: { bucket: 'shared', scope: { by: 'workspace_id' }, why: 'why the filter kept or rejected an article — a judgement about the source, not about a customer' },
-  radar_runs: { bucket: 'shared', scope: { by: 'workspace_id' }, why: 'crawl telemetry. The crawl runs once for everyone, so its log is one copy' },
-  sources: { bucket: 'shared', scope: { by: 'workspace_id' }, why: 'the sites the crawl reads. NOT in the 2026-09-15 design and it should have been — see the null-workspace hole in its policy' },
+  radar_runs: { bucket: 'service', scope: { by: 'none' }, why: '0055: the crawl own cursor and tally. Was shared, which could never mean anything here — no screen reads it, radar-batch reads its cursor with the service role, and there is no entitlement path to support. A signed-in user must read zero rows. Keeps a MARKER policy per 0027 rather than none, because 0026 reddens Home for a table with RLS and no policy' },
+  sources: { bucket: 'private', scope: { by: 'workspace_id' }, why: '0055: the sites the crawl reads — this workspace own strategy, not a discovered fact, so PRIVATE rather than shared. Was shared while 0001 policy read workspace_id = my_workspace() or workspace_id is null with NO with-check, which let a signed-in user WRITE null-workspace rows visible to everyone (real, and 0 of 610 today). Now for-select on my_workspace() with writes revoked: every writer is a service-role job route' },
 
   // ---- private: one workspace's data and its people's actions -----------------------------------
   candidates: { bucket: 'private', scope: { by: 'workspace_id' }, why: 'a named person. Sensitive personal data' },

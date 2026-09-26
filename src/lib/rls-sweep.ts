@@ -164,6 +164,11 @@ export async function runRlsSweep(opts: { workspaceName?: string } = {}): Promis
     const SERVICE_ONLY: Record<string, string> = {
       jobs: '0027, the worker queue',
       job_ticks: '0029, the crawl schedule log',
+      // 0055 moved radar_runs from a workspace policy to a service-role marker policy. THIS ENTRY MUST SHIP
+      // WITH THAT MIGRATION: without it the sweep compares 704 service-role rows against 0 for a signed-in
+      // user, reports the table hidden, fails the gate and reddens Home for everyone — which is exactly what
+      // 0049 backup tables did. It is the crawl cursor and tally; no screen reads it.
+      radar_runs: '0055, the crawl cursor and tally',
       leads_2c_backup: "0049, the pre-drop copy of leads' per-workspace columns",
       companies_2c_backup: "0049, the pre-drop copy of companies' per-workspace columns",
     };
