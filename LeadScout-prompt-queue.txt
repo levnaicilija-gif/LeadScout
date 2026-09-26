@@ -472,10 +472,11 @@ tender award or a news mention — never by reposting the same job. Three types
 in all: tender award, news mention, open posting (re-adverts included).
 
 -------------------------------------------------------------------------------
-20. SHARED DISCOVERY POOL — IN PROGRESS, STEPS 0-3c LIVE IN PRODUCTION
+20. SHARED DISCOVERY POOL — COMPLETE THROUGH STEP 4, LIVE IN PRODUCTION
 -------------------------------------------------------------------------------
 Status: design agreed 2026-09-15; STARTED as its own project 2026-09-23, and
-steps 0, 1, 2a, 2b, 2c, 3a, 3b and 3c are APPLIED AND DEPLOYED. This heading and
+STEPS 0, 1, 2a, 2b, 2c, 3a, 3b, 3c, 3d, 3e, 3f AND 4 ARE ALL APPLIED, DEPLOYED
+AND GATED — migrations 0046 through 0056, shipped through eed40d7.
 this paragraph both read "design only, not built" until 2026-09-26, by which
 point 0046-0054 were live in production — a stale status line had the entire
 project reading as untouched to anyone who opened this file, which is why it is
@@ -513,27 +514,52 @@ WHAT IS DONE:
             would have shown that company to every capped account. Closed before
             it was ever exercised — via='board' rows are still 0 of 87.
 
-WHAT REMAINS, genuinely untouched as of 2026-09-26:
-  step 3d   sources -> PRIVATE, radar_runs -> SERVICE. CORRECTED 2026-09-26: this
-            line previously said neither table was in table-registry.ts and that
-            the registry check could not judge them. BOTH WERE WRONG. Both are
-            registered, both as bucket shared (table-registry.ts:61-62), and the
-            check asserts every live table is registered, so it has judged them
-            since step 0. The false claim came from grepping for quoted keys while
-            the registry uses bare ones — the kind of error that reads as a finding
-            rather than as a missed match, which is why it survived a status audit
-            and got written down. The real work is a RE-classification plus the
-            policy fix: sources is registered shared, meaning readable across
-            workspaces, while the policy it needs makes it private, and a registry
-            that asserts what the database contradicts is the one thing that file
-            exists to prevent.
-  step 3e   revoke the TABLE grants themselves. 0053's own comment says so; the
-            revokes in 0052-0054 cover the new FUNCTIONS only.
-  step 3f   the workspace_id auth checks in send-pack and company/employer-type.
+WHAT REMAINS — TWO LOOSE ENDS, NEITHER OF THEM A STEP:
   drop      leads_2c_backup (229 rows) and companies_2c_backup (5,893 rows) are
-            still present, kept deliberately as 2c's pre-drop snapshot.
-  step 4    the boundary made explicit — partly covered already by step 0's
-            registry and its gate check.
+            STILL PRESENT, deliberately: they are 2c's pre-drop snapshot of the
+            columns 0049 removed, and dropping them is the owner's call on timing
+            rather than work waiting to be done. They are service-role only and
+            listed in rls-sweep's SERVICE_ONLY, so they redden nothing.
+  coverage  12 of the 24 private tables are EMPTY, so private-leak-probe reports
+            them NOT JUDGED rather than passed — campaigns, campaign_candidates,
+            candidate_placements, cert_unknown, followup_resolutions,
+            internal_downloads, scorecard_targets, scorecards, scores,
+            screening_answers, screening_calls and sends. A count of zero on an
+            empty table is not evidence, and pretending otherwise is how 0041's
+            hole survived a passing rls-sweep. Closing it means seeding one row per
+            table against real NOT NULL and foreign-key shapes, which is its own
+            step rather than something to bolt on here.
+
+WHAT WAS DONE IN THE LAST THREE STEPS, for the record:
+  step 3d   0055 — sources became PRIVATE with `for select using (workspace_id =
+            my_workspace())` and its writes revoked, closing a hole open since
+            0001: `for all` with NO with-check, and Postgres reuses the USING
+            expression as the insert check, so a signed-in user could WRITE
+            null-workspace rows that the same clause showed to everyone. 610 rows,
+            0 null — real and never exploited. radar_runs became SERVICE with
+            0027's marker policy, because dropping the policy outright would trip
+            0026 and redden Home. Verified live: sources 610/610 readable,
+            radar_runs 704 service / 0 user.
+  step 3e   0056 — the ten shared tables lost insert, update and delete for anon
+            and authenticated. It was NOT hygiene: shared-write-probe measured
+            three tables WRITABLE by any signed-in user (people,
+            company_email_patterns, radar_verdicts), each stopped only by a NOT
+            NULL column. After applying: denied by GRANT 10, refused by POLICY 0,
+            WRITABLE 0, reads untouched.
+  step 3f   the lead and the company are authorised by VISIBILITY; the campaign and
+            the candidates stay authorised by OWNERSHIP, deliberately, because
+            campaigns and candidates are PRIVATE and candidates holds passports and
+            right-to-work facts. Measured: a no-op for RFBT, which owns all 238
+            leads and all 5,899 companies, and the whole unblock for a second
+            workspace, which owned none and could therefore act on none.
+  step 4    private-leak-probe — registry-driven, so a table added as private is
+            covered the moment it is added. Its first run reported a false leak on
+            workspace_lead_state (B read 238 of 714); B owned all 238, because 0054
+            gives every workspace a row per lead at creation. The assertion became
+            "B reads nothing that is not its own", which is strictly stronger than
+            what it replaced, and is proved by mutation: reading as the service
+            role reports 10 leaks, workspace_lead_state showing exactly 476 foreign
+            rows — two other workspaces times 238.
 
 WHY: today a sign-up gets its own empty workspace (handle_new_user, 0001) and
 the crawl files everything under RFBT Recruitment's workspace, so a new
