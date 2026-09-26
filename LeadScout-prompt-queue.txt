@@ -1451,6 +1451,41 @@ READ OUT OF THE CODE ON 2026-09-25 while recording this item. A STARTING POINT, 
   checking before the first run: whether those six are on file yet, and if not, storing them is a
   precondition rather than a follow-up.
 
+
+SCOPE CORRECTION 2026-09-27: THE 145 WAS NEVER THE WHOLE POPULATION, and the
+owner's own worked example was in the half that had not been measured. Schiffswerft
+Fischer GmbH is a TED TENDER-AWARD winner; the 145-company queue measured earlier
+that night is resolve-domains' predicate, which requires an ops-relevant INDUSTRY
+CONTACT — so it is the WindEurope population and almost nothing else.
+
+  MEASURED: 5,176 of 5,899 real companies have no website. By how they entered:
+    3,751  Industry Contacts only            (434 with an ops-relevant contact)
+    1,291  no lead, no posting, not matched to the attendee list by name
+      103  TENDER-AWARD lead                 (0 with an ops-relevant contact)
+       31  NEWS-sourced won-work lead        (3 with an ops-relevant contact)
+        0  Hiring now — by construction, a careers board needs a domain first
+  So 134 companies were invisible to the queue, having 0 and 3 ops contacts.
+
+OWNER'S DECISIONS, 2026-09-27:
+  - the 31 NEWS-sourced companies are APPROVED. They are qualified by
+    construction: item 14 admits a news lead only on a real trigger AND a quoted,
+    contactable named person at a target company. About EUR 0.71.
+  - the 103 TENDER-AWARD companies are HELD pending item 29, and that includes the
+    61 that classify to a real industry — splitting the tender population further
+    was judged to add complexity for a small gain.
+  - the 145 run FIRST, alone. The 31 follow once the news-only predicate exists.
+
+WHY THE TENDER HOLD IS NOT CAUTION BUT MEASUREMENT: of 109 tender-award leads on a
+no-website company, 48 classify as Other/Uncategorized, and their names are item
+29's population by sight — Th. Treichel Gerüstbaugesellschaft, Gerüstbau Stuiber,
+Tower Gerüstbau, Steinel Gerüstbau. Top codes 45262100 scaffolding (24) and
+45223210 structural steelworks (17). Paying to find websites for scaffolders on
+German town halls is exactly what item 29 exists to prevent.
+
+STATUS 2026-09-27: STEP 2 HAS NOT RUN. cost_log holds 0 rows of kind 'search'
+today and the day's spend is already EUR 1.98 of the EUR 2.00 cap, so the batch
+could not have started even if it had been launched. The route is resumable and
+cap-aware, so it resumes when the cap resets; nothing is lost by waiting.
 Documentation only. Commit on its own, two lines.
 
 -------------------------------------------------------------------------------
@@ -1580,5 +1615,49 @@ the dangerous ones:
 NOT a classification change. Item 18's note forbids tuning the classifier to
 shrink the Other bucket, and this item must not become that by another route: if a
 buyer rule disqualifies a notice the lead should not exist, not be relabelled.
+
+OWNER'S DECISIONS, 2026-09-27, and the measurement that shaped them:
+
+  INGEST AND RANK DOWN, never hide and never drop. A municipal-buyer award stays a
+  real, visible lead; it simply must not clutter the list a recruiter works from.
+  And SORT LOWER BY DEFAULT rather than hiding behind a toggle, decided on the
+  evidence below: a hard hide would bury real work behind a switch nobody flips.
+
+  THE BUYER SIGNAL IS COMPLETE AND FREE. All 167 TED leads carry a "Contracting
+  authority:" line — award.ts writes it (:152) and buyersFromAwardText reads it
+  back (:170), pure string work on text already stored. No model call, matching
+  item 12's own EUR 0 design.
+
+  BUT THE TARGET POPULATION IS ONLY HALF MUNICIPAL, which is the finding that
+  changed the design. Of the 48 Other-classified, no-website tender companies:
+    26  have a municipal or public buyer  -> ranked down
+    22  do NOT                            -> stay ranked normally
+  The 22 are right to stay: BESIX Infra and Persyn won work for FLUVIUS SYSTEM
+  OPERATOR, a Belgian grid utility; nv Ghent Dredging for De Vlaamse Waterweg;
+  Lehner Gerüsttechnik for the Max-Planck-Gesellschaft; IT_Conrad Kern Ticino for a
+  regional railway. A scaffolder on a substation is real industrial work, and the
+  BUYER separates it from a town hall where the CPV code cannot. Across all 167
+  leads, 49 (29%) have a municipal buyer.
+
+  THE PATTERN MUST BE CURATED, NOT DERIVED — buyers.ts already says why for the
+  mirror-image problem, and the first attempt here proved it again: a \b-anchored
+  regex caught only 19% because German glues its words, missing Stadtverwaltung
+  Ellwangen, Bezirksamt Hamburg-Mitte and Landratsamt Reutlingen. A compound-aware
+  version finds 29%. The inverse risk is equally real: a bare "stadt" substring
+  would wrongly catch Wissenschaftsstadt Darmstadt, a research buyer.
+
+  THE MECHANISM (owner's decision on the recommendation): STORE THE FACT, COMPUTE
+  THE JUDGEMENT. The buyer NAME is stored as a nullable column, backfilled for free
+  from the notice text already held; the municipal verdict is computed ON READ from
+  the curated rule, so changing the rule re-judges every lead instantly with no
+  backfill. Measured alternative rejected: reading the notice text at render time
+  costs about 301 KB per Leads page (median notice 5,051 chars x 50 leads) to read
+  60 characters, since "Contracting authority:" sits at char 84. This is the same
+  fact/judgement split already proven by lead age, compound signals and
+  certificate-only — a stored VERDICT goes stale, a stored FACT does not.
+
+  NOT A CLASSIFICATION CHANGE, restated because it is the easy way to get this
+  wrong: a municipal scaffolder stays tagged whatever industry it belongs to.
+  Ranking and classification stay fully separate.
 
 Commit after each step, two lines per step.
