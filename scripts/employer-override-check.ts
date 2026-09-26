@@ -23,7 +23,7 @@
  * Everything is made in a throwaway workspace and removed; a leftover fails the run.
  */
 import { createClient } from '@supabase/supabase-js';
-import { markTest, markWorkspaceTest } from '../src/lib/test-data';
+import { markTest, markWorkspaceTest, withTransportRetry } from '../src/lib/test-data';
 import { verdictPatch } from '../src/lib/employer-verdict';
 import { effectiveEmployerType } from '../src/lib/agency-detector';
 import { COMPANY_STATE_LEFT, withCompanyState } from '../src/lib/workspace-state';
@@ -137,10 +137,10 @@ async function main() {
   } finally {
     const leftovers: string[] = [];
     for (const t of ['workspace_company_state', 'companies'] as const) {
-      const { error } = await db.from(t).delete().eq('workspace_id', ws.id);
+      const { error } = await withTransportRetry(() => db.from(t).delete().eq('workspace_id', ws.id));
       if (error) leftovers.push(`${t}: ${error.message}`);
     }
-    const { error: wsDel } = await db.from('workspaces').delete().eq('id', ws.id);
+    const { error: wsDel } = await withTransportRetry(() => db.from('workspaces').delete().eq('id', ws.id));
     if (wsDel) leftovers.push(`workspaces: ${wsDel.message}`);
     const { data: still } = await db.from('workspaces').select('id').eq('id', ws.id).maybeSingle();
     check('the probe cleans up after itself', !leftovers.length && !still,

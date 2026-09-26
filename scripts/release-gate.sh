@@ -62,6 +62,11 @@ step phone-on npx tsx scripts/phone-on-check.ts
 step winner-address npx tsx scripts/winner-address-check.ts
 step site-scope npx tsx scripts/site-scope-check.ts
 step site-trust npx tsx scripts/site-trust-check.ts
+# Item 27's permanent scope rule: the institutions stay out of the paid queue and the CONTRACTORS survive.
+# Both arms on every row, because a pattern list narrowed until it catches nothing passes every "is this
+# kept" assertion. The port exception is the one that needs watching — "authority" would otherwise drop
+# Tarragona Port Authority, and a port contracts trades.
+step prospect-scope npx tsx scripts/prospect-scope-check.ts
 step model-meter npx tsx scripts/model-meter-check.ts
 step verify-adapters npx tsx scripts/verify-adapters-check.ts
 step candidate-search npx tsx scripts/candidate-search-check.ts

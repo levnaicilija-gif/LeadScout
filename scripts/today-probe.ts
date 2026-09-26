@@ -21,7 +21,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium, type Page } from 'playwright';
-import { capProbeToOneIndustry, markWorkspaceTest, removeProbe } from '../src/lib/test-data';
+import { capProbeToOneIndustry, markWorkspaceTest, removeProbe, withTransportRetry } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'http://localhost:3163';
 const stamp = Date.now();
@@ -570,16 +570,16 @@ async function signIn(p: Page, a: { email: string; password: string }) {
     // delete fails on its foreign key and strands the workspace (the fourth such omission tonight).
     // followup_resolutions is created by Mark done, not by the seed, and clearTestWorkspace covers
     // neither it nor outreach.
-    const { error: resErr } = await admin.from('followup_resolutions').delete().eq('workspace_id', who.workspace);
+    const { error: resErr } = await withTransportRetry(() => admin.from('followup_resolutions').delete().eq('workspace_id', who.workspace));
     if (resErr && !/schema cache|does not exist/i.test(resErr.message)) mine.push(`followup_resolutions: ${resErr.message}`);
     const { data: seededLeads } = await admin.from('leads').select('id').eq('workspace_id', who.workspace);
     const leadIds = (seededLeads ?? []).map((l: any) => l.id);
     if (leadIds.length) {
-      const { error } = await admin.from('outreach').delete().in('lead_id', leadIds);
+      const { error } = await withTransportRetry(() => admin.from('outreach').delete().in('lead_id', leadIds));
       if (error) mine.push(`outreach: ${error.message}`);
     }
     for (const t of ['job_posts', 'leads', 'companies'] as const) {
-      const { error } = await admin.from(t).delete().eq('workspace_id', who.workspace);
+      const { error } = await withTransportRetry(() => admin.from(t).delete().eq('workspace_id', who.workspace));
       if (error) mine.push(`${t}: ${error.message}`);
     }
     const notGone = await removeProbe(admin, who.uid, who.workspace, null, { clearContent: true });

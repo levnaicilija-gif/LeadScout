@@ -25,7 +25,7 @@
  * Everything is made in a throwaway workspace and deleted afterwards; a leftover fails the run.
  */
 import { createClient } from '@supabase/supabase-js';
-import { markTest, markWorkspaceTest, removeProbe } from '../src/lib/test-data';
+import { markTest, markWorkspaceTest, removeProbe, withTransportRetry } from '../src/lib/test-data';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -162,7 +162,7 @@ async function main() {
     // Each delete's error is READ; a silent failure here is what left the mess in the first place.
     const leftovers: string[] = [];
     for (const t of ['workspace_lead_state', 'leads', 'companies'] as const) {
-      const { error } = await db.from(t).delete().eq('workspace_id', ws.id);
+      const { error } = await withTransportRetry(() => db.from(t).delete().eq('workspace_id', ws.id));
       if (error) leftovers.push(`${t}: ${error.message}`);
     }
     // A leftover is a FAILURE, not a note. The first run printed a cleanup line and still exited 0,

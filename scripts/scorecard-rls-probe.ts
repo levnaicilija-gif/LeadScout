@@ -19,7 +19,7 @@
  * Everything it makes is removed afterwards; a leftover fails the run.
  */
 import { createClient } from '@supabase/supabase-js';
-import { markWorkspaceTest, removeProbe } from '../src/lib/test-data';
+import { markWorkspaceTest, removeProbe, withTransportRetry } from '../src/lib/test-data';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
@@ -104,7 +104,7 @@ const rows = async (q: PromiseLike<{ data: any; error: any }>) => {
     const left: string[] = [];
     for (const w of [senior?.workspace, recruiter?.workspace].filter(Boolean) as string[]) {
       for (const t of ['scorecards', 'scorecard_targets'] as const) {
-        const { error } = await admin.from(t).delete().eq('workspace_id', w);
+        const { error } = await withTransportRetry(() => admin.from(t).delete().eq('workspace_id', w));
         if (error) left.push(`${t} of ${w}: ${error.message}`);
       }
     }

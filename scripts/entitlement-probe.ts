@@ -34,7 +34,7 @@
  * Everything it makes is removed afterwards; a leftover fails the run.
  */
 import { createClient } from '@supabase/supabase-js';
-import { markWorkspaceTest, removeProbe } from '../src/lib/test-data';
+import { markWorkspaceTest, removeProbe, withTransportRetry } from '../src/lib/test-data';
 import { FOLLOW_OPTIONS } from '../src/lib/industry';
 import { followedIndustries } from '../src/lib/industry-follow';
 
@@ -206,7 +206,7 @@ async function main() {
     const leftovers: string[] = [];
     for (const who of [U, C].filter(Boolean) as NonNullable<typeof U>[]) {
       for (const t of ['workspace_lead_state', 'workspace_company_state', 'leads', 'companies'] as const) {
-        const { error } = await admin.from(t).delete().eq('workspace_id', who.workspace);
+        const { error } = await withTransportRetry(() => admin.from(t).delete().eq('workspace_id', who.workspace));
         if (error) leftovers.push(`${t}: ${error.message}`);
       }
       const left = await removeProbe(admin, who.uid, who.workspace, null, { clearContent: true });

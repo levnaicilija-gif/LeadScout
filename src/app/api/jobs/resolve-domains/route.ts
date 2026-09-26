@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 import { crawlWorkspace } from '@/lib/crawl-workspace';
 import { lookupDomain } from '@/lib/domain-lookup';
 import { siteScope } from '@/lib/site-scope';
+import { nonProspect } from '@/lib/prospect-scope';
 import { hasDomainProvenance } from '@/lib/schema-features';
 import { Budget, spentEur } from '@/lib/cost';
 export const maxDuration = 300;
@@ -68,18 +69,70 @@ async function run(req: Request) {
   // mark of a miss is careers_status; this queue filtered on careers_checked_at alone, which a miss never set, so every
   // run paid again for every company it had already missed.
   const provenance = await hasDomainProvenance(db);
-  let poolQuery = db.from('companies')
-    .select(`id, name, country, sector${provenance ? ', domain_lookups' : ''}`)
-    // ?country=ES looks up one listed country only — the owner approved Spain's 38 first, not every country's remainder.
-    .eq('workspace_id', workspace).in('country', p.get('country') && COUNTRIES.includes(p.get('country')!.toUpperCase()) ? [p.get('country')!.toUpperCase()] : COUNTRIES).in('sector', RELEVANT)
-    .is('domain', null).is('careers_checked_at', null)
-    .or('careers_status.is.null,careers_status.neq.no_domain_found');
-  if (provenance) poolQuery = poolQuery.lt('domain_lookups', 2);
-  const { data: pool } = await poolQuery.limit(1500) as { data: any[] | null };
+  // A FRESH BUILDER PER PAGE. A PostgREST builder is mutable and returns itself, so calling .order() on one
+  // object once per page appends a duplicate clause every time and .range() is re-set on the same request —
+  // harmless over two pages, wrong in exactly the case this paging exists for. Built as a function instead.
+  const page = (from: number) => {
+    let q = db.from('companies')
+      .select(`id, name, country, sector${provenance ? ', domain_lookups' : ''}`)
+      // ?country=ES looks up one listed country only — the owner approved Spain's 38 first, not every country's remainder.
+      .eq('workspace_id', workspace)
+      .in('country', p.get('country') && COUNTRIES.includes(p.get('country')!.toUpperCase()) ? [p.get('country')!.toUpperCase()] : COUNTRIES)
+      .in('sector', RELEVANT)
+      .is('domain', null).is('careers_checked_at', null)
+      .or('careers_status.is.null,careers_status.neq.no_domain_found');
+    if (provenance) q = q.lt('domain_lookups', 2);
+    return q.order('id').range(from, from + 999);
+  };
 
-  const todo = (pool ?? []).filter((c) => ops.has(c.name.trim().toLowerCase())).slice(0, limit);
-  const stats = { looked: 0, resolved: 0, notFound: 0, errors: 0 };
+  // PAGED, because .limit(1500) was a silent ceiling on the WRONG side of the ops filter. The eligible pool
+  // measured 1,364 on 2026-09-26 — 136 rows of headroom, about 9% — and the ops filter runs in code AFTER
+  // this read, so once the pool passes 1,500 the queue would see an arbitrary first slice by insertion order
+  // and the ops filter would narrow that rather than the real population. Nothing would fail: it would just
+  // quietly stop covering some companies. Adding PL and FR to COUNTRIES alone brings ~415 more candidates in,
+  // so the next country widening is what would have hit it. `limit` still caps the paid lookups per run; this
+  // only makes the candidate read complete.
+  const pool: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await page(from) as { data: any[] | null; error: any };
+    // An unread error here would look exactly like "no more candidates" and silently end the queue early —
+    // the class this codebase keeps meeting. Report it rather than treating a failed read as an empty one.
+    if (error) return NextResponse.json({ error: `the candidate pool could not be read in full: ${error.message}` }, { status: 500 });
+    pool.push(...(data ?? []));
+    if (!data || data.length < 1000) break;
+  }
+
+  // Item 27's permanent scope rule, as BELT-AND-BRACES on top of the sector-and-ops predicate rather than
+  // instead of it: an institution that slipped through a sector tag is skipped before it is paid for. The
+  // port exception lives in prospect-scope.ts — "authority" would otherwise drop Tarragona Port Authority,
+  // and a port contracts trades. Skips are counted and named, never silently dropped from the total.
+  const inScope = (pool ?? []).filter((c) => ops.has(c.name.trim().toLowerCase()));
+  const skipped: { name: string; category: string; term: string }[] = [];
+  const todo = inScope.filter((c) => {
+    const out = nonProspect(c.name);
+    if (out) skipped.push({ name: c.name, category: out.category, term: out.term });
+    return !out;
+  }).slice(0, limit);
+  const stats = { eligible: pool.length, withOpsContact: inScope.length, skippedNonProspect: skipped.length, looked: 0, resolved: 0, notFound: 0, errors: 0 };
   const found: any[] = [];
+
+  // DRY RUN: build the queue, report exactly what it would do, and look nothing up. Added because item 27's
+  // scope rules had to be VALIDATED before anything was paid for, and a lookup costs money whether or not
+  // its answer is kept — the same reason resolve-wonwork-domains.ts stopped "looking up and discarding".
+  // It answers the three questions that matter before a real run: is the eligible pool inside the old 1,500
+  // ceiling, are the companies that already have a website absent from the queue, and what does the
+  // non-prospect rule actually remove.
+  if (p.get('dry') === '1') {
+    return NextResponse.json({
+      ok: true, dry: true, stats,
+      ceiling: { eligible: pool.length, oldLimit: 1500, wouldHaveTruncated: pool.length > 1500 },
+      wouldLookUp: todo.length,
+      queue: todo.slice(0, 40).map((c: any) => ({ name: c.name, country: c.country, sector: c.sector, lookups: Number(c.domain_lookups ?? 0) })),
+      skippedNonProspect: skipped.slice(0, 40),
+      spentOnSearchEur: Number(spent.toFixed(3)), capEur,
+    });
+  }
+
 
   for (const c of todo) {
     // A company costs up to two model calls and a search: stop before one that the day cannot take.
@@ -133,7 +186,7 @@ async function run(req: Request) {
   console.log(`[resolve-domains] looked=${stats.looked} resolved=${stats.resolved} notFound=${stats.notFound} spent=€${spent.toFixed(2)} remaining=${remaining} chained=${chained}`);
 
   return NextResponse.json({
-    ok: true, stats, found, chained,
+    ok: true, stats, found, chained, skippedNonProspect: skipped.slice(0, 20),
     spentOnSearchEur: Number(spent.toFixed(3)), capEur,
     remainingInScope: remaining,
   });

@@ -243,9 +243,15 @@ export const PROBE_INDUSTRY = 'pharma_life_sciences';
  *
  * Only a transport failure is retried. A Postgres error means the statement reached the database, so
  * repeating it returns the same answer and would hide a real fault behind a pause.
+ *
+ * EXPORTED 2026-09-26 after this class failed a gate for the FOURTH time in one night — first shared-pool's
+ * cleanup, then capProbeToOneIndustry, then deleteTestWorkspace's cost_log detach, then today-probe's own
+ * followup_resolutions delete. Wrapping the shared primitives was not enough because several probes clean up
+ * rows that only they know about, with their own bare deletes. A probe that collects its own leftovers should
+ * wrap each delete in this rather than writing a fifth private retry or, as every one of them did, none.
  */
 const TRANSPORT_FAULT = /fetch failed|ETIMEDOUT|ECONNRESET|UND_ERR|socket hang up|network/i;
-async function withTransportRetry<T extends { error: { message: string } | null }>(run: () => PromiseLike<T>): Promise<T> {
+export async function withTransportRetry<T extends { error: { message: string } | null }>(run: () => PromiseLike<T>): Promise<T> {
   let last = await run();
   for (let i = 1; i <= 2 && last.error && TRANSPORT_FAULT.test(last.error.message); i++) {
     await new Promise((r) => setTimeout(r, 1500 * i));
