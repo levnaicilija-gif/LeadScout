@@ -6,9 +6,10 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { extractLead } from '../src/lib/ai/radar-extract';
+import { probeAdmin } from '../src/lib/test-data';
 
 const day = process.argv[2] ?? new Date().toISOString().slice(0, 10);
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 
 (async () => {
   const { data: runs } = await db.from('radar_runs').select('*').gte('started_at', `${day}T00:00:00Z`).lt('started_at', `${day}T23:59:59Z`).order('started_at');

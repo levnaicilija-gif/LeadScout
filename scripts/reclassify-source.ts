@@ -23,8 +23,9 @@ import { createClient } from '@supabase/supabase-js';
 import { classifySource } from '../src/lib/source-tier';
 import { Budget } from '../src/lib/cost';
 import { crawlWorkspace } from '../src/lib/crawl-workspace';
+import { probeAdmin } from '../src/lib/test-data';
 
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 const args = process.argv.slice(2);
 const write = args.includes('--write');
 const needles = args.filter((a) => !a.startsWith('--'));

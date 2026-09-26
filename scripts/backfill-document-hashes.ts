@@ -13,9 +13,10 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { contentHash } from '../src/lib/document-hash';
+import { probeAdmin } from '../src/lib/test-data';
 
 const write = process.argv.includes('--write');
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 
 (async () => {
   const { data: probe, error: probeError } = await admin.from('documents').select('content_sha256').limit(1);

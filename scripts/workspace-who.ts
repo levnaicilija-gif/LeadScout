@@ -1,7 +1,8 @@
 /** Read only: who is in each workspace (role, created, sign-in method, e-mail domain only), and whether it is marked test. */
 import { createClient } from '@supabase/supabase-js';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 (async () => {
   const { data: wss } = await db.from('workspaces').select('*');
   const { data: users } = await db.from('users').select('id, workspace_id, role, name, industry_follow, industry_limit');

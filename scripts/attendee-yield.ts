@@ -15,8 +15,9 @@ import { createClient } from '@supabase/supabase-js';
 import { attendeeMatch } from '../src/lib/attendee-match';
 import { fromAttendeeList } from '../src/lib/hiring-contacts';
 import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const relink = process.argv.includes('--relink');
 
 (async () => {

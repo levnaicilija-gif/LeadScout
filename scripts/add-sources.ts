@@ -11,9 +11,10 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { fetchPage, articleLinks } from '../src/lib/fetch-page';
+import { probeAdmin } from '../src/lib/test-data';
 
 const write = process.argv.includes('--write');
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 
 /** Candidates, most likely address first. The first that answers with articles wins. */
 const CANDIDATES: { name: string; type: 'news' | 'tender' | 'job_board'; region?: string; urls: string[] }[] = [

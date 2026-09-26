@@ -13,8 +13,9 @@ import { createClient } from '@supabase/supabase-js';
 import { classifyAward, classifyNews, classifyCompany, repeatedSentences, INDUSTRIES, type IndustryEvidence, type IndustryId } from '../src/lib/industry';
 import { leadSource } from '../src/lib/lead-source';
 import { LEAD_STATE_LEFT, withLeadState } from '../src/lib/workspace-state';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const write = process.argv.includes('--write');
 const OPEN = (s: string | null) => s !== 'stale' && s !== 'not_for_us';
 

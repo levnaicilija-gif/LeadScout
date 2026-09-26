@@ -7,9 +7,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { anonymize, buildBullets, piiRegexHits, piiModelReview } from '../src/lib/ai/documents';
 import { renderClientCv, clientCvText, clientCvAllowed, type ClientCvData } from '../src/lib/pdf/render';
+import { probeAdmin } from '../src/lib/test-data';
 
 const code = process.argv[2] ?? 'RFBT-F-0009';
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 
 const stage = async <T>(name: string, fn: () => Promise<T> | T): Promise<T> => {
   const t = Date.now();

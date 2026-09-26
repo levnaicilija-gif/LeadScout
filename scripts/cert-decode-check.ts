@@ -9,6 +9,7 @@
  *   npx tsx --env-file=.env.local scripts/cert-decode-check.ts --live   also decode what is on file
  */
 import { decodeIso9606 } from '../src/lib/certs/iso9606';
+import { probeAdmin } from '../src/lib/test-data';
 
 type Case = { name: string; raw: string; expect: string[] };
 
@@ -82,7 +83,7 @@ for (const c of CASES) {
 if (process.argv.includes('--live')) {
   (async () => {
     const { createClient } = await import('@supabase/supabase-js');
-    const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+    const db = probeAdmin();
     const { data } = await db.from('documents').select('extracted').eq('type', 'certificate').eq('cert_body', 'iso9606');
     for (const d of data ?? []) {
       const e = d.extracted as any;

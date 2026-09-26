@@ -20,9 +20,10 @@ import { createClient } from '@supabase/supabase-js';
 import { matchName, normName } from '../src/lib/name-match';
 import { judgeDuplicate } from '../src/lib/candidate-dedupe';
 import { candidateLabel } from '../src/lib/candidate-number';
+import { probeAdmin } from '../src/lib/test-data';
 
 const WRITE = process.argv.includes('--write');
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 
 (async () => {
   const { data: workspaces, error: wErr } = await db.from('workspaces').select('id, name, is_test').eq('is_test', false);

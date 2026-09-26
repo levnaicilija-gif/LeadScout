@@ -11,10 +11,11 @@
  *   npx tsx --env-file=.env.local scripts/merge-companies.ts --write "Ørsted" "Orsted"
  */
 import { createClient } from '@supabase/supabase-js';
+import { probeAdmin } from '../src/lib/test-data';
 
 const write = process.argv.includes('--write');
 const [keepName, dropName] = process.argv.slice(2).filter((a) => a !== '--write');
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 
 /** Every table that points at companies(id), from the schema. */
 const REFS: { table: string; column: string }[] = [

@@ -12,9 +12,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { fetchPage } from '../src/lib/fetch-page';
 import { phoneOn } from '../src/lib/hiring-contacts';
+import { probeAdmin } from '../src/lib/test-data';
 
 const write = process.argv.includes('--write');
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const digits = (s: string | null | undefined) => String(s ?? '').replace(/\D/g, '');
 
 (async () => {

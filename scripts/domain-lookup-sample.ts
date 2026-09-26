@@ -17,11 +17,12 @@ import { crawlWorkspace } from '../src/lib/crawl-workspace';
 import { lookupDomain, type LookupResult } from '../src/lib/domain-lookup';
 import { fetchNoticeXml, publicationNumber, winnerAddress, type WinnerAddress } from '../src/lib/tender/winner-address';
 import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
+import { probeAdmin } from '../src/lib/test-data';
 
 const arg = (k: string, d: string) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const N = Number(arg('--n', '8'));
 const MAX_EUR = Number(arg('--max-eur', '1.2'));
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const ISO3_TO_2: Record<string, string> = { FRA: 'FR', DEU: 'DE', BEL: 'BE', NLD: 'NL', DNK: 'DK', NOR: 'NO', SWE: 'SE', FIN: 'FI', POL: 'PL', CZE: 'CZ', AUT: 'AT', ESP: 'ES', ITA: 'IT', PRT: 'PT', EST: 'EE', LVA: 'LV', LTU: 'LT', HRV: 'HR', SVN: 'SI', SVK: 'SK', ROU: 'RO', BGR: 'BG', HUN: 'HU', IRL: 'IE', GBR: 'GB', LUX: 'LU', GRC: 'GR', CHE: 'CH' };
 
 async function pageText(url: string): Promise<string> {

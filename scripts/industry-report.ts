@@ -7,8 +7,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { INDUSTRIES, classifyAward, classifyNews, classifyCompany, repeatedSentences, type Classification } from '../src/lib/industry';
 import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const showEvidence = process.argv.includes('--evidence');
 
 (async () => {

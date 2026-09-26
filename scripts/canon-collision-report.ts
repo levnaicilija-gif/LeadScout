@@ -35,8 +35,9 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { canonCompany, canonDomain, sameCompany } from '../src/lib/company-identity';
+import { probeAdmin } from '../src/lib/test-data';
 
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 
 /** A word that on its own identifies nobody — a name reduced to one of these has lost its brand. */
 const GENERIC = /^(group|holding|holdings|energi|energy|energie|marine|nord|sud|international|europe|nordic|service|services|solutions|industri|industries|bau|invest|projekt|project|as|gruppen)$/i;

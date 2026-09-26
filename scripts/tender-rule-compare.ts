@@ -40,8 +40,9 @@ import { createClient } from '@supabase/supabase-js';
 import { searchTed, AWARD_FIELDS } from '../src/lib/tender/ted';
 import { AWARD_NOTICE_TYPES, tradeCpvFor } from '../src/lib/tender/cpv';
 import { tradeBuyerFor } from '../src/lib/tender/buyers';
+import { probeAdmin } from '../src/lib/test-data';
 
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 const DAYS = Number(process.argv[2] ?? 60);
 const stamp = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, '');
 const TO = stamp(new Date());

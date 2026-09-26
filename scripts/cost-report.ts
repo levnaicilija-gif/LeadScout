@@ -15,8 +15,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { isRecruiterTool, RECRUITER_TOOLS, UNATTRIBUTED } from '../src/lib/ai/tools';
 import { DAILY_BUDGET_EUR, isTestSpend } from '../src/lib/cost';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const arg = (name: string) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : undefined; };
 const since = arg('--since');
 const until = arg('--until');

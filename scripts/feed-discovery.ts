@@ -42,8 +42,9 @@ import * as cheerio from 'cheerio';
 import { fetchPage, articleLinks, type Fetched } from '../src/lib/fetch-page';
 import { httpGet } from '../src/lib/http';
 import { ruleFor } from '../src/lib/source-rules';
+import { probeAdmin } from '../src/lib/test-data';
 
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 
 const args = process.argv.slice(2);
 const WRITE = args.includes('--write');

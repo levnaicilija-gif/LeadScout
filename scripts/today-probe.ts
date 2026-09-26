@@ -21,11 +21,11 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium, type Page } from 'playwright';
-import { capProbeToOneIndustry, markWorkspaceTest, removeProbe, withTransportRetry } from '../src/lib/test-data';
+import { capProbeToOneIndustry, markWorkspaceTest, removeProbe, withTransportRetry, probeAdmin } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'http://localhost:3163';
 const stamp = Date.now();
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 const shim = 'globalThis.__name = globalThis.__name || function (f) { return f; };';
 
 let failures = 0;

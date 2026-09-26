@@ -13,9 +13,10 @@ import { createClient } from '@supabase/supabase-js';
 import { siteScope } from '../src/lib/site-scope';
 import { fetchNoticeXml, publicationNumber, winnerAddress } from '../src/lib/tender/winner-address';
 import { hasDomainProvenance } from '../src/lib/schema-features';
+import { probeAdmin } from '../src/lib/test-data';
 
 const write = process.argv.includes('--write');
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const ISO3_TO_2: Record<string, string> = { FRA: 'FR', DEU: 'DE', BEL: 'BE', NLD: 'NL', DNK: 'DK', NOR: 'NO', SWE: 'SE', FIN: 'FI', POL: 'PL', CZE: 'CZ', AUT: 'AT', ESP: 'ES', ITA: 'IT', PRT: 'PT', EST: 'EE', LVA: 'LV', LTU: 'LT', HRV: 'HR', SVN: 'SI', SVK: 'SK', ROU: 'RO', BGR: 'BG', HUN: 'HU', IRL: 'IE', GBR: 'GB', LUX: 'LU', GRC: 'GR', CHE: 'CH' };
 
 (async () => {

@@ -1,8 +1,9 @@
 /** Read only: does the senior of a named workspace sign in with the given e-mail? Prints match / no match, never the address. */
 import { createClient } from '@supabase/supabase-js';
+import { probeAdmin } from '../src/lib/test-data';
 
 const [name, email] = [process.argv[2], (process.argv[3] ?? '').toLowerCase()];
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 (async () => {
   const { data: ws } = await db.from('workspaces').select('id, created_at').eq('name', name);
   if (ws?.length !== 1) { console.log(`workspaces named ${name}: ${ws?.length ?? 0}`); return; }

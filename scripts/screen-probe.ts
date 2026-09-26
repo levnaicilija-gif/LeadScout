@@ -12,13 +12,13 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
-import { markWorkspaceTest, removeProbe } from '../src/lib/test-data';
+import { markWorkspaceTest, removeProbe, probeAdmin } from '../src/lib/test-data';
 
 const BASE = process.env.SCREEN_BASE ?? 'https://leadscout-rfbt.vercel.app';
 const PATH = process.argv[2] ?? '/app/radar?tab=hiring';
 const EMAIL = `screen+${Date.now()}@rfbt-recruitment.com`;
 const PASSWORD = 'probe-password-0123456789';
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 
 (async () => {
   // The real workspace is the one with the candidates in it, not one of the probe leftovers.

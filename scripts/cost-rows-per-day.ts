@@ -1,7 +1,8 @@
 /** Read only: cost_log rows and euros per day across all workspaces, counted exactly (not capped at 1,000 rows). */
 import { createClient } from '@supabase/supabase-js';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 (async () => {
   const byDay: Record<string, { rows: number; eur: number }> = {};
   for (let f = 0; ; f += 1000) {

@@ -10,8 +10,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { CERT_TABLE } from '../src/lib/certs/tables';
 import { writeEntry } from '../src/lib/certs/library';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 
 (async () => {
   const probe = await db.from('cert_library').select('id').limit(1);

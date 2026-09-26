@@ -11,8 +11,9 @@ import { newsLeadAge, tenderLeadAge, postingAge, reAdverts, roleKey, AGE_RULES, 
 import { leadSource, primaryArticle } from '../src/lib/lead-source';
 import { awardDateFromText } from '../src/lib/tender/award';
 import { COMPANY_STATE_LEFT, LEAD_STATE_EMBED, withCompanyState, withLeadState } from '../src/lib/workspace-state';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const STATES: AgeState[] = ['fresh', 'flagged', 'stale', 'unknown'];
 
 async function all<T>(q: (from: number) => PromiseLike<{ data: T[] | null; error: any }>) {

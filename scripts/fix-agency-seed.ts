@@ -8,9 +8,10 @@
 import fs from 'fs';
 import { parse } from 'csv-parse/sync';
 import { createClient } from '@supabase/supabase-js';
+import { probeAdmin } from '../src/lib/test-data';
 
 const write = process.argv.includes('--write');
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 
 const RECRUITMENT = /recruit|staffing|manpower|personnel|crewing|crew management|resourcing|workforce|talent|secondment|detacher|uitzend|bemanning|temporary|contract(or)? (staff|labour|personnel)|global mobility|payroll/i;
 const EMPLOYER = /\bepc\b|contractor|engineering|fabrication|industrial services|maintenance|shipyard|yard|marine construction|dredging|insulation|surface protection|project services|installation/i;

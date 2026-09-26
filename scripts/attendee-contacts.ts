@@ -25,8 +25,9 @@ import { fetchPage } from '../src/lib/fetch-page';
 import { Budget } from '../src/lib/cost';
 import { recordPersonContact, addToQuotedContact } from '../src/lib/person-contact';
 import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const search = process.argv.includes('--search');
 const write = process.argv.includes('--write');
 const quotedOnly = process.argv.includes('--quoted-only');

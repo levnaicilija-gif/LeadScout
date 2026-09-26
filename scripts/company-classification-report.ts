@@ -18,8 +18,9 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { classifyCompany, quotedIn } from '../src/lib/industry';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 
 /** Every row, in pages: PostgREST stops at 1000 in silence (CLAUDE.md, all-rows). */
 async function every<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>): Promise<T[]> {

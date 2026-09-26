@@ -14,8 +14,9 @@ import { sourceFlag } from '../src/lib/source-quality';
 import { hasSourceFlag } from '../src/lib/schema-features';
 import { leadSource } from '../src/lib/lead-source';
 import { LEAD_STATE_LEFT, withLeadState } from '../src/lib/workspace-state';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const WRITE = process.argv.includes('--write');
 
 (async () => {

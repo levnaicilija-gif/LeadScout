@@ -8,12 +8,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { parse } from 'csv-parse/sync';
 import fs from 'fs';
+import { probeAdmin } from '../src/lib/test-data';
 
 const ws = process.argv[2];
 if (!ws) throw new Error('usage: npm run seed -- <workspace_id> [--force-people]');
 const forcePeople = process.argv.includes('--force-people');
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const csv = (f: string) => parse(fs.readFileSync(`seeds/${f}`), { columns: true, skip_empty_lines: true }) as any[];
 /** Never let a write fail quietly — a half-seeded workspace looks like a working one. */
 const check = (label: string, { error }: { error: unknown }) => {

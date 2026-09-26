@@ -13,6 +13,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { runRlsSweep, recordRlsSweep, sweepSummary } from '../src/lib/rls-sweep';
+import { probeAdmin } from '../src/lib/test-data';
 
 (async () => {
   const r = await runRlsSweep();
@@ -25,7 +26,7 @@ import { runRlsSweep, recordRlsSweep, sweepSummary } from '../src/lib/rls-sweep'
     ? `catalogue: ${r.catalog.noPolicy.length ? `RLS on with no policy — ${r.catalog.noPolicy.join(', ')}` : 'no table has RLS on without a policy'}`
     : 'catalogue: not checked (rls_tables_without_policy arrives with migration 0026)');
   if (!process.argv.includes('--no-record')) {
-    const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+    const admin = probeAdmin();
     const notKept = await recordRlsSweep(admin, r, process.env.RLS_SWEEP_SOURCE === 'gate' ? 'gate' : 'manual');
     console.log(notKept ? `result not recorded: ${notKept}` : 'result recorded for Home');
   }

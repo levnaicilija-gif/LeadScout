@@ -11,8 +11,9 @@ import { createClient } from '@supabase/supabase-js';
 import { compoundFor, boostedFit, boostedPressure, leadSignal, postingSignals, SIGNAL_WINDOW_DAYS, type Signal } from '../src/lib/compound-signals';
 import { groupByCompany } from '../src/components/HiringNow';
 import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const OPEN = '("stale","not_for_us")';
 
 (async () => {

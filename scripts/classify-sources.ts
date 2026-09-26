@@ -16,10 +16,11 @@ import { z } from 'zod';
 import { httpGet } from '../src/lib/http';
 import { claude, MODEL_CLASSIFY } from '../src/lib/ai/claude';
 import { modelCostEur } from '../src/lib/cost';
+import { probeAdmin } from '../src/lib/test-data';
 
 const CACHE = path.join(process.cwd(), '.cache', 'source-tiers.json');
 const applyOnly = process.argv.includes('--apply');
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 
 const Verdict = z.object({
   relevance: z.number().min(0).max(100),

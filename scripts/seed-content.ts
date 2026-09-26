@@ -10,8 +10,9 @@
 import fs from 'fs';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const read = (f: string) => JSON.parse(fs.readFileSync(path.join(process.cwd(), 'seeds', f), 'utf8'));
 
 (async () => {

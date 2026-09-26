@@ -1,7 +1,8 @@
 /** Read only: has anything a crawl or job writes landed under a workspace other than the one holding the sources? */
 import { createClient } from '@supabase/supabase-js';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const TABLES = ['cost_log', 'radar_runs', 'radar_verdicts', 'job_ticks', 'companies', 'leads', 'people', 'job_posts', 'sources', 'contacts'];
 (async () => {
   const { data: wss } = await db.from('workspaces').select('id, name');

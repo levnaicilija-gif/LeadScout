@@ -10,9 +10,10 @@
  *   npx tsx --env-file=.env.local scripts/dedupe-contacts.ts --write    delete the copies
  */
 import { createClient } from '@supabase/supabase-js';
+import { probeAdmin } from '../src/lib/test-data';
 
 const write = process.argv.includes('--write');
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const key = (c: any) => `${c.company_id}|${String(c.name ?? '').toLowerCase().replace(/\s+/g, ' ').trim()}`;
 
 (async () => {

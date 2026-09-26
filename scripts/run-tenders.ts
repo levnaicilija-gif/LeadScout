@@ -10,8 +10,9 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { ingestTedAwards, tedWindowFor } from '../src/lib/tender/ingest';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const arg = (name: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : undefined; };
 const flag = (name: string) => process.argv.includes(`--${name}`);
 

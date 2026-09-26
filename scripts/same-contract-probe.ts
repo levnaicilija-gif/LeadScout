@@ -11,10 +11,10 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { findSameContract, mergeSameContract, type SourceRecord } from '../src/lib/same-contract';
-import { markTest, deleteTestRows } from '../src/lib/test-data';
+import { markTest, deleteTestRows, probeAdmin } from '../src/lib/test-data';
 import { leadSource } from '../src/lib/lead-source';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const RUN = Date.now();
 const NEWS = 'https://example.invalid';
 const TED = 'https://ted.europa.eu/en/notice/-/detail';

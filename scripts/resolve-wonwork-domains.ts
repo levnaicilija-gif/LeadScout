@@ -28,13 +28,14 @@ import { leadSource } from '../src/lib/lead-source';
 import { siteScope } from '../src/lib/site-scope';
 import { hasDomainProvenance } from '../src/lib/schema-features';
 import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
+import { probeAdmin } from '../src/lib/test-data';
 
 const write = process.argv.includes('--write');
 const retriesOnly = process.argv.includes('--retries-only');
 const limitAt = process.argv.indexOf('--limit');
 const LIMIT = limitAt > 0 ? Number(process.argv[limitAt + 1]) : 200;
 const MAX_LOOKUPS = 2;
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const ISO3_TO_2: Record<string, string> = { FRA: 'FR', DEU: 'DE', BEL: 'BE', NLD: 'NL', DNK: 'DK', NOR: 'NO', SWE: 'SE', FIN: 'FI', POL: 'PL', CZE: 'CZ', AUT: 'AT', ESP: 'ES', ITA: 'IT', PRT: 'PT', EST: 'EE', LVA: 'LV', LTU: 'LT', HRV: 'HR', SVN: 'SI', SVK: 'SK', ROU: 'RO', BGR: 'BG', HUN: 'HU', IRL: 'IE', GBR: 'GB', LUX: 'LU', GRC: 'GR', CHE: 'CH', CYP: 'CY', MLT: 'MT', ISL: 'IS' };
 
 async function html(url: string) {

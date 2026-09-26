@@ -10,8 +10,9 @@ import path from 'path';
 import { parse } from 'csv-parse/sync';
 import { createClient } from '@supabase/supabase-js';
 import { httpGet } from '../src/lib/http';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const rows = parse(fs.readFileSync(path.join(process.cwd(), 'seeds', 'company_domains_from_v1.csv')), { columns: true, skip_empty_lines: true }) as any[];
 const clean = (d: string) => d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
 

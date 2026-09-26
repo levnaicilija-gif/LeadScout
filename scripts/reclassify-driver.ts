@@ -9,11 +9,12 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'fs';
+import { probeAdmin } from '../src/lib/test-data';
 
 const BASE = 'https://leadscout-rfbt.vercel.app';
 const arg = (k: string) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : undefined; };
 const notBefore = new Date(arg('--not-before') ?? '2026-09-15T00:05:00Z').getTime();
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const stamp = () => new Date().toISOString().slice(0, 19) + 'Z';
 

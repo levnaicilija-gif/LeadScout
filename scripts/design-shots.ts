@@ -10,14 +10,14 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
-import { markWorkspaceTest, deleteTestWorkspace, followAllForProbe } from '../src/lib/test-data';
+import { markWorkspaceTest, deleteTestWorkspace, followAllForProbe, probeAdmin } from '../src/lib/test-data';
 import fs from 'node:fs';
 
 const BASE = process.env.SCREEN_BASE ?? 'https://leadscout-rfbt.vercel.app';
 const OUT = process.env.SHOT_DIR ?? '.cache/shots';
 const EMAIL = `shots+${Date.now()}@rfbt-recruitment.com`;
 const PASSWORD = 'probe-password-0123456789';
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 
 const SIGNED_OUT = [['login', '/login'], ['signup', '/signup']];
 const SIGNED_IN = [

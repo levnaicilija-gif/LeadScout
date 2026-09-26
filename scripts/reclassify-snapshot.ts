@@ -9,9 +9,10 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync, writeFileSync } from 'fs';
+import { probeAdmin } from '../src/lib/test-data';
 
 const mode = process.argv[2];
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const COLS = 'id, name, employer_type, employer_type_override, employer_type_source, employer_type_reason, employer_type_evidence, employer_type_checked_at, careers_url';
 const s = (v: any) => (typeof v === 'string' ? v : JSON.stringify(v ?? ''));
 

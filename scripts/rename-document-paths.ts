@@ -26,9 +26,10 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { documentPath } from '../src/lib/storage-path';
+import { probeAdmin } from '../src/lib/test-data';
 
 const write = process.argv.includes('--write');
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 
 const leafOf = (p: string) => p.split('/').pop() ?? '';
 const folderOf = (p: string) => p.split('/').slice(0, -1).join('/');

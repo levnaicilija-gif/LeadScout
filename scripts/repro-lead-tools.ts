@@ -6,9 +6,10 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { jdFromLead, screeningQuestions, draftOutreach, scoreAgainstJob, anonymize } from '../src/lib/ai/documents';
+import { probeAdmin } from '../src/lib/test-data';
 
 const leadId = process.argv[2];
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 
 const stage = async <T>(name: string, fn: () => Promise<T>): Promise<T | null> => {
   const t = Date.now();

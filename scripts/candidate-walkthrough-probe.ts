@@ -20,14 +20,14 @@
 import fs from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
 import { chromium, type Browser, type Page } from 'playwright';
-import { followAllForProbe, markWorkspaceTest, removeProbe } from '../src/lib/test-data';
+import { followAllForProbe, markWorkspaceTest, removeProbe, probeAdmin } from '../src/lib/test-data';
 import { candidateLabel } from '../src/lib/candidate-number';
 
 const BASE = process.argv[2] ?? 'http://localhost:3100';
 const CV = 'fixtures/sandblaster-cv.docx';
 const CERT = 'fixtures/test-certificate.pdf';
 const CLIENT = 'Test Client Ltd';
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 const today = new Date().toISOString().slice(0, 10);
 const shim = 'globalThis.__name = globalThis.__name || function (f) { return f; };';
 

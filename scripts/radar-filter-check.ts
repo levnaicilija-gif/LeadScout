@@ -9,8 +9,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { evaluateNews, timeline, REJECT_MONTHS } from '../src/lib/radar-filter';
 import { quotedInText, companyAliases, excludedRole } from '../src/lib/quoted-contacts';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 let failures = 0;
 const check = (ok: boolean, what: string, detail = '') => {
   if (!ok) failures++;

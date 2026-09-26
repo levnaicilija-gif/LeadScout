@@ -13,11 +13,11 @@
 import fs from 'fs';
 import { chromium, type Browser, type Page } from 'playwright';
 import { createClient } from '@supabase/supabase-js';
-import { markWorkspaceTest, removeProbe } from '../src/lib/test-data';
+import { markWorkspaceTest, removeProbe, probeAdmin } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'https://leadscout-rfbt.vercel.app';
 const SHOTS = '.cache/shots-first-signin';
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 const PASSWORD = 'probe-password-0123456789';
 let failed = 0;
 const check = (ok: boolean, what: string, detail = '') => { if (!ok) failed++; console.log(`${ok ? '  PASS' : '  FAIL'}  ${what}${detail ? ` — ${detail}` : ''}`); };

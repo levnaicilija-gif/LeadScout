@@ -1,6 +1,7 @@
 /** Probe the live database for each migration's artifacts. npx tsx --env-file=.env.local scripts/migrations-status.ts */
 import { createClient } from '@supabase/supabase-js';
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+import { probeAdmin } from '../src/lib/test-data';
+const db = probeAdmin();
 
 const col = async (table: string, column: string) => {
   const { error } = await db.from(table).select(column).limit(1);

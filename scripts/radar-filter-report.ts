@@ -25,8 +25,9 @@ import { leadSource } from '../src/lib/lead-source';
 import { canonCompany } from '../src/lib/company-identity';
 import { hasRadarVerdicts } from '../src/lib/schema-features';
 import { LEAD_STATE_EMBED, LEAD_STATE_LEFT, LEAD_STATE_TABLE, withLeadState } from '../src/lib/workspace-state';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const NADARA = '5324198d-3df2-400c-95f9-95db88c2f7bf';
 const DWT = '9fb3d5b1-25ee-4022-9086-7369e3137d7f';
 const ACTIVE = ['pursue', 'contacted', 'replied', 'call', 'trial', 'framework'];

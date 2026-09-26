@@ -11,8 +11,9 @@ import { createClient } from '@supabase/supabase-js';
 import { reAdverts, roleKey } from '../src/lib/lead-age';
 import { leadSource } from '../src/lib/lead-source';
 import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const DAY = 86_400_000;
 const within = (d: string | null | undefined, days = 60) => !!d && Date.now() - Date.parse(String(d).slice(0, 10)) <= days * DAY;
 

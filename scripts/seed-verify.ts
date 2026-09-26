@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
+import { probeAdmin } from '../src/lib/test-data';
 const ws = process.argv[2];
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 (async () => {
   for (const t of ['sources', 'people', 'companies']) {
     const { count } = await db.from(t).select('id', { count: 'exact', head: true }).eq('workspace_id', ws);

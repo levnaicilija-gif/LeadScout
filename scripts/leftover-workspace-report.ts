@@ -1,8 +1,9 @@
 /** Read only: what a probe workspace still holds, and whether every row is marked is_test. `npx tsx --env-file=.env.local scripts/leftover-workspace-report.ts <workspace-id>` */
 import { createClient } from '@supabase/supabase-js';
+import { probeAdmin } from '../src/lib/test-data';
 
 const id = process.argv[2];
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 (async () => {
   const { data: ws } = await db.from('workspaces').select('id, name, is_test, created_at').eq('id', id).maybeSingle();
   console.log(`workspace: ${JSON.stringify(ws)}`);

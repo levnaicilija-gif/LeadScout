@@ -9,10 +9,11 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { detachDocument } from '../src/lib/detach-document';
+import { probeAdmin } from '../src/lib/test-data';
 
 const [id, reason] = [process.argv[2], process.argv[3]];
 const write = process.argv.includes('--write');
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 
 (async () => {
   if (!id || !reason || reason === '--write') { console.error('usage: detach-document.ts <document-id> "<reason>" [--write]'); process.exit(1); }

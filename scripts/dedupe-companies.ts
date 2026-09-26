@@ -11,9 +11,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { canonCompany, canonDomain, sameCompany } from '../src/lib/company-identity';
 import { COMPANY_STATE_LEFT, withCompanyState } from '../src/lib/workspace-state';
+import { probeAdmin } from '../src/lib/test-data';
 
 const write = process.argv.includes('--write');
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 
 /** Every table that points at companies(id). */
 const REFS: { table: string; column: string }[] = [

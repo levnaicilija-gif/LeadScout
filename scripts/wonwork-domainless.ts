@@ -1,8 +1,9 @@
 /** Item 21, read only: the won-work companies with no domain on file — countries, a name sample, and what resolve-domains has already tried. */
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'fs';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 (async () => {
   const rows: any[] = JSON.parse(readFileSync('.cache/wonwork-contacts-before.json', 'utf8'));
   const ids = [...new Set(rows.filter((r) => !r.domain).map((r) => r.company_id))];

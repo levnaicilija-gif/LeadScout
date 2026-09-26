@@ -12,7 +12,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium, type Page } from 'playwright';
-import { followAllForProbe, markWorkspaceTest, removeProbe } from '../src/lib/test-data';
+import { followAllForProbe, markWorkspaceTest, removeProbe, probeAdmin } from '../src/lib/test-data';
 import { siteTrust } from '../src/lib/site-trust';
 import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
 
@@ -20,7 +20,7 @@ const BASE = process.argv[2] ?? 'http://localhost:3100';
 const NAMES = process.argv.slice(3).length ? process.argv.slice(3) : ['ALLEZ ENERGIES', 'COLAS FRANCE', 'Aellia Belgium NV (anciennement Intero the Sniffers)'];
 const EMAIL = `site-trust-probe+${Date.now()}@rfbt-recruitment.com`;
 const PASSWORD = `probe-${Date.now()}-0123456789`;
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 
 let failures = 0;
 const check = (ok: boolean, what: string, detail = '') => { if (!ok) failures++; console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${what}${detail ? ` — ${detail}` : ''}`); };

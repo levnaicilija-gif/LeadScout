@@ -10,12 +10,12 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
-import { markWorkspaceTest, removeProbe, followAllForProbe } from '../src/lib/test-data';
+import { markWorkspaceTest, removeProbe, followAllForProbe, probeAdmin } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'http://localhost:3000';
 const EMAIL = `drawer-e2e+${Date.now()}@rfbt-recruitment.com`;
 const PASSWORD = 'probe-password-0123456789';
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 
 /**
  * Every tool, with what proves it produced something real.

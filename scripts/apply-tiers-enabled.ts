@@ -6,8 +6,9 @@
  */
 import fs from 'fs';
 import { createClient } from '@supabase/supabase-js';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const verdicts = JSON.parse(fs.readFileSync('.cache/source-tiers.json', 'utf8')) as any[];
 
 (async () => {

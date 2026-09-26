@@ -2,9 +2,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { isEuropean } from '../src/lib/geo';
 import { LEAD_STATE_LEFT, withLeadState } from '../src/lib/workspace-state';
+import { probeAdmin } from '../src/lib/test-data';
 
 const names = process.argv.slice(2);
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 (async () => {
   for (const name of names) {
     const { data: cos } = await db.from('companies').select('id, name, country, employer_type, employer_type_source').eq('name', name);

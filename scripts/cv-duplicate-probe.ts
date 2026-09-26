@@ -19,10 +19,10 @@
 import { chromium } from 'playwright';
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync, existsSync } from 'fs';
-import { markWorkspaceTest, followAllForProbe, removeProbe } from '../src/lib/test-data';
+import { markWorkspaceTest, followAllForProbe, removeProbe, probeAdmin } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'http://localhost:3000';
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 const stamp = Date.now();
 
 const CV = ['.cache/repro/Marian_M_CV_-_SANDBLASTER.docx', 'fixtures/sandblaster-cv.docx'].find((p) => existsSync(p));

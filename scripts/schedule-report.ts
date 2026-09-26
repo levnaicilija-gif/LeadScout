@@ -8,8 +8,9 @@
  * the last 15 minutes, or when a tick failed or was killed in the window.
  */
 import { createClient } from '@supabase/supabase-js';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const hours = Number(process.argv.find((a) => /^\d+$/.test(a)) ?? 24);
 const expectCron = process.argv.includes('--expect-cron');
 

@@ -14,8 +14,9 @@ import { createClient } from '@supabase/supabase-js';
 import { writeFileSync } from 'fs';
 import { leadSource } from '../src/lib/lead-source';
 import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const saveAt = process.argv.includes('--save') ? process.argv[process.argv.indexOf('--save') + 1] : null;
 
 (async () => {

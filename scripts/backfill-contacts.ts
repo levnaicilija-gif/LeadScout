@@ -9,9 +9,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { extractLead } from '../src/lib/ai/radar-extract';
 import { linkedinSearchUrl, googleSearchUrl } from '../src/lib/search-urls';
+import { probeAdmin } from '../src/lib/test-data';
 
 const write = process.argv.includes('--write');
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 
 (async () => {
   const { data: leads } = await db

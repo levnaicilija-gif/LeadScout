@@ -17,7 +17,7 @@
 import fs from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
 import { chromium, type Page } from 'playwright';
-import { followAllForProbe, markWorkspaceTest, removeProbe } from '../src/lib/test-data';
+import { followAllForProbe, markWorkspaceTest, removeProbe, probeAdmin } from '../src/lib/test-data';
 import { candidateLabel } from '../src/lib/candidate-number';
 
 const BASE = process.argv[2] ?? 'http://localhost:3100';
@@ -27,7 +27,7 @@ const CV = 'fixtures/sandblaster-cv.docx';
 const CERT = 'fixtures/test-certificate.pdf';
 const EMAIL = `candidate-docs-probe+${Date.now()}@rfbt-recruitment.com`;
 const PASSWORD = `probe-${Date.now()}-0123456789`;
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 
 let failures = 0;
 const check = (ok: boolean, what: string, detail = '') => { if (!ok) failures++; console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${what}${detail ? ` — ${detail}` : ''}`); };

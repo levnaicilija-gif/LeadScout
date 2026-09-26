@@ -11,13 +11,13 @@ import fs from 'fs';
 import { execSync } from 'node:child_process';
 import { createClient } from '@supabase/supabase-js';
 import { chromium, type Page } from 'playwright';
-import { markWorkspaceTest, markTest, removeProbe, capProbeToOneIndustry } from '../src/lib/test-data';
+import { markWorkspaceTest, markTest, removeProbe, capProbeToOneIndustry, probeAdmin } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'https://leadscout-rfbt.vercel.app';
 const EMAIL = `smoke+${Date.now()}@rfbt-recruitment.com`;
 const PASSWORD = 'probe-password-0123456789';
 const CV = fs.existsSync('fixtures/sandblaster-cv.docx') ? 'fixtures/sandblaster-cv.docx' : null;
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 
 let failures = 0;
 const check = (ok: boolean, what: string, detail = '') => {

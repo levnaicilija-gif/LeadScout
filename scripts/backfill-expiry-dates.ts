@@ -23,8 +23,9 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { printedDate } from '../src/lib/printed-date';
+import { probeAdmin } from '../src/lib/test-data';
 
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 const write = process.argv.includes('--write');
 
 (async () => {

@@ -16,8 +16,9 @@ import { createClient } from '@supabase/supabase-js';
 import { httpGet } from '../src/lib/http';
 import { datesFromHtml, datelineFromText } from '../src/lib/page-dates';
 import { hasColumn } from '../src/lib/schema-features';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const WRITE = process.argv.includes('--write');
 const TED = 'https://ted.europa.eu/';
 

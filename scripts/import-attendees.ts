@@ -15,6 +15,7 @@
 import fs from 'fs';
 import { createClient } from '@supabase/supabase-js';
 import { planImport, type IncomingAttendee } from '../src/lib/attendee-import';
+import { probeAdmin } from '../src/lib/test-data';
 
 const args = process.argv.slice(2);
 const target = args.find((a) => !a.startsWith('--') && args[args.indexOf(a) - 1] !== '--event');
@@ -59,7 +60,7 @@ function parse(html: string) {
   console.log(`list "${event}": ${people.length} attendee rows (${trCount} <tr> in the table, 1 header) · ${hiddenEmails} titles hidden behind an e-mail link, stored as unknown · ${html.length} bytes`);
   console.log('taken to be newer than the lists already on file: a different title replaces the stored one, which is kept in title_history');
 
-  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+  const db = probeAdmin();
   const { data: ws, error: wsErr } = await db.from('workspaces').select('id').eq('name', 'RFBT Recruitment').single();
   if (wsErr || !ws) throw new Error(`the real workspace was not found: ${wsErr?.message}`);
   const probe = await db.from('people').select('seen_at_events, title_history').limit(1);

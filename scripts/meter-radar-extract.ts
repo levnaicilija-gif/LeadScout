@@ -15,8 +15,9 @@ import { createClient } from '@supabase/supabase-js';
 import { extractLead, extractJobPost } from '../src/lib/ai/radar-extract';
 import { MODEL_EXTRACT } from '../src/lib/ai/claude';
 import { modelCostEur, logModelCall } from '../src/lib/cost';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 const N = Number(process.argv[process.argv.indexOf('--sample') + 1]) || 24;
 
 async function all<T>(q: (from: number) => PromiseLike<{ data: T[] | null; error: any }>) {

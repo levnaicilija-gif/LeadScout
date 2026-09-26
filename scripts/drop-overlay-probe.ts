@@ -17,13 +17,13 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium, type JSHandle, type Page } from 'playwright';
-import { followAllForProbe, markWorkspaceTest, removeProbe } from '../src/lib/test-data';
+import { followAllForProbe, markWorkspaceTest, removeProbe, probeAdmin } from '../src/lib/test-data';
 import { hasCandidateCrm } from '../src/lib/schema-features';
 
 const BASE = process.argv[2] ?? 'http://localhost:3100';
 const EMAIL = `drop-overlay-probe+${Date.now()}@rfbt-recruitment.com`;
 const PASSWORD = `probe-${Date.now()}-0123456789`;
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const admin = probeAdmin();
 const shim = 'globalThis.__name = globalThis.__name || function (f) { return f; };';
 
 let failures = 0;

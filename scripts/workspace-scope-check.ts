@@ -14,8 +14,9 @@ import { readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { crawlWorkspace } from '../src/lib/crawl-workspace';
 import { Budget, DAILY_BUDGET_EUR, spentTodayEur, spentTodaySplit } from '../src/lib/cost';
+import { probeAdmin } from '../src/lib/test-data';
 
-const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const db = probeAdmin();
 let failed = 0;
 const check = (ok: boolean, what: string, detail = '') => { console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${what}${detail ? ` — ${detail}` : ''}`); if (!ok) failed++; };
 
