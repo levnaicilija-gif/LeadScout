@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { allRows } from './all-rows';
 
 /**
@@ -298,4 +298,44 @@ export async function followAllForProbe(db: SupabaseClient, uid: string): Promis
   const { error } = await withTransportRetry(() => db.from('users').update({ industry_follow: ['all'], industry_follow_set_at: new Date().toISOString() }).eq('id', uid));
   if (!error || error.code === '42703' || /industry_follow/.test(error.message) && /does not exist|schema cache/i.test(error.message)) return null;
   return `the probe account could not be set to follow all industries: ${error.message}`;
+}
+
+/**
+ * A SERVICE CLIENT THAT SURVIVES A TRANSPORT BLIP, for probes and gate scripts.
+ *
+ * THE FIFTH CLEANUP FAILURE IN ONE NIGHT IS WHY THIS EXISTS AT THE CLIENT RATHER THAN AT EACH CALL. The
+ * fault is documented and environmental: undici cannot complete a NEW TCP handshake under a gate's load, so
+ * a request rejects with `TypeError: fetch failed` before any HTTP response exists. It has now failed
+ * shared-pool's cleanup, capProbeToOneIndustry, deleteTestWorkspace's cost_log detach, today-probe's
+ * followup_resolutions delete and priority-window's leads delete. Each time it was fixed where it happened,
+ * and each time the next one was somewhere else — 22 probes carry their own cleanup deletes, and 108 scripts
+ * build a service client with the identical three arguments.
+ *
+ * priority-window showed why per-call patching is the wrong altitude: ONE blip on the leads delete left the
+ * leads in place, so the companies delete hit leads_company_id_fkey, so the workspace delete hit
+ * companies_workspace_id_fkey. One transport failure, three reported errors, one stranded workspace.
+ *
+ * ONLY A REJECTED FETCH IS RETRIED — no HTTP response means the statement never reached the database, so
+ * repeating it is safe. Anything that ANSWERS is returned untouched, including a 401, a 403 and an RLS-
+ * filtered empty result, because those are exactly what the write probes assert on and a retry there would
+ * mask a real verdict.
+ */
+export function retryingFetch(base: typeof fetch = fetch): typeof fetch {
+  return (async (input: any, init?: any) => {
+    let last: unknown;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try { return await base(input, init); } catch (e: any) {
+        last = e;
+        if (!TRANSPORT_FAULT.test(String(e?.message ?? e))) throw e;
+        if (attempt === 3) break;
+        await new Promise((r) => setTimeout(r, 1500 * attempt));
+      }
+    }
+    throw last;
+  }) as typeof fetch;
+}
+
+/** The standard probe/gate service client, with the retry above. Use this instead of createClient. */
+export function probeAdmin(url = process.env.NEXT_PUBLIC_SUPABASE_URL!, key = process.env.SUPABASE_SERVICE_ROLE_KEY!) {
+  return createClient(url, key, { auth: { persistSession: false }, global: { fetch: retryingFetch() } });
 }

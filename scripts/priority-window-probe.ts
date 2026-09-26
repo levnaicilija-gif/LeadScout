@@ -30,11 +30,13 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { chromium, type Page } from 'playwright';
-import { followAllForProbe, markWorkspaceTest, removeProbe } from '../src/lib/test-data';
+import { followAllForProbe, markWorkspaceTest, removeProbe, probeAdmin } from '../src/lib/test-data';
 
 const BASE = process.argv[2] ?? 'http://localhost:3163';
 const stamp = Date.now();
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+// probeAdmin, not createClient: its fetch retries a rejected connection, which is what stranded a
+// workspace here on 2026-09-26 — one blip on the leads delete cascaded into two foreign-key failures.
+const admin = probeAdmin();
 const shim = 'globalThis.__name = globalThis.__name || function (f) { return f; };';
 
 let failures = 0;

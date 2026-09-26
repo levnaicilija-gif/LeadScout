@@ -14,7 +14,15 @@ const showEvidence = process.argv.includes('--evidence');
 (async () => {
   const { data: ws } = await db.from('workspaces').select('id').eq('name', 'RFBT Recruitment').single();
   const W = ws!.id;
-  const { data: leads, error } = await db.from('leads').select(`id, project_name, source_url, companies(name), ${LEAD_STATE_EMBED}`).eq('workspace_id', W).eq('kind', 'won_work').eq('is_test', false).not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES);
+  const { data: leads, error } = await db.from('leads').select(`id, project_name, source_url, companies(name), ${LEAD_STATE_EMBED}`).eq('workspace_id', W).eq('kind', 'won_work').eq('is_test', false).not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES)
+    // PINNED. This runs as the SERVICE ROLE, so RLS does not narrow workspace_lead_state to one row, and 0054
+    // gives every workspace a row for every lead — so an unpinned embed makes this filter mean "not closed in
+    // ANY workspace". Measured 2026-09-26: 238 leads unpinned against 233 pinned, the 5 being leads RFBT has
+    // marked stale or not_for_us that the second workspace still reads as new. A diagnostic whose whole job is
+    // to say which categories are THIN must not count another workspace's open leads as this one's: it inflated
+    // Oil & Gas by 3, Offshore Wind by 1, Industrial Coatings by 1 and Carbon Capture by 1, and Coatings is a
+    // core RFBT trade that the inflation lifted off the median line.
+    .eq(`${LEAD_STATE_TABLE}.workspace_id`, W);
   if (error) throw new Error(error.message);
   const { data: links } = await db.from('lead_articles').select('lead_id, articles(url, title, text)').in('lead_id', (leads ?? []).map((l) => l.id));
   const arts = new Map<string, any[]>();
