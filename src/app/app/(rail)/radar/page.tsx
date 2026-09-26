@@ -4,7 +4,7 @@ import { FOLLOW_OPTIONS } from '@/lib/industry';
 import { Help } from '@/components/Help';
 import { LeadDrawer } from '@/components/LeadDrawer';
 import { HiringNow, HiringHelp } from '@/components/HiringNow';
-import { hasJobBoardFields, hasPostingContact, hasAwardDate, hasIndustries, hasDomainProvenance, hasWorkspaceState } from '@/lib/schema-features';
+import { hasJobBoardFields, hasPostingContact, hasAwardDate, hasIndustries, hasDomainProvenance, hasWorkspaceState, hasArticleBuyers } from '@/lib/schema-features';
 import { CLOSED_LEAD_STATUSES, COMPANY_STATE_LEFT, LEAD_STATE_EMBED, LEAD_STATE_TABLE, withCompanyState, withLeadState } from '@/lib/workspace-state';
 import { HiringDrawer } from '@/components/HiringDrawer';
 import { groupByCompany } from '@/components/HiringNow';
@@ -13,6 +13,7 @@ import { currentUser } from '@/lib/supabase/server';
 import { leadSource, LEAD_SOURCE_LABEL, LEAD_SOURCE_BADGE, SOURCE_FLAG_LABEL, primaryArticle } from '@/lib/lead-source';
 import { newsLeadAge, tenderLeadAge, ageSink, latestActivityCompare, AGE_TEXT, AGE_DIM, type Age } from '@/lib/lead-age';
 import { articlesByLead, peopleByLead } from '@/lib/lead-articles';
+import { municipalAward, municipalWhy } from '@/lib/tender/municipal-buyer';
 import { rankQuoted } from '@/lib/quoted-contacts';
 import { OpenRow, OpenChevron } from '@/components/OpenRow';
 import { compoundByCompany } from '@/lib/compound-signals-load';
@@ -143,6 +144,10 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const countryQs = (country ? `&country=${country}` : '') + viewQs + sinceQs + idsQs;
   // 0024 gives an award notice its own award date; before it, an award lead ages from the notice's publication.
   const awardCols = (await hasAwardDate(sb)) ? ', award_date, award_date_basis' : '';
+  // 0057. Guarded because a named column that is not there fails the WHOLE query, which has taken Leads,
+  // the drawer and Verify down before (CLAUDE.md). Item 29 simply does not sort while the column is absent.
+  const buyersOn = await hasArticleBuyers(sb);
+  const buyerCols = buyersOn ? ', buyers' : '';
   // Item 21: the quoted contact's address and where it came from (the embed never loaded email or quote, so the drawer
   // could show neither), and what the company's own site gave — switchboard, general email, people — with sources.
   // 0033: how the website was found and checked. Named only once it exists — a missing column fails the whole query.
@@ -213,7 +218,7 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const loaded = ([...((newsRes as any).data ?? []), ...((tenderRes as any).data ?? [])] as any[])
     .map(withLeadState)
     .map((l: any) => (l.companies ? { ...l, companies: withCompanyState(l.companies) } : l));
-  const { byLead, error: linksError } = await articlesByLead(loaded.map((l) => l.id), awardCols);
+  const { byLead, error: linksError } = await articlesByLead(loaded.map((l) => l.id), awardCols + buyerCols);
   for (const l of loaded) l.lead_articles = byLead.get(l.id) ?? [];
   const { byLead: peopleBy, error: peopleError } = await peopleByLead(loaded.map((l) => l.id));
   for (const l of loaded) l.lead_people = peopleBy.get(l.id) ?? [];
@@ -242,13 +247,26 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
     l.fit_boost = { from: b.from, to: b.fit, label: c.label, note: b.note };
     l.fit_score = b.fit;
   }
+  // ITEM 29: A PUBLIC-SECTOR AWARD SORTS LOWER, AND IS NEVER HIDDEN OR DROPPED (owner, 2026-09-27). Item 12
+  // admits a notice when its MAIN CPV is on the trade list, which asks what the work IS and never what it is
+  // FOR — so 55 of the 66 Other-classified award leads are scaffolding and structural steelworks on German
+  // municipal buildings. They are real trade awards to real companies and almost certainly not work RFBT
+  // places welders on, so they stay visible and stop crowding the top of the list.
+  //
+  // COMPUTED ON READ from the buyer names 0057 stores, so changing the rule re-judges every lead on the next
+  // render with nothing to backfill. It sorts AFTER age and BEFORE fit deliberately: a stale lead is still
+  // stale whoever bought it, but a municipal award should sit below an industrial one of equal age even when
+  // its fit score is higher, because fit answers "does this candidate suit this job" and has nothing to say
+  // about whether the job is ours.
+  const municipalOf = (l: any) => (buyersOn ? municipalAward((byLead.get(l.id) ?? []).flatMap((x: any) => x.articles?.buyers ?? [])) : { municipal: false as const });
+  const publicSink = (l: any) => (municipalOf(l).municipal ? 1 : 0);
   const leads = loaded
-    .map((l: any) => ({ ...l, age: ageOf(l) }))
+    .map((l: any) => ({ ...l, age: ageOf(l), publicBuyer: municipalWhy(municipalOf(l)) }))
     // Fit (the default): ageing and stale sink below fresh and undated, then fit. Latest activity: Fresh,
     // Ageing, Stale, then Age unknown, newest first within each; fit breaks a tie, including between undated rows.
     .sort((a: any, b: any) => latest
-      ? (latestActivityCompare(a.age, b.age) || (b.fit_score - a.fit_score) || (hasContact(b) - hasContact(a)))
-      : ((ageSink(a.age.state) - ageSink(b.age.state)) || (b.fit_score - a.fit_score) || (hasContact(b) - hasContact(a))));
+      ? (latestActivityCompare(a.age, b.age) || (publicSink(a) - publicSink(b)) || (b.fit_score - a.fit_score) || (hasContact(b) - hasContact(a)))
+      : ((ageSink(a.age.state) - ageSink(b.age.state)) || (publicSink(a) - publicSink(b)) || (b.fit_score - a.fit_score) || (hasContact(b) - hasContact(a))));
   // The table and the drawer show contacts[0]; an embed has no order, so put the best one first by
   // item 14's rank — whoever is closest to the work, above a group executive.
   for (const l of leads as any[]) {
@@ -439,7 +457,7 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
             : <span className="text-ink3">— {l.lead_people?.length ? `${l.lead_people.length} from Industry Contacts` : src === 'tender' ? 'award notices name no person' : 'no named person'}</span>}</td>
           <td>{(l.trades_inferred ?? []).map((t: string) => <span key={t} className="inline-block text-[12px] px-2 py-0.5 rounded-md bg-line2 text-ink2 mr-1 mb-1">{t}</span>)}</td>
           <td>{tab === 'won_work' ? <span className="text-[13px]">{l.phase_start ?? l.phase ?? '—'}</span> : <span className={`st ${jp?.hiring_pressure === 'high' ? 'st-bad' : jp?.hiring_pressure === 'medium' ? 'st-warn' : ''}`}>{jp?.hiring_pressure ?? 'low'}</span>}</td>
-          <td><span className="inline-flex items-center gap-2 font-semibold"><i className="inline-block w-[56px] h-[6px] rounded-full bg-line overflow-hidden"><i className="block h-full rounded-full bg-tool-leads" style={{ width: `${l.fit_score}%` }} /></i>{l.fit_score}</span>{l.fit_boost && <div data-fit-from title={l.fit_boost.note} className="text-ink3 text-[12px] whitespace-nowrap">{l.fit_boost.to === l.fit_boost.from ? 'boost held by the cap' : `boosted, was ${l.fit_boost.from}`}</div>}</td>
+          <td><span className="inline-flex items-center gap-2 font-semibold"><i className="inline-block w-[56px] h-[6px] rounded-full bg-line overflow-hidden"><i className="block h-full rounded-full bg-tool-leads" style={{ width: `${l.fit_score}%` }} /></i>{l.fit_score}</span>{l.fit_boost && <div data-fit-from title={l.fit_boost.note} className="text-ink3 text-[12px] whitespace-nowrap">{l.fit_boost.to === l.fit_boost.from ? 'boost held by the cap' : `boosted, was ${l.fit_boost.from}`}</div>}{l.publicBuyer && <div data-public-buyer title={l.publicBuyer} className="text-ink3 text-[12px] whitespace-normal">sorted lower · public buyer</div>}</td>
           <td className="whitespace-nowrap"><span className={`badge ${l.source_fetch_status === 'live' ? (l.confirmed_at ? 'badge-ok' : 'badge-info') : 'badge-bad'}`}>{l.confirmed_at ? '✓ ' : ''}{l.source_fetch_status}{l.confirmed_at ? ' · confirmed' : ' · not confirmed'}</span><div className="text-[12px] mt-1"><a href={l.source_url} target="_blank" rel="noopener" className="text-accent font-medium">Open source</a></div>{l.source_flag && l.source_flag !== 'ok' && <div data-source-flag={l.source_flag} title={l.source_flag_why ?? ''} className="text-[12px] mt-1 text-warn">{SOURCE_FLAG_LABEL[l.source_flag] ?? l.source_flag}</div>}</td>
         </OpenRow>); })}
       {(leads ?? []).length === 0 && <tr><td colSpan={7} className="text-ink3 p-6">{industryFilter && (everyIndustry ?? 0) > 0

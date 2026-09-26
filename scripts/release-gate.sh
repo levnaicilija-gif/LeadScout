@@ -67,6 +67,10 @@ step site-trust npx tsx scripts/site-trust-check.ts
 # kept" assertion. The port exception is the one that needs watching — "authority" would otherwise drop
 # Tarragona Port Authority, and a port contracts trades.
 step prospect-scope npx tsx scripts/prospect-scope-check.ts
+# Item 29: a public-sector award sorts lower and is never hidden. Both arms on every buyer, because a
+# pattern narrowed until it catches nothing passes every survive assertion. The ALL-BUYERS rule is the one
+# to watch: a contract shared by Fluvius and a city administration is grid work, not a town hall.
+step municipal-buyer npx tsx scripts/municipal-buyer-check.ts
 # Item 20 step 3e: a signed-in user cannot WRITE a shared table, and is stopped by the GRANT rather than by
 # a policy. rls-sweep compares row COUNTS and never attempts a write, which is exactly how 0041's hole
 # survived a passing sweep. Measured before 0056: three tables — people, company_email_patterns and
