@@ -27,6 +27,11 @@ killport() {
   done
 }
 
+# FIRST, because a stranded probe workspace fails three probes forty minutes from now and names none of
+# the reasons. Two seconds here against a wasted run — see scripts/leftover-preflight.ts for the night
+# that earned it. It refuses rather than cleans: a leftover is evidence of which probe died and when.
+step leftover-preflight npx tsx --env-file=.env.local scripts/leftover-preflight.ts
+
 step typecheck npx tsc --noEmit
 step build npx next build
 # Straight after the build and before anything reads as a user. A table a signed-in user cannot read

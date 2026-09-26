@@ -94,9 +94,9 @@ export async function deleteTestWorkspace(db: SupabaseClient, workspaceId: strin
   // those rows would block the delete. They are kept — the money was spent and still counts in the day — detached from
   // the workspace; each row's detail already says "test workspace". Only a workspace marked is_test is touched.
   if (flag) {
-    const { data: ws } = await db.from('workspaces').select('is_test').eq('id', workspaceId).maybeSingle();
+    const { data: ws } = await withTransportRetry(() => db.from('workspaces').select('is_test').eq('id', workspaceId).maybeSingle());
     if (ws?.is_test) {
-      const { error } = await db.from('cost_log').update({ workspace_id: null }).eq('workspace_id', workspaceId);
+      const { error } = await withTransportRetry(() => db.from('cost_log').update({ workspace_id: null }).eq('workspace_id', workspaceId));
       if (error) return `workspace ${workspaceId} was not deleted: its cost_log rows could not be detached: ${error.message}`;
     }
   }
@@ -104,8 +104,8 @@ export async function deleteTestWorkspace(db: SupabaseClient, workspaceId: strin
   for (let attempt = 1; attempt <= 2; attempt++) {
     let q = db.from('workspaces').delete().eq('id', workspaceId);
     if (flag) q = q.eq('is_test', true);
-    const { error } = await q;
-    const { data: still, error: readError } = await db.from('workspaces').select('id').eq('id', workspaceId).maybeSingle();
+    const { error } = await withTransportRetry(() => q);
+    const { data: still, error: readError } = await withTransportRetry(() => db.from('workspaces').select('id').eq('id', workspaceId).maybeSingle());
     if (!error && !readError && !still) return null;
     why = error
       ? `${error.code ?? ''} ${error.message}`.trim()
@@ -128,7 +128,7 @@ export async function deleteTestWorkspace(db: SupabaseClient, workspaceId: strin
 export async function clearTestWorkspace(db: SupabaseClient, workspaceId: string | null | undefined, keep?: string | null): Promise<string | null> {
   if (!workspaceId || workspaceId === keep) return null;
   if (await haveFlag(db)) {
-    const { data: ws } = await db.from('workspaces').select('is_test').eq('id', workspaceId).maybeSingle();
+    const { data: ws } = await withTransportRetry(() => db.from('workspaces').select('is_test').eq('id', workspaceId).maybeSingle());
     if (!ws) return null; // already gone
     if (!ws.is_test) return `workspace ${workspaceId} is not marked is_test, so its content was not touched`;
   }
@@ -139,17 +139,17 @@ export async function clearTestWorkspace(db: SupabaseClient, workspaceId: string
   const ids = (cands ?? []).map((c: any) => c.id);
   for (let i = 0; i < ids.length; i += 200) {
     for (const table of ['sends', 'scores'] as const) {
-      const { error } = await db.from(table).delete().in('candidate_id', ids.slice(i, i + 200));
+      const { error } = await withTransportRetry(() => db.from(table).delete().in('candidate_id', ids.slice(i, i + 200)));
       if (error) problems.push(`${table} of workspace ${workspaceId}'s candidates were not deleted: ${error.message}`);
     }
   }
   for (const table of ['candidates', 'documents'] as const) {
-    const { error } = await db.from(table).delete().eq('workspace_id', workspaceId);
+    const { error } = await withTransportRetry(() => db.from(table).delete().eq('workspace_id', workspaceId));
     if (error) problems.push(`${table} in workspace ${workspaceId} were not deleted: ${error.message}`);
   }
   // 0037's deletion log references the workspace with no cascade, so a probe that deleted something leaves a row that
   // would stop the workspace being removed. Before 0037 there is no such table, and nothing to clear.
-  const { error: logError } = await db.from('deletion_log').delete().eq('workspace_id', workspaceId);
+  const { error: logError } = await withTransportRetry(() => db.from('deletion_log').delete().eq('workspace_id', workspaceId));
   if (logError && !/deletion_log|schema cache|does not exist/i.test(logError.message)) problems.push(`the deletion log of workspace ${workspaceId} was not cleared: ${logError.message}`);
   return problems.length ? problems.join('; ') : null;
 }
@@ -182,7 +182,7 @@ export async function removeProbe(
       // A CV-sent row records who sent it (sends.sent_by, no cascade), and one that points at no candidate is not reached
       // through the workspace's candidates — on 2026-09-15 such rows kept a scale-test account from being deleted. A probe
       // account is throwaway, so everything it sent is test data.
-      const { error: sendsError } = await db.from('sends').delete().eq('sent_by', uid);
+      const { error: sendsError } = await withTransportRetry(() => db.from('sends').delete().eq('sent_by', uid));
       if (sendsError) left.push(`CV-sent rows sent by the probe user ${uid} were not deleted: ${sendsError.message}`);
       const { error } = await db.auth.admin.deleteUser(uid);
       // Already gone — removed by the first attempt — is what was wanted.
@@ -234,13 +234,33 @@ export const PROBE_INDUSTRY = 'pharma_life_sciences';
  * board is still pool-wide. That is the recorded blocking precondition for the first real capped
  * customer, not something to paper over with a test-only branch in can_see_industries().
  */
+/**
+ * A TRANSPORT REJECTION IS NOT AN ANSWER, and treating it as one cost a gate on 2026-09-26: smoke failed
+ * with "the probe account could not be capped to pharma_life_sciences: TypeError: fetch failed" — one blip
+ * on the users update, no retry, the whole step red while the product was fine. This machine's documented
+ * connect-exhaustion fault makes that likely rather than rare, and it bites hardest late in a gate, which
+ * is exactly where the screen probes run. removeProbe has retried for this reason since 2026-09-14.
+ *
+ * Only a transport failure is retried. A Postgres error means the statement reached the database, so
+ * repeating it returns the same answer and would hide a real fault behind a pause.
+ */
+const TRANSPORT_FAULT = /fetch failed|ETIMEDOUT|ECONNRESET|UND_ERR|socket hang up|network/i;
+async function withTransportRetry<T extends { error: { message: string } | null }>(run: () => PromiseLike<T>): Promise<T> {
+  let last = await run();
+  for (let i = 1; i <= 2 && last.error && TRANSPORT_FAULT.test(last.error.message); i++) {
+    await new Promise((r) => setTimeout(r, 1500 * i));
+    last = await run();
+  }
+  return last;
+}
+
 export async function capProbeToOneIndustry(db: SupabaseClient, uid: string, industry = PROBE_INDUSTRY): Promise<string | null> {
   // The guard first. If a real lead carries this industry the probe is no longer isolated, and every
   // count it asserts becomes a coin toss — so it fails here, loudly, naming what changed.
-  const { count, error: checkErr } = await db.from('leads')
+  const { count, error: checkErr } = await withTransportRetry(() => db.from('leads')
     .select('id', { count: 'exact', head: true })
     .contains('industries', [industry])
-    .or('is_test.is.null,is_test.eq.false');
+    .or('is_test.is.null,is_test.eq.false'));
   if (checkErr && checkErr.code !== '42703') return `could not check whether ${industry} is still unused by real leads: ${checkErr.message}`;
   if ((count ?? 0) > 0) {
     return `${count} REAL lead(s) now carry "${industry}", so a probe following it is no longer isolated — pick another unused industry for PROBE_INDUSTRY and re-check, or these probes will assert counts against real data`;
@@ -251,25 +271,25 @@ export async function capProbeToOneIndustry(db: SupabaseClient, uid: string, ind
   // unclassified row is never hidden), so the first real lead that misses classification would start
   // appearing in every probe's counts, intermittently, looking like flake. classifyAndStoreLead runs
   // inline in the crawl, so this is a failure of that call rather than a normal state.
-  const { count: unclassified, error: unErr } = await db.from('leads')
+  const { count: unclassified, error: unErr } = await withTransportRetry(() => db.from('leads')
     .select('id', { count: 'exact', head: true })
     .or('industries.is.null,industries.eq.{}')
-    .or('is_test.is.null,is_test.eq.false');
+    .or('is_test.is.null,is_test.eq.false'));
   if (unErr && unErr.code !== '42703') return `could not check for unclassified real leads: ${unErr.message}`;
   if ((unclassified ?? 0) > 0) {
     return `${unclassified} real lead(s) carry no industry, and an unclassified lead is visible to a capped account — so this probe's counts would include them. Classify them (scripts/industry-backfill.ts) or this isolation is not real`;
   }
   // Both fields together: 0032's trigger refuses 'all' beside a limit, and a limit under the list size.
-  const { error } = await db.from('users')
+  const { error } = await withTransportRetry(() => db.from('users')
     .update({ industry_follow: [industry], industry_limit: 1, industry_follow_set_at: new Date().toISOString() })
-    .eq('id', uid);
+    .eq('id', uid));
   if (!error) return null;
   if (error.code === '42703' || (/industry_follow/.test(error.message) && /does not exist|schema cache/i.test(error.message))) return null;
   return `the probe account could not be capped to ${industry}: ${error.message}`;
 }
 
 export async function followAllForProbe(db: SupabaseClient, uid: string): Promise<string | null> {
-  const { error } = await db.from('users').update({ industry_follow: ['all'], industry_follow_set_at: new Date().toISOString() }).eq('id', uid);
+  const { error } = await withTransportRetry(() => db.from('users').update({ industry_follow: ['all'], industry_follow_set_at: new Date().toISOString() }).eq('id', uid));
   if (!error || error.code === '42703' || /industry_follow/.test(error.message) && /does not exist|schema cache/i.test(error.message)) return null;
   return `the probe account could not be set to follow all industries: ${error.message}`;
 }
