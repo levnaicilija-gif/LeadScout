@@ -434,11 +434,57 @@ tender award or a news mention — never by reposting the same job. Three types
 in all: tender award, news mention, open posting (re-adverts included).
 
 -------------------------------------------------------------------------------
-20. SHARED DISCOVERY POOL — DESIGN ONLY, NOT BUILT (its own project, later)
+20. SHARED DISCOVERY POOL — IN PROGRESS, STEPS 0-3c LIVE IN PRODUCTION
 -------------------------------------------------------------------------------
-Status: design agreed 2026-09-15. Do NOT build until the owner starts it as its
-own dedicated project. Touches RLS across many tables — same care as the
-users-table lockdown (0028).
+Status: design agreed 2026-09-15; STARTED as its own project 2026-09-23, and
+steps 0, 1, 2a, 2b, 2c, 3a, 3b and 3c are APPLIED AND DEPLOYED. This heading and
+this paragraph both read "design only, not built" until 2026-09-26, by which
+point 0046-0054 were live in production — a stale status line had the entire
+project reading as untouched to anyone who opened this file, which is why it is
+being written down as part of the work rather than after it. Still touches RLS
+across many tables, so the care the users-table lockdown (0028) earned applies to
+everything still remaining.
+
+WHAT IS DONE:
+  step 0    every table classified into FOUR buckets rather than two —
+            table-registry.ts, table-registry-check in the gate. Platform content
+            belongs to NOBODY, not to a system workspace (owner, 2026-09-23).
+  step 1    0046 gave outreach its own workspace_id, and fixed a LIVE bug on the
+            way: api/hiring writes an approach with a company and no lead, and
+            null is never "in" anything, so those rows matched no policy at all —
+            /api/outreach answered 404 on a draft it had just created.
+  step 2a-c 0047-0049 added workspace_lead_state and workspace_company_state,
+            moved the app onto them, removed the dual-writes and dropped 13
+            columns. 0050 repaired the production break 0049 caused: a trigger
+            still read new.status after the column was dropped, which NO
+            catalogue dependency a drop consults can see.
+  step 3a   0051 — a workspace may record state against any lead it can SEE, not
+            only one it owns. An ownership-keyed WITH CHECK is correct while
+            leads are private and inverts into a lock the moment they are shared.
+  step 3b   0052 — can_see_industries(), inert by construction, keyed on
+            industry_limit and NOT on the follow, so an unlimited account keeps
+            its toggle instead of being silently filtered.
+  step 3c   0053 put seven read policies onto the entitlement. 0054 exists only
+            because 3c exposed it: workspace_lead_state was total per LEAD rather
+            than per (workspace, lead), and every lead read joins it with !inner,
+            so a brand-new workspace's Leads screen rendered NOTHING while every
+            SQL assertion passed. shared-pool-probe now asserts the SCREEN.
+  also     the board crawl classifies the company of each advert it keeps
+            (job-boards-batch): job_posts has two writers and only one of them
+            classified, so a board-sourced advert on an unclassified company
+            would have shown that company to every capped account. Closed before
+            it was ever exercised — via='board' rows are still 0 of 87.
+
+WHAT REMAINS, genuinely untouched as of 2026-09-26:
+  step 3d   sources -> service-only, radar_runs -> service. Neither table is in
+            table-registry.ts yet, so the registry check cannot judge them.
+  step 3e   revoke the TABLE grants themselves. 0053's own comment says so; the
+            revokes in 0052-0054 cover the new FUNCTIONS only.
+  step 3f   the workspace_id auth checks in send-pack and company/employer-type.
+  drop      leads_2c_backup (229 rows) and companies_2c_backup (5,893 rows) are
+            still present, kept deliberately as 2c's pre-drop snapshot.
+  step 4    the boundary made explicit — partly covered already by step 0's
+            registry and its gate check.
 
 WHY: today a sign-up gets its own empty workspace (handle_new_user, 0001) and
 the crawl files everything under RFBT Recruitment's workspace, so a new
@@ -1331,3 +1377,76 @@ READ OUT OF THE CODE ON 2026-09-25 while recording this item. A STARTING POINT, 
   precondition rather than a follow-up.
 
 Documentation only. Commit on its own, two lines.
+
+-------------------------------------------------------------------------------
+28. CLASSIFYING THE COMPANIES THAT CARRY NO INDUSTRY
+-------------------------------------------------------------------------------
+STATUS: INVESTIGATED IN FULL 2026-09-26, nothing classified, ONE DECISION OPEN.
+
+Recorded as its own item because the investigation happened and was written down
+nowhere: the findings below lived only in a conversation and one commit body, and
+the next person to meet "5,651 companies have no industry" would have started
+again from the beginning and very likely run the backfill that must not be run.
+
+WHY IT MATTERS: from 0053 an EMPTY industries array is visible to EVERY capped
+account — the owner's decision that an unclassified row is never hidden — so
+every unclassified company is a row a future capped customer can see regardless
+of what they follow.
+
+WHAT WAS MEASURED (scripts/company-classification-report.ts, read-only, free):
+  5,899 real companies; 248 classified; 5,651 UNCLASSIFIED
+  live Hiring now gap: 0 companies — every open posting belongs to a classified
+    company, so the gap is LATENT rather than live
+  latent gap: 280 unclassified companies have careers_status 'found'
+  598 have a domain at all; 5,053 have NONE
+  signal classifyCompany can read: 0 have advert titles, 108 have quoted
+    employer-type evidence, 5,543 have NEITHER
+
+THE CLASSIFIER IS NOT THE PROBLEM AND COSTS NOTHING. src/lib/industry.ts makes no
+model call. classifyCompany reads exactly two things — a company's open advert
+titles, and the QUOTED passages inside employer_type_evidence. The reason these
+rows were skipped is the QUEUE: industry-backfill.ts derives its company list
+from leads, so a company with no lead was never a candidate. Most of these are the
+WindEurope Industry Contacts import, which has no leads.
+
+DO NOT RUN A BLIND BACKFILL. finish() returns ['other'] when no rule matches, so
+it never leaves a company untagged: a dry run of the REAL function over all 5,651
+would write a genuine industry for 19 and ['other'] WITH EMPTY EVIDENCE for 5,632.
+That is a 0.3% yield, and because ['other'] is non-empty it would HIDE 5,632
+companies from every capped account not following "Other / Uncategorized" — a
+visibility decision taken from an absence, on the rows a capped customer's whole
+view depends on. The 19 real ones are genuinely good (Aarsleff -> offshore_wind,
+Ulstein -> fabrication_heavy_industry, Skagen Blade Technology ->
+coatings_corrosion), which is exactly what makes the other 5,632 dangerous.
+
+WAITING FOR THE PIPELINE DOES NOT WORK EITHER, and this was measured rather than
+assumed. Of the 280 with a discovered board, 270 are in the crawl queue and ALL
+270 had been crawled that same night (00:00:48-00:26:08 UTC) — and every one of
+them exits BEFORE the classification call: 184 with jobs_crawl_status 'no board',
+85 'unchanged' (the branch that skips because there is nothing to pay for), 1
+error. ZERO had never been crawled. They are crawled daily and skipped daily.
+
+THE ONE THING THAT WAS FIXED, because it was a live hole rather than a backlog:
+job_posts has TWO writers and only job-posts-batch classified. The board crawl
+(job-boards-batch, item 4) wrote postings and never called
+refreshCompanyIndustries, so a board-sourced advert on an unclassified company
+would have exposed that company AND its posting to every capped account. Fixed
+with the existing function, asserted in source-routing-check, and closed before it
+was ever exercised — via='board' rows are still 0 of 87.
+
+THE OPEN DECISION, the owner's, and the only thing blocking the rest: the ~5,371
+companies with no signal need an explicit "INSUFFICIENT DATA" state. Today an
+empty industries array means "visible to everyone" and ['other'] means "hidden and
+classified", and NEITHER is true of a company nobody has been able to read. It
+needs a schema decision — a distinct industry id, a separate column, or a flag —
+because whichever it is, can_see_industries() has to treat it deliberately rather
+than by accident. Until it exists these rows stay unclassified, which is honest.
+
+ALSO WORTH KNOWING: companies.sector is populated on all 5,651 and is deliberately
+NOT used by the classifier, being partly model-assigned; sector_note is set on only
+93. So there IS a broad signal available, and using it is a decision about the
+evidence rule rather than a technical step. Getting real signal for the rest is not
+free even though classification is: 5,053 have no domain, so a website must be
+found first (item 27, EUR 0.0230 each, about EUR 116) before a page can be read.
+
+Nothing to build without the decision above. Commit after each step, two lines.
