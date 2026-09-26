@@ -67,6 +67,17 @@ step site-trust npx tsx scripts/site-trust-check.ts
 # kept" assertion. The port exception is the one that needs watching — "authority" would otherwise drop
 # Tarragona Port Authority, and a port contracts trades.
 step prospect-scope npx tsx scripts/prospect-scope-check.ts
+# Item 20 step 3e: a signed-in user cannot WRITE a shared table, and is stopped by the GRANT rather than by
+# a policy. rls-sweep compares row COUNTS and never attempts a write, which is exactly how 0041's hole
+# survived a passing sweep. Measured before 0056: three tables — people, company_email_patterns and
+# radar_verdicts — passed BOTH the grant and the policy and were stopped only by a NOT NULL constraint.
+# Exit 2 = 0056 not applied yet: not judged.
+echo "=== shared-write" | tee -a "$LOG"
+npx tsx --env-file=.env.local scripts/shared-write-probe.ts >> "$LOG" 2>&1
+code=$?
+if [ "$code" -eq 0 ]; then echo "    pass" | tee -a "$LOG"
+elif [ "$code" -eq 2 ]; then echo "    not judged (0056 not applied)" | tee -a "$LOG"
+else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("shared-write"); fi
 step model-meter npx tsx scripts/model-meter-check.ts
 step verify-adapters npx tsx scripts/verify-adapters-check.ts
 step candidate-search npx tsx scripts/candidate-search-check.ts
