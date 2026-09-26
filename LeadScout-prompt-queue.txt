@@ -1285,4 +1285,49 @@ READ OUT OF THE CODE ON 2026-09-25 while recording this item. A STARTING POINT, 
   case it is — nothing found on the pages read, versus no website on file — since those are different states and
   this item exists because the second was being shown as though it were the first.
 
+  TWO PERMANENT SCOPE RULES FOR THE PIPELINE ITSELF (owner, 2026-09-26). Both are properties of the real
+  automated queue, NOT filters applied once to a hand-picked sample, and both must survive into whatever
+  code runs this at scale.
+
+  RULE 1 — NON-STAFFING-PROSPECT ENTITIES ARE PERMANENTLY OUT OF SCOPE: banks and finance, law firms,
+  universities and academic institutions, government bodies, ministries, regional governments and
+  embassies, and trade associations, federations and clusters. The reason is not tidiness, it is yield and
+  cost together: the owner's own manual test on 2026-09-26 found that an UNFILTERED 30-company sample held
+  6 relevant companies of which 4 were discoverable, while a FILTERED, relevant-only sample of 6 was 6 of
+  6. Recorded as the owner's manual measurement rather than as something the suite measured, and recorded
+  WITH ITS SIZE — both samples are single digits, so this is directional evidence for the rule rather than
+  a hit rate to forecast from. The mechanism is what makes it credible: every euro spent on a bank or an
+  embassy buys a website for a row that should never become a lead.
+
+  MEASURED IN SESSION THE SAME DAY, and it changes how the rule must be implemented: a NAME-PATTERN filter
+  over the six categories removes only 541 of the 5,053 no-domain unclassified companies — 10.7% — and the
+  4,512 that remain still hold consultancies, media and monitoring-tech firms (OWC, BOSLAN Ingenieria y
+  Consultaria, Clarion Media, Gastops, Inverto all survive it) beside the genuine prospects (Nordex Energy,
+  SPIE Wind Germany, KCI the Engineers, Gurit Wind System). A NAME CANNOT SEPARATE A CONSULTANCY FROM A
+  CONTRACTOR, so the exclusion list is necessary and NOT sufficient, and no amount of added keywords fixes
+  that — it only drops more real yards silently. The discriminator that does work already exists and is
+  already agreed: resolve-domains' own predicate, one of seven sectors AND an ops-relevant Industry Contact
+  at that company, which took Spain from 353 companies to 38. Use that as the queue and the name list as a
+  belt-and-braces exclusion on top of it, never the other way round.
+
+  PORT AUTHORITIES ARE THE NAMED EXCEPTION, found by an over-match guard on that same pass: "authority"
+  catches Tarragona Port Authority, Salacgriva port authority and Liepaja SEZ authority/Port of Liepaja,
+  and a port is an industrial site that contracts welders, blasters and scaffolders. Port of Kokkola
+  survived the filter only because its name happens to lack the word, which is an accident and not a rule.
+  A government-body exclusion that drops ports is exactly the silent loss this whole item exists to stop.
+
+  RULE 2 — NEVER RE-DISCOVER A WEBSITE ALREADY ON FILE, including the six the owner found and confirmed by
+  hand. Largely already true rather than new work: resolve-domains' queue is `.is('domain', null)`, so a
+  company with a domain is not selected, and 0033 extends the same idea to known MISSES — `careers_status
+  = 'no_domain_found'` is excluded outright and `domain_lookups < 2` stops a third paid attempt.
+
+  BUT THE RULE ONLY HOLDS IF THE MANUAL FINDINGS ARE ACTUALLY IN THE DATABASE, and that is the actionable
+  half. A website confirmed in a browser and kept in a note is invisible to `.is('domain', null)`, so the
+  pipeline will pay to find it again and the rule will have been followed to the letter while being broken
+  in effect. The six manually confirmed sites must be written to `companies.domain` with 0033's provenance
+  columns — `domain_source`, `domain_source_url`, and the address check where one applies — so they read
+  as findings with a source rather than as bare values, the way batch 1's 26 were backfilled. Worth
+  checking before the first run: whether those six are on file yet, and if not, storing them is a
+  precondition rather than a follow-up.
+
 Documentation only. Commit on its own, two lines.
