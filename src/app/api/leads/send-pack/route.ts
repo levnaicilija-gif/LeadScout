@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
+import { supabaseAdmin, supabaseServer, currentUser } from '@/lib/supabase/server';
 import { SENDABLE, STATE_LABEL, type CertState } from '@/lib/verify/routes';
 import { setLeadState } from '@/lib/workspace-state';
 export const maxDuration = 120;
@@ -43,10 +43,22 @@ export async function POST(req: Request) {
     }
 
     const db = supabaseAdmin();
+    // ITEM 20 STEP 3F: THE LEAD IS AUTHORISED BY VISIBILITY, THE CAMPAIGN AND THE CANDIDATES BY OWNERSHIP,
+    // AND THE DIFFERENCE IS THE WHOLE POINT OF THIS STEP. leads is a SHARED table: its workspace_id means
+    // "who crawled it" (RFBT on all 238), so comparing it with me.workspace_id was right while leads were
+    // private and becomes a LOCK once they are shared — a second workspace could open a lead, read its
+    // drawer, and be told the lead does not exist when it tried to prepare a pack. Reading as the signed-in
+    // user hands that decision to 0053's policy instead.
+    //
+    // The two checks BELOW are deliberately left exactly as they are. campaigns and candidates are PRIVATE
+    // tables — candidates holds names, dates of birth, passports and right-to-work facts — so ownership is
+    // the correct rule there and loosening it to visibility would be a data leak, not a fix. "Fix the
+    // workspace_id checks" is three checks in this file and only one of them is wrong.
+    const asUser = supabaseServer();
     const { data: lead } = leadId
-      ? await db.from('leads').select('id, workspace_id, company_id, project_name, companies(name)').eq('id', leadId).maybeSingle()
+      ? await asUser.from('leads').select('id, workspace_id, company_id, project_name, companies(name)').eq('id', leadId).maybeSingle()
       : { data: null as any };
-    if (leadId && (!lead || lead.workspace_id !== me.workspace_id)) return NextResponse.json({ error: 'lead not found in this workspace' }, { status: 404 });
+    if (leadId && !lead) return NextResponse.json({ error: 'no such lead, or it is not visible to this account' }, { status: 404 });
 
     const { data: campaign } = campaignId
       ? await db.from('campaigns').select('id, workspace_id, company_id, name, companies(name)').eq('id', campaignId).maybeSingle()

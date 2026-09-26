@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, currentUser } from '@/lib/supabase/server';
+import { supabaseAdmin, supabaseServer, currentUser } from '@/lib/supabase/server';
 import { setCompanyState } from '@/lib/workspace-state';
 
 /**
@@ -27,18 +27,32 @@ export async function POST(req: Request) {
     }
 
     const db = supabaseAdmin();
-    const { data: company } = await db.from('companies').select('id, name, employer_type')
-      .eq('id', companyId).eq('workspace_id', me.workspace_id).maybeSingle();
-    if (!company) return NextResponse.json({ error: 'company not found in this workspace' }, { status: 404 });
+    // ITEM 20 STEP 3F: AUTHORISED BY VISIBILITY, NOT BY OWNERSHIP. This read used to run as the SERVICE ROLE
+    // with `.eq('workspace_id', me.workspace_id)` bolted on as the permission check, which was correct while
+    // companies were private and INVERTS THE MOMENT THEY ARE SHARED — exactly as 0047's WITH CHECK did before
+    // 0051 re-keyed it. companies.workspace_id now means "who crawled it" (all 5,899 say RFBT), not "who may
+    // work on it", so a second workspace could see a company on Hiring now and be told the company does not
+    // exist when it tried to correct the employer type. Not an error either: a 404, once per company.
+    //
+    // Reading as the SIGNED-IN USER hands the decision to 0053's policy, which is the one place the visibility
+    // rule lives. The write below stays on the service role and stays keyed to me.workspace_id, because an
+    // override is ONE workspace's judgement and must never be written into anybody else's state row.
+    const asUser = supabaseServer();
+    const { data: company } = await asUser.from('companies').select('id, name, employer_type')
+      .eq('id', companyId).maybeSingle();
+    if (!company) return NextResponse.json({ error: 'no such company, or it is not visible to this account' }, { status: 404 });
 
     // Item 20 step 2b: an override is ONE workspace's judgement of a company every workspace will
     // soon see, so it is stored per workspace. The owner's decision on 2026-09-24: a correction of a
     // crawled fact stays private even though it is arguably true for everyone, because one customer
     // must not silently rewrite another customer's view.
     //
-    // The route reads and writes as the service role, so the workspace is passed explicitly — it is
-    // not inferred from a session. The company was already refused above unless it is this
-    // workspace's, which is what makes that safe.
+    // The WRITE runs as the service role, so the workspace is passed explicitly rather than inferred from a
+    // session. What makes that safe is no longer "the company belongs to this workspace" — since 3f the read
+    // above refuses anything this account cannot SEE, and the workspace written to is always me.workspace_id.
+    // So a workspace can record its own judgement about any company it can see, and can never write into
+    // another workspace's row. (This comment said the opposite until 3f; it was true of the ownership check
+    // it described and became false the moment companies were shared.)
     const patch = {
       employer_type_override: type,
       employer_type_set_by: type ? me.id : null,
