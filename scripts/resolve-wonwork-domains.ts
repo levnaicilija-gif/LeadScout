@@ -24,11 +24,15 @@ import { Budget } from '../src/lib/cost';
 import { crawlWorkspace } from '../src/lib/crawl-workspace';
 import { lookupDomain } from '../src/lib/domain-lookup';
 import { fetchNoticeXml, publicationNumber, winnerAddress, type WinnerAddress } from '../src/lib/tender/winner-address';
-import { leadSource } from '../src/lib/lead-source';
+import { leadSource, primaryArticle } from '../src/lib/lead-source';
 import { siteScope } from '../src/lib/site-scope';
 import { hasDomainProvenance } from '../src/lib/schema-features';
 import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
 import { probeAdmin } from '../src/lib/test-data';
+import { newsLeadAge, tenderLeadAge } from '../src/lib/lead-age';
+import { articlesByLead } from '../src/lib/lead-articles';
+import { hasAwardDate } from '../src/lib/schema-features';
+import { AGE_UNKNOWN, FRESH_DAYS, ageBucket, discoveryOrder } from '../src/lib/discovery-order';
 
 const write = process.argv.includes('--write');
 const retriesOnly = process.argv.includes('--retries-only');
@@ -69,11 +73,14 @@ async function addressCheck(domain: string, a: WinnerAddress | null): Promise<Ch
   if (write && !provenance) { console.log('0033 has not been applied yet: nothing is written. Apply supabase/migrations/0033_domain_provenance.sql first.'); process.exitCode = 2; return; }
   const workspaceId = await crawlWorkspace(db);
   const cols = `id, name, domain, careers_status${provenance ? ', domain_lookups' : ''}`;
-  const { data: leads, error } = await db.from('leads').select(`source_url, country, companies!inner(${cols}), ${LEAD_STATE_EMBED}`)
+  const { data: leads, error } = await db.from('leads').select(`id, source_url, country, companies!inner(${cols}), ${LEAD_STATE_EMBED}`)
     .eq('workspace_id', workspaceId).eq('kind', 'won_work').eq('is_test', false).not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES)
     .is('companies.domain', null).limit(5000) as { data: any[] | null; error: any };
   if (error) throw new Error(error.message);
-  const todo = new Map<string, { id: string; name: string; notice: string | null; leadCountry: string | null; lookups: number; final: boolean }>();
+  const awardCols = (await hasAwardDate(db)) ? ', award_date, award_date_basis' : '';
+  const { byLead, error: artErr } = await articlesByLead((leads ?? []).map((l: any) => l.id), awardCols);
+  if (artErr) throw new Error(`the dates behind these leads could not be read: ${artErr}`);
+  const todo = new Map<string, { id: string; name: string; notice: string | null; leadCountry: string | null; lookups: number; final: boolean; age: number }>();
   for (const l of leads ?? []) {
     // ITEM 27, THE OWNER'S HOLD: --news-only processes ONLY news-sourced won-work leads and skips every
     // tender award. Both kinds live under kind = 'won_work', so this script has always covered them
@@ -91,16 +98,40 @@ async function addressCheck(domain: string, a: WinnerAddress | null): Promise<Ch
     if (newsOnly && leadSource(l.source_url) !== 'news') continue;
     const c: any = l.companies;
     const notice = leadSource(l.source_url) === 'tender' ? publicationNumber(l.source_url) : null;
-    const t = todo.get(c.id) ?? { id: c.id, name: c.name, notice, leadCountry: l.country ?? null, lookups: Number(c.domain_lookups ?? 0), final: c.careers_status === 'no_domain_found' };
+    // ITEM 17'S AGE, NOT leads.created_at (owner's reprioritisation, 2026-09-27). The obvious basis is the
+    // wrong one and it fails silently: the TED backfill ran on 2026-09-13, so ordering on when WE stored a
+    // row makes 32 of 32 news and 103 of 103 tender companies look 30 days old or younger, and the
+    // reprioritisation becomes a no-op that reports success. On item 17's real age — the award date for a
+    // tender, the article's publication for a news lead — the split is 22 of 32 and 23 of 103, which is the
+    // reordering the owner actually asked for.
+    const art: any = primaryArticle(byLead.get(l.id) ?? [], l.source_url);
+    const judged = leadSource(l.source_url) === 'tender'
+      ? tenderLeadAge({ awardDate: art?.award_date, awardBasis: art?.award_date_basis, publishedAt: art?.published_at, awardDateRead: !!awardCols })
+      : newsLeadAge({ publishedAt: art?.published_at });
+    // AGE UNKNOWN SORTS LAST, following latestActivityCompare — the rule this codebase already uses when
+    // ordering BY RECENCY, which is exactly what this is. 8 of the 32 news companies have no date at all
+    // (their articles carry no published_at), and treating "we do not know" as "brand new" would put them
+    // ahead of leads measured to be days old. The default Leads sort treats unknown as fresh; that is right
+    // for a list nobody should have to filter, and wrong for deciding what to spend money on first.
+    const leadAge = judged.days ?? AGE_UNKNOWN;
+    const t = todo.get(c.id) ?? { id: c.id, name: c.name, notice, leadCountry: l.country ?? null, lookups: Number(c.domain_lookups ?? 0), final: c.careers_status === 'no_domain_found', age: AGE_UNKNOWN };
+    // A company with one new award and one old one is a FRESH company: the newest signal is the live one.
+    t.age = Math.min(t.age, leadAge);
     t.notice ??= notice;
     todo.set(c.id, t);
   }
   const all = [...todo.values()];
   const eligible = all.filter((t) => !t.final && t.lookups < MAX_LOOKUPS && (!retriesOnly || t.lookups >= 1));
-  const pending = eligible.sort((a, b) => (b.lookups - a.lookups) || a.name.localeCompare(b.name)).slice(0, LIMIT);
+  // FRESH FIRST, THEN OLDER, THEN UNKNOWN (owner's decision, 2026-09-27). Same population, same total cost,
+  // same eventual coverage — only the order changes, so the opportunities most likely to still be live get
+  // real contacts early in a multi-day run rather than at the end of it. The previous tiebreakers are kept
+  // underneath rather than replaced: a retry still beats a first look within the same age bucket, and the
+  // name still settles a tie, so a run remains deterministic and re-runnable.
+  const pending = eligible.sort(discoveryOrder).slice(0, LIMIT);
   const budget = await Budget.open(db);
   const startSpend = budget.totalToday;
   console.log(`won-work companies with no website: ${all.length}${newsOnly ? ' (NEWS-SOURCED ONLY — tender awards held, item 29)' : ''} · never looked up ${all.filter((t) => t.lookups === 0 && !t.final).length} · missed once (a retry is due) ${all.filter((t) => t.lookups === 1 && !t.final).length} · final "not found" ${all.filter((t) => t.final).length} · to look up now: ${pending.length}${retriesOnly ? ' (retries only)' : ''} · spend today €${startSpend.toFixed(4)} of €${budget.capEur} · ${write ? 'writing' : 'dry run — nothing stored'}`);
+  console.log(`order: freshest first by item 17's lead age (not when we stored it) — ${eligible.filter((t) => ageBucket(t) === 0).length} at ${FRESH_DAYS} days or younger, ${eligible.filter((t) => ageBucket(t) === 1).length} older, ${eligible.filter((t) => ageBucket(t) === 2).length} with no date (last)`);
 
   // Without --write nothing is looked up at all: a lookup is paid for whether or not its answer is stored, so a "dry run"
   // that searched would spend the budget and throw the result away. It lists what a --write run would look up.
