@@ -219,6 +219,14 @@ step column-exists npx tsx --env-file=.env.local scripts/column-exists-check.ts
 # cautionary example is migrations-status.ts, hand-kept, ungated, and probing ZERO of the five.
 step rpc-exists-selftest npx tsx --env-file=.env.local scripts/rpc-exists-check.ts --self-test
 step rpc-exists npx tsx --env-file=.env.local scripts/rpc-exists-check.ts
+# The status vocabularies match what the database ACCEPTS, both directions. There are two of them and they
+# differ by ONE LETTER: a LEAD is 'pursue' (the lead_status enum) and a COMPANY is 'pursued' (a check
+# constraint on hiring_status), so the wrong word is a plausible typo Postgres rejects at run time rather
+# than a compile error. Found by audit 2026-09-28 with NO live mismatch — this keeps it that way. The enum is
+# checked LIVE from PostgREST's OpenAPI document; the check constraint cannot be (it publishes as plain text)
+# so it is compared against the migration that declared it, sound because migrations are the source of truth
+# here by hard rule. Both arms matter: a list missing a value the database accepts is rows silently unhandled.
+step status-vocabulary npx tsx --env-file=.env.local scripts/status-vocabulary-check.ts
 # Item 20 step 3b (0052): the entitlement function, which is CALLED FROM NOTHING yet.
 #
 # The boundary is keyed on industry_limit, NOT on the follow: an UNLIMITED account that follows one

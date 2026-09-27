@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isHiringStatus } from '@/lib/statuses';
 import { supabaseServer, supabaseAdmin, currentUser } from '@/lib/supabase/server';
 import { jdFromLead, screeningQuestions, draftOutreachChecked, scoreWithRightToWork, anonymize } from '@/lib/ai/documents';
 import { meterRecruiter } from '@/lib/ai/meter';
@@ -264,7 +265,11 @@ async function handle(req: Request, me: SignedIn) {
 
     case 'status': {
       if (!(await hasWorkspaceState(sb))) return NextResponse.json({ error: 'Migration 0047 has not been applied yet.' }, { status: 503 });
-      if (!['new', 'pursued', 'not_for_us'].includes(b.status)) return NextResponse.json({ error: 'unknown status' }, { status: 400 });
+      // Through the shared vocabulary, not a copy of the list (2026-09-28). A COMPANY's status is 'pursued'
+      // while a LEAD's is 'pursue' — one letter apart, both real, and each rejected by the other's column.
+      // src/lib/statuses.ts holds both, and status-vocabulary-check compares them against what the database
+      // actually accepts: the enum live from PostgREST, this check constraint from the migration that made it.
+      if (!isHiringStatus(b.status)) return NextResponse.json({ error: 'unknown status' }, { status: 400 });
       const patch = { hiring_status: b.status, hiring_status_at: new Date().toISOString(), hiring_status_by: me.id };
       const { error } = await setCompanyState(supabaseAdmin(), me.workspace_id, co.id, patch, me.id);
       if (error) return NextResponse.json({ error: `the status was not saved: ${error}` }, { status: 500 });
