@@ -13,10 +13,25 @@ import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from './work
  * A failed read comes back as `error`, never as "no boost": a company that could not be checked is not a company
  * with one signal.
  */
-export async function compoundByCompany(sb: SupabaseClient, companyIds: string[], awardCols = '', now = new Date()): Promise<{ byCompany: Map<string, Compound>; error: string | null }> {
+/**
+ * ALSO RETURNS THE RAW COUNT OF OPEN POSTINGS PER COMPANY, and the reason is a real distinction rather
+ * than convenience (item 27, 2026-09-27).
+ *
+ * "Currently hiring" means a company HAS AN OPEN POSTING. Item 19's signals are not that: `compoundFor`
+ * keeps only signals dated inside SIGNAL_WINDOW_DAYS (60), because a boost is about things happening
+ * TOGETHER. So reading `types.includes('posting')` to answer "are they hiring" would silently miss every
+ * company whose adverts are open but older than 60 days — and Hiring now's own age rules call a posting
+ * ageing at exactly 60 days, so those companies certainly exist. Two different questions, and the wrong
+ * one would have been quietly wrong rather than visibly wrong.
+ *
+ * It costs NO EXTRA QUERY: this function already reads every open posting for these companies, and then
+ * discards the ones outside the window. The count is taken before that.
+ */
+export async function compoundByCompany(sb: SupabaseClient, companyIds: string[], awardCols = '', now = new Date()): Promise<{ byCompany: Map<string, Compound>; openPostings: Map<string, number>; error: string | null }> {
   const ids = [...new Set(companyIds.filter(Boolean))];
   const byCompany = new Map<string, Compound>();
-  if (!ids.length) return { byCompany, error: null };
+  const openPostings = new Map<string, number>();
+  if (!ids.length) return { byCompany, openPostings, error: null };
   const signals = new Map<string, Signal[]>();
   const add = (id: string, s: Signal[]) => signals.set(id, [...(signals.get(id) ?? []), ...s]);
 
@@ -29,22 +44,25 @@ export async function compoundByCompany(sb: SupabaseClient, companyIds: string[]
       sb.from('leads').select(`id, company_id, source_url, created_at, ${LEAD_STATE_EMBED}`).eq('kind', 'won_work').not(`${LEAD_STATE_TABLE}.status`, 'in', CLOSED_LEAD_STATUSES).in('company_id', chunk),
       sb.from('job_posts').select('company_id, role, title, posted_at, first_seen_at').eq('status', 'open').in('company_id', chunk),
     ]);
-    if (l.error) return { byCompany, error: `the company's other leads could not be read: ${l.error.message}` };
-    if (p.error) return { byCompany, error: `the company's open postings could not be read: ${p.error.message}` };
+    if (l.error) return { byCompany, openPostings, error: `the company's other leads could not be read: ${l.error.message}` };
+    if (p.error) return { byCompany, openPostings, error: `the company's open postings could not be read: ${p.error.message}` };
     leads.push(...(l.data ?? []));
     posts.push(...(p.data ?? []));
   }
 
   const { byLead, error } = await articlesByLead(leads.map((l) => l.id), awardCols);
-  if (error) return { byCompany, error: `the dates behind the company's leads could not be read: ${error}` };
+  if (error) return { byCompany, openPostings, error: `the dates behind the company's leads could not be read: ${error}` };
   for (const l of leads) {
     const s = leadSignal({ ...l, lead_articles: byLead.get(l.id) ?? [] });
     if (s) add(l.company_id, [s]);
   }
+  // Taken here, before postingSignals drops anything outside the 60-day window: this is "do they have an
+  // open advert", not "is there a recent signal".
+  for (const p of posts) openPostings.set(p.company_id, (openPostings.get(p.company_id) ?? 0) + 1);
   const postsBy = new Map<string, any[]>();
   for (const p of posts) postsBy.set(p.company_id, [...(postsBy.get(p.company_id) ?? []), p]);
   for (const [id, ps] of postsBy) add(id, postingSignals(ps, now));
 
   for (const id of ids) byCompany.set(id, compoundFor(signals.get(id) ?? [], now));
-  return { byCompany, error: null };
+  return { byCompany, openPostings, error: null };
 }

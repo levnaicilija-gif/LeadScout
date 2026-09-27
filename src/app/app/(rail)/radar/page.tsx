@@ -237,10 +237,28 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // posting, re-advertised role — raises the fit of every one of its leads. Computed here and never stored: the row
   // shows the boost and what it was before, the drawer the full reason, and the Fit sort uses the boosted figure.
   // Hiring now (step 2): the same signals lift a company's pressure one step, for every company with an open posting here.
-  const { byCompany: compounds, error: compoundError } = await compoundByCompany(
+  const { byCompany: compounds, openPostings, error: compoundError } = await compoundByCompany(
     sb, hiring ? ((postings ?? []) as any[]).map((p) => p.company_id) : loaded.map((l) => l.company_id), awardCols,
   );
   const compoundsByCompany = Object.fromEntries(compounds);
+  // ITEM 27: A WON-WORK COMPANY THAT IS ALSO ADVERTISING SAYS SO, AND LINKS TO ITS OWN HIRING NOW ROW.
+  // The whole point of finding a company's website is that discovery then finds its careers board, and a
+  // recruiter looking at the award has no way to know the adverts exist — the two tabs never referred to
+  // each other for a single company.
+  //
+  // NOT item 19's signal types, which was the tempting reuse and would have been quietly wrong: a compound
+  // signal is filtered to 60 days because a boost is about things happening TOGETHER, while "currently
+  // hiring" is simply whether an advert is open. Hiring now's own age rules call a posting ageing at
+  // exactly 60 days, so companies with open-but-older adverts certainly exist and would have been missed.
+  // The count therefore comes from `openPostings`, taken before that window filter and costing no extra
+  // query, since the loader already reads every open posting for these companies.
+  //
+  // `?tab=hiring&ids=<companyId>` is the link, reusing Today's own queue-ids mechanism unchanged rather
+  // than inventing a second way to filter Hiring now to one company. It is read as a uuid and capped there.
+  for (const l of loaded) {
+    const n = openPostings.get(l.company_id) ?? 0;
+    if (n > 0) l.currently_hiring = n;
+  }
   for (const l of loaded) {
     const c = compounds.get(l.company_id);
     if (!c || c.factor <= 1) continue;
@@ -451,7 +469,12 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
       <thead><tr><th>Company</th><th>{tab === 'won_work' ? 'Won' : 'Open roles'}</th><th>Decision-maker</th><th>Trades</th><th>{tab === 'won_work' ? 'Phase' : 'Pressure'}</th><th>Fit</th><th>Verified</th></tr></thead>
       <tbody>{(leads ?? []).map((l: any) => { const c = l.contacts?.[0]; const jp = l.job_posts?.[0]; const src = leadSource(l.source_url); const also = Math.max(0, (l.lead_articles?.length ?? 0) - 1); return (
         <OpenRow key={l.id} href={`/app/radar?tab=${searchParams.tab ?? 'won'}${source ? `&source=${source}` : ''}${sortQs}${countryQs}&lead=${l.id}`} selected={selected?.id === l.id} className={AGE_DIM[l.age.state as keyof typeof AGE_DIM]} attrs={{ 'data-lead-source': src, 'data-age': l.age.state, 'data-age-date': l.age.date ?? '' }}>
-          <td><a href={`?tab=${searchParams.tab ?? 'won'}${source ? `&source=${source}` : ''}${sortQs}${countryQs}&lead=${l.id}`} className="block"><div className="font-medium whitespace-nowrap flex items-center gap-1.5">{l.companies?.name}<OpenChevron /></div><div className="text-ink3 text-[12px]">{l.project_location} · {l.companies?.employer_type?.replace('_', ' ')}{l.companies?.size_band ? ` · ${l.companies.size_band}` : ''}</div><div className="mt-1.5 flex items-center gap-1.5 flex-wrap"><span data-source={src} className={LEAD_SOURCE_BADGE[src]}>{LEAD_SOURCE_LABEL[src]}</span><span data-age-label title={l.age.why} className={`text-[12px] ${AGE_TEXT[l.age.state as keyof typeof AGE_TEXT]}`}>{l.age.label}</span>{also > 0 && <span className="text-ink3 text-[12px]" title="The same contract, reported by another source, linked to this lead">+{also} source{also === 1 ? '' : 's'}</span>}</div>{l.fit_boost && <div data-compound title={l.fit_boost.note} className="mt-1 text-[12px] text-accent font-medium whitespace-normal">{l.fit_boost.label}</div>}</a></td>
+          <td><a href={`?tab=${searchParams.tab ?? 'won'}${source ? `&source=${source}` : ''}${sortQs}${countryQs}&lead=${l.id}`} className="block"><div className="font-medium whitespace-nowrap flex items-center gap-1.5">{l.companies?.name}<OpenChevron /></div><div className="text-ink3 text-[12px]">{l.project_location} · {l.companies?.employer_type?.replace('_', ' ')}{l.companies?.size_band ? ` · ${l.companies.size_band}` : ''}</div><div className="mt-1.5 flex items-center gap-1.5 flex-wrap"><span data-source={src} className={LEAD_SOURCE_BADGE[src]}>{LEAD_SOURCE_LABEL[src]}</span><span data-age-label title={l.age.why} className={`text-[12px] ${AGE_TEXT[l.age.state as keyof typeof AGE_TEXT]}`}>{l.age.label}</span>{also > 0 && <span className="text-ink3 text-[12px]" title="The same contract, reported by another source, linked to this lead">+{also} source{also === 1 ? '' : 's'}</span>}</div>{l.fit_boost && <div data-compound title={l.fit_boost.note} className="mt-1 text-[12px] text-accent font-medium whitespace-normal">{l.fit_boost.label}</div>}</a>
+            {/* OUTSIDE the cell's <a>, deliberately. An <a> inside an <a> makes the browser close the outer
+                one, so the DOM cannot match the server's HTML — React #418, 28 of them in one gate, and the
+                message is only a number. The cell's own link ends above; this is a sibling inside the same
+                <td>, and OpenRow lets a link inside a row keep its own job. */}
+            {l.currently_hiring && <a data-currently-hiring={l.currently_hiring} href={`?tab=hiring&ids=${l.company_id}${viewQs}`} className="mt-1 inline-block text-[12px] text-ok font-medium" title={`This company has ${l.currently_hiring} open advert${l.currently_hiring === 1 ? '' : 's'} on its own careers page. Opens Hiring now, filtered to it.`}>Currently hiring · {l.currently_hiring} open →</a>}</td>
           <td>{tab === 'won_work' ? l.project_name : jp?.role}<div className="text-ink3 text-[12px]">{tab === 'won_work' ? [l.phase, l.project_value].filter(Boolean).join(' · ') : `${jp?.headcount ? `×${jp.headcount} · ` : ''}posted ${jp?.posted_at ?? '—'}`}</div></td>
           <td>{c ? <><div className="font-medium">{c.name} <a href={c.linkedin_search_url} target="_blank" rel="noopener" className="ml-1 inline-grid place-items-center w-5 h-5 border border-line rounded text-[10px] font-semibold text-ink2">in</a> <a href={c.google_search_url} target="_blank" rel="noopener" className="inline-grid place-items-center w-5 h-5 border border-line rounded text-[10px] font-semibold text-ink2">G</a></div><div className="text-ink3 text-[12px]">{c.title} · email {c.email_status}{c.phone ? ' · phone found' : ''}</div></> : l.company_people?.[0] ? <div data-company-contact><div className="font-medium">{l.company_people[0].name}</div><div className="text-ink3 text-[12px]">{l.company_people[0].title} · from their site{l.company_people[0].email ? ' · email found' : ''}{l.company_people[0].phone ? ' · phone found' : ''}{l.site_trust?.rowNote && <span data-site-note className="text-warn font-medium"> · {l.site_trust.rowNote}</span>}</div></div>
             : (l.companies?.switchboard || l.companies?.general_email) ? <div data-company-contact><div className="font-medium">{l.companies.switchboard ? 'Switchboard' : 'General email'}</div><div className="text-ink3 text-[12px]">{l.companies.switchboard ?? l.companies.general_email} · from their site{l.site_trust?.rowNote && <span data-site-note className="text-warn font-medium"> · {l.site_trust.rowNote}</span>}</div></div>

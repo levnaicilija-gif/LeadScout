@@ -53,5 +53,30 @@ const withNews = compoundFor([...twice, S('news', '2026-09-12', 'article publish
 check(withNews.factor === 1.1 && /open Hiring now posting 2026-09-10 \(Rigger re-advertised 2×/.test(withNews.why ?? ''),
   'a raised role plus a news mention boosts, and the reason names the re-advertising', withNews.why);
 
+// ---- "CURRENTLY HIRING" IS NOT A COMPOUND SIGNAL, and this is the assertion that keeps them apart ----
+// Item 27's Won work tag asks "does this company have an open advert". Item 19 asks "is there a signal
+// inside SIGNAL_WINDOW_DAYS", because a boost is about things happening TOGETHER. Reading the signal types
+// to answer the first question is the tempting reuse and it is quietly wrong: an advert that is still OPEN
+// but posted more than 60 days ago produces NO 'hiring' signal at all. Measured on the real book the day
+// the tag was built: of 5 open won-work leads whose company is advertising, 4 would also have been found
+// through the window and ONE — EBA Elektro-, Bau- und Anlagentechnik GmbH, whose adverts are older — would
+// not. 13 of 57 open postings are dated older than 60 days, so this is a live gap rather than a latent one.
+const stillOpenButOld = postingSignals([{ role: 'Welder', posted_at: '2026-05-01' }], now);
+check(compoundFor(stillOpenButOld, now).types.length === 0,
+  'an advert still OPEN but older than the 60-day window is NOT a compound signal — so the tag cannot read the signal types',
+  { signals: stillOpenButOld, types: compoundFor(stillOpenButOld, now).types });
+// The other arm: a recent advert IS a signal, so the two questions agree in the ordinary case and the
+// distinction above is about the edge rather than a disagreement everywhere.
+const recent = postingSignals([{ role: 'Welder', posted_at: '2026-09-10' }], now);
+check(compoundFor(recent, now).types.includes('hiring'),
+  'a recent advert IS a hiring signal — the two questions agree except at the window edge',
+  compoundFor(recent, now).types);
+// And the type name itself, asserted because getting it wrong is invisible: a check for a type that does
+// not exist silently answers "never". The first measurement of this tag read `types.includes('posting')`,
+// which is not a type name here, and therefore reported that ALL five leads were outside the window.
+check(compoundFor(recent, now).types.every((t) => ['news', 'tender', 'hiring'].includes(t)),
+  "the posting signal type is 'hiring' — a test for a name that does not exist answers 'never' and looks like a finding",
+  compoundFor(recent, now).types);
+
 console.log(failed ? `\n${failed} failed` : '\ncompound signals: all checks passed');
 process.exitCode = failed ? 1 : 0;

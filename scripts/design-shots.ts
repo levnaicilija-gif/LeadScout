@@ -87,6 +87,16 @@ const SIGNED_IN = [
           const said = text.replace(/\s+/g, ' ').trim().slice(0, 120);
           problems.push(`${tag} ${name}: the page rendered an error — ${ref || 'no reference shown'} — ${said}`);
         }
+        // AN <a> INSIDE AN <a> TAKES THE PAGE DOWN AND THE ERROR IS ONLY A NUMBER (added here 2026-09-27).
+        // The browser's parser closes the outer anchor, so the DOM it builds cannot match the server's HTML —
+        // React #418, 28 of them in one gate on 2026-09-17, with `mobile today` rendering nothing at all, and
+        // minified React says only a digit string. Four probes already assert this (today, campaign-docs,
+        // cert-expiry, priority-window) and between them they covered four screens; LEADS was not one of
+        // them, which is the screen where a clickable row wraps a whole cell in an anchor and every badge
+        // added to it is one nested anchor away from this. design-shots visits every screen at both widths,
+        // so the guard belongs here rather than in a fifth per-screen probe.
+        const nested = await page.evaluate(() => document.querySelectorAll('a a').length);
+        if (nested > 0) problems.push(`${tag} ${name}: ${nested} anchor(s) nested inside another anchor — React #418 territory`);
         // A page wider than its viewport is a restyle bug, not a long table: tables scroll inside.
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
         if (overflow > 2) problems.push(`${tag} ${name}: page scrolls sideways by ${overflow}px`);
