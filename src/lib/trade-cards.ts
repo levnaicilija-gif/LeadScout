@@ -11,9 +11,9 @@ export type LevelNote = { match: RegExp; explains: string; covers: string[]; cov
 
 const CARDS: Record<string, LevelNote[]> = {
   frosio: [
-    { match: /\biii\b|\b3\b/i, explains: 'Inspector level III — the senior FROSIO grade: plans and signs off surface treatment work and supervises inspectors.', covers: ['painter', 'blaster'] , coversText: "Surface treatment inspector — coating inspection, specification and sign-off on painting and blasting work" },
-    { match: /\bii\b|\b2\b/i, explains: 'Inspector level II — the grade most yards ask for: inspects and documents surface treatment on site.', covers: ['painter', 'blaster'] , coversText: "Surface treatment inspector — on-site coating inspection and documentation for painters and blasters" },
-    { match: /\bi\b|\b1\b/i, explains: 'Inspector level I — assists inspection under supervision.', covers: ['painter', 'blaster'] , coversText: "Assistant coating inspector — works under a senior inspector on painting and blasting" },
+    { match: /\biii\b|\b3\b/i, explains: 'Inspector level III — the senior FROSIO grade: plans and signs off surface treatment work and supervises inspectors.', covers: ['painter', 'blaster', 'coating inspector'] , coversText: "Surface treatment inspector — coating inspection, specification and sign-off on painting and blasting work" },
+    { match: /\bii\b|\b2\b/i, explains: 'Inspector level II — the grade most yards ask for: inspects and documents surface treatment on site.', covers: ['painter', 'blaster', 'coating inspector'] , coversText: "Surface treatment inspector — on-site coating inspection and documentation for painters and blasters" },
+    { match: /\bi\b|\b1\b/i, explains: 'Inspector level I — assists inspection under supervision.', covers: ['painter', 'blaster', 'coating inspector'] , coversText: "Assistant coating inspector — works under a senior inspector on painting and blasting" },
   ],
   pcn: [
     { match: /\b3\b|level 3/i, explains: 'PCN level 3 — writes NDT procedures and takes technical responsibility for the method.', covers: ['ndt'] , coversText: "Senior NDT technician — writes procedures and carries technical responsibility for the method" },
@@ -36,7 +36,7 @@ const CARDS: Record<string, LevelNote[]> = {
     { match: /.*/, explains: 'CISRS scaffolder card — recognised across UK sites.', covers: ['scaffolder'] , coversText: "Scaffolder — recognised across UK sites" },
   ],
   iso9606: [{ match: /.*/, explains: 'Welder qualification to ISO 9606 — valid for the process, position and material range printed on it.', covers: ['welder'] , coversText: "Welder — for the process, position and material range printed on the certificate" }],
-  ampp: [{ match: /.*/, explains: 'AMPP (formerly NACE/SSPC) coating inspection qualification.', covers: ['painter', 'blaster'] , coversText: "Coating inspector — painting and blasting inspection" }],
+  ampp: [{ match: /.*/, explains: 'AMPP (formerly NACE/SSPC) coating inspection qualification.', covers: ['painter', 'blaster', 'coating inspector'] , coversText: "Coating inspector — painting and blasting inspection" }],
   electrical_dk: [{ match: /.*/, explains: 'Danish electrical qualification — the authorisation itself sits with the employing company.', covers: ['electrician'] , coversText: "Electrician — under the employing company's authorisation" }],
 };
 

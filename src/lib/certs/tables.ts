@@ -123,7 +123,7 @@ export const CERT_TABLE: CertEntry[] = [
     whoRequires: 'Norwegian operators and yards; widely accepted across the North Sea in place of AMPP.',
     validity: '5 years, renewable.',
     verification: 'FROSIO public register — searchable by certificate number or name.',
-    trades: T('painter', 'blaster'),
+    trades: T('painter', 'blaster', 'coating inspector'),
   },
   {
     body: 'frosio', level: 'II', match: /\bii\b|\blevel\s*2\b|\b2\b/i,
@@ -134,7 +134,7 @@ export const CERT_TABLE: CertEntry[] = [
     whoRequires: 'Norwegian and North Sea yards and coating contractors.',
     validity: '5 years, renewable.',
     verification: 'FROSIO public register.',
-    trades: T('painter', 'blaster'),
+    trades: T('painter', 'blaster', 'coating inspector'),
   },
   {
     body: 'frosio', level: 'I', match: /\bi\b|\blevel\s*1\b|\b1\b/i,
@@ -145,7 +145,7 @@ export const CERT_TABLE: CertEntry[] = [
     whoRequires: 'Larger coating crews alongside a senior inspector.',
     validity: '5 years, renewable.',
     verification: 'FROSIO public register.',
-    trades: T('painter', 'blaster'),
+    trades: T('painter', 'blaster', 'coating inspector'),
   },
   {
     body: 'ampp', level: '3', match: /\b(level\s*)?3\b|peer review/i,
@@ -156,7 +156,7 @@ export const CERT_TABLE: CertEntry[] = [
     whoRequires: 'Operators outside Norway, particularly on US-specified and Middle East work.',
     validity: '3 years, with continuing-education renewal.',
     verification: "AMPP's public credential registry — lists current holders who opted in; not listed is not a verdict.",
-    trades: T('painter', 'blaster'),
+    trades: T('painter', 'blaster', 'coating inspector'),
   },
   {
     body: 'ampp', level: '2', match: /\b(level\s*)?2\b/i,
@@ -167,7 +167,7 @@ export const CERT_TABLE: CertEntry[] = [
     whoRequires: 'Coating contractors and operators outside Scandinavia.',
     validity: '3 years, with continuing-education renewal.',
     verification: "AMPP's public credential registry — lists current holders who opted in; not listed is not a verdict.",
-    trades: T('painter', 'blaster'),
+    trades: T('painter', 'blaster', 'coating inspector'),
   },
   {
     body: 'ampp', level: '1', match: /\b(level\s*)?1\b/i,
@@ -178,7 +178,7 @@ export const CERT_TABLE: CertEntry[] = [
     whoRequires: 'Larger coating crews.',
     validity: '3 years.',
     verification: "AMPP's public credential registry — lists current holders who opted in; not listed is not a verdict.",
-    trades: T('painter', 'blaster'),
+    trades: T('painter', 'blaster', 'coating inspector'),
   },
   {
     body: 'icats',
@@ -189,7 +189,7 @@ export const CERT_TABLE: CertEntry[] = [
     whoRequires: 'UK principal contractors and bridge, rail and structural steel work.',
     validity: '3 years.',
     verification: 'ICATS scheme register via the issuing training provider.',
-    trades: T('painter', 'blaster'),
+    trades: T('painter', 'blaster', 'coating inspector'),
     confirm: 'Check the modules printed on the card against what the job actually needs — the card is a list, not a level.',
   },
 
@@ -323,6 +323,8 @@ export const CERT_TABLE: CertEntry[] = [
     whoRequires: 'Danish yards and coating contractors, as a legal precondition.',
     validity: 'Confirm — not encoded here.',
     verification: 'Held by the training provider; confirm with the issuer.',
+    // NOT a coating inspector: §17 is a statutory safety course, and this entry's own notCovered says
+    // it carries "any coating competence of its own" — nothing. An applicator is not an inspector.
     trades: T('painter', 'blaster'),
     confirm: 'Confirm the exact scope and renewal period with the issuing provider before quoting this to a Danish client — only the requirement itself is certain here.',
   },

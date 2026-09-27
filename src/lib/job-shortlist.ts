@@ -1,4 +1,4 @@
-import { RFBT_TRADE_LIST, inferTrades, type Trade } from '@/lib/trades';
+import { RFBT_TRADE_LIST, inferTrades, tradesInText, type Trade } from '@/lib/trades';
 import { cleanTitle } from '@/lib/job-title';
 import { CERT_TABLE } from '@/lib/certs/tables';
 import { checkRightToWork, type Rtw } from '@/lib/right-to-work';
@@ -101,8 +101,14 @@ export function jobTrades(j: ShortlistJob): Trade[] {
   // advert: fed "Scaffolder wanted for shutdown" they match "shutdown" and answer wind technician,
   // electrician, rope access and fitter, every one of them a trade the advert did not ask for, while
   // missing the one it did. An advert states its own trade; a project implies several.
-  const text = [j.role, j.title, ...(j.certsRequired ?? [])].filter(Boolean).join(' ').toLowerCase();
-  return RFBT_TRADE_LIST.filter((t) => text.includes(t)) as Trade[];
+  // ANCHORED, through the one shared matcher (2026-09-27). This was `RFBT_TRADE_LIST.filter((t) =>
+  // text.includes(t))`, an unanchored substring test, which was survivable only while every trade name
+  // was long and distinctive: measured over the real corpus, the wider vocabulary made it match
+  // "mechanical" as a mechanic and "triggered" as a rigger. `tradesInText` also settles an
+  // inconsistency that predates the new trades — this filter returned BOTH pipefitter and fitter for
+  // the word "pipefitter", while `inferTrades` used `.find()` and returned only pipefitter.
+  const text = [j.role, j.title, ...(j.certsRequired ?? [])].filter(Boolean).join(' ');
+  return tradesInText(text);
 }
 
 /**

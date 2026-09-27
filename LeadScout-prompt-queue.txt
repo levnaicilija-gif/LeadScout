@@ -6,7 +6,40 @@ Items 1–3 (domains → careers/ATS → job-post crawl → Hiring now table) ar
 -------------------------------------------------------------------------------
 4. JOB BOARDS — SECONDARY CRAWL
 -------------------------------------------------------------------------------
-Job boards as a secondary source, filtered to companies. Crawl the 41 job-board sources (Jobindex, Finn.no, EURES, Werk.nl, CV-Library and Reed trade sections first; drop pure aggregators like Jooble). For each posting: extract role, trades (our taxonomy), location, country, posted date, certs required, rotation, contact printed on the post. Classify the poster with the agency detector; poster_type=staffing_agency is hidden by default in Hiring now (toggle "show agency posts"). Match postings to `companies` by name; create the company if new (tier by country). Same cost controls as careers pages: fingerprint per board page, Haiku on titles, Sonnet only on trade postings, browser only if the board needs it. Report: boards crawled, postings found, company vs agency split, cost. Commit after each step, two lines per step.
+Job boards as a secondary source, filtered to companies. Crawl the 41 job-board sources (Jobindex, Finn.no, EURES, Werk.nl, CV-Library and Reed trade sections first; drop pure aggregators like Jooble). For each posting: extract role, trades (our taxonomy), location, country, posted date, certs required, rotation, contact printed on the post. Classify the poster with the agency detector; poster_type=staffing_agency is hidden by default in Hiring now (toggle "show agency posts"). Match postings to `companies` by name; create the company if new (tier by country). Same cost controls as careers pages: fingerprint per board page, Haiku on titles, Sonnet only on trade postings, browser only if the board needs it. Report: boards crawled, postings found, company vs agency split, cost. 
+ITEM 30 — RE-SCORE THE BOOK AGAINST THE WIDER TRADE VOCABULARY
+  OWNER'S DECISION PENDING. Not a bug, not started, and deliberately NOT done as a side
+  effect of the vocabulary work committed on 2026-09-27.
+
+  WHY IT IS A DECISION AND NOT A CHORE. `leads.fit_score` is STORED, not computed on read —
+  unlike lead age, compound signals, certificate-only and item 29's municipal verdict, all of
+  which are judgements recomputed every render. So widening the trade vocabulary changed what a
+  FUTURE crawl infers and changed nothing already on file. Proved rather than assumed before
+  committing: over all 238 leads and all 110 postings, `hasRfbtTrades` answers IDENTICALLY
+  old-rule versus new-rule — 0 differences, 0 movements in the trades weight — because every one
+  of the ten original trades is blue_collar and the stored arrays hold nothing else.
+
+  WHAT A RE-SCORE WOULD ACTUALLY DO, and why the answer is not obvious. The 0.4 trades weight is
+  BINARY: a lead either employs RFBT trades or it does not. 33 of 238 leads currently carry no
+  inferred trade at all and therefore score 0 on that weight. A re-score would only move a lead
+  if the NEW scope rules find something the old thirteen missed — lifting, HSE, instrumentation,
+  overhead line, machining, drill crew, vessel crew, ROV, solar or corrosion scope. Nothing here
+  estimates how many of the 33 that is, because estimating it is the first step of the work.
+
+  IT ALSO COLLIDES WITH ITEM 6, which already carries "re-score every lead under the geography
+  gate and fixed trade inference". These are the same pass and must not be run twice: one
+  deliberate re-score, measured before and after, not two partial ones.
+
+  AND WHITE-COLLAR CANNOT BE FOLDED IN LATER BY ACCIDENT. Only blue_collar counts towards the
+  weight (owner's decision, 2026-09-27) precisely so a project manager — present on essentially
+  every industrial project — cannot give every lead full marks. `trades-check` pins this, and a
+  re-score must not be the moment it is quietly relaxed.
+
+  WHEN PICKED UP: report, before writing, how many of the 238 would move and in which direction,
+  from a dry run that stores nothing. A re-score that silently reorders the Leads table is the
+  same class as a backfill taken from an absence, which item 28 already refused.
+
+Commit after each step, two lines per step.
 
 -------------------------------------------------------------------------------
 5. MATCH-AWARE SCREENING QUESTIONS

@@ -71,6 +71,12 @@ step prospect-scope npx tsx scripts/prospect-scope-check.ts
 # pattern narrowed until it catches nothing passes every survive assertion. The ALL-BUYERS rule is the one
 # to watch: a contract shared by Fluvius and a city administration is grid work, not a town hall.
 step municipal-buyer npx tsx scripts/municipal-buyer-check.ts
+# The trade vocabulary and its matcher. Both arms on every term added 2026-09-27, and the false positives
+# are the ones MEASURED in the live corpus rather than invented: "mechanical" is not a mechanic,
+# "triggered" is not a rigger, and "AB" is the Swedish Aktiebolag suffix on 376 of 400 articles, not an
+# able seaman. It also pins the property that let this ship without re-scoring: every one of the ten
+# original trades is blue_collar, so hasRfbtTrades answers identically for every trades array on file.
+step trades npx tsx scripts/trades-check.ts
 # Item 20 step 3e: a signed-in user cannot WRITE a shared table, and is stopped by the GRANT rather than by
 # a policy. rls-sweep compares row COUNTS and never attempts a write, which is exactly how 0041's hole
 # survived a passing sweep. Measured before 0056: three tables — people, company_email_patterns and
