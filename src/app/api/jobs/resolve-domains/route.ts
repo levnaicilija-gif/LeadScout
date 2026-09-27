@@ -57,9 +57,25 @@ async function run(req: Request) {
   if (budget.exhausted) return NextResponse.json({ ok: false, reason: 'daily budget already spent', spentToday: Number(budget.totalToday.toFixed(4)) });
 
   // Companies where somebody who hires trades actually works.
+  //
+  // THE ERROR IS READ, and it was not until 2026-09-28 (found by audit). This loop builds the FILTER that
+  // decides which companies are eligible for paid discovery, and it used to `break` on `!data` — so a
+  // failed page looked exactly like "no more people" and silently shrank `ops`, which silently shrank
+  // `inScope` below, which silently removed companies from the queue. No error, no log, nothing on screen:
+  // the run would report a smaller population as if that were the answer.
+  //
+  // It is a REAL multi-page read, not a theoretical one: 21,699 people, 1,585 of them ops_relevant, so two
+  // pages on the filtered query and 22 on the unfiltered table. And the documented connect-exhaustion fault
+  // makes a mid-read transport failure routine on this machine rather than rare.
+  //
+  // THE SAME FILE ALREADY GOT THIS RIGHT 35 LINES BELOW, with the reason written on it — "An unread error
+  // here would look exactly like 'no more candidates' and silently end the queue early — the class this
+  // codebase keeps meeting". That is why this is a copy of that line and not a new idea: the fix existed,
+  // in the same function, and this loop was simply never brought along.
   const ops = new Set<string>();
   for (let from = 0; ; from += 1000) {
-    const { data } = await db.from('people').select('company_name').eq('workspace_id', workspace).eq('ops_relevant', true).range(from, from + 999);
+    const { data, error: opsErr } = await db.from('people').select('company_name').eq('workspace_id', workspace).eq('ops_relevant', true).range(from, from + 999);
+    if (opsErr) return NextResponse.json({ error: `the ops-relevant contacts could not be read in full, so the queue would be narrower than it should be: ${opsErr.message}` }, { status: 500 });
     if (!data || !data.length) break;
     data.forEach((x) => ops.add((x.company_name ?? '').trim().toLowerCase()));
     if (data.length < 1000) break;
