@@ -94,7 +94,13 @@ async function run(req: Request) {
   // is what disabled six of the seven sources found classified priority-but-disabled on 2026-09-21,
   // two of them job boards. Without this line, wiring up the board pipeline would simply hand the
   // boards back to a repair pass that turns them off again, with a reason about newsrooms.
-  let q = db.from('sources').select('id, name, url, link_rule, tier').eq('enabled', true).neq('type', 'job_board').order('id');
+  // Tender portals join them for the same reason, and the argument is if anything stronger here
+  // (2026-09-27). "Does a newsroom on this site carry article links" is a meaningless test of a public
+  // procurement portal — it publishes notices, not stories — so a repair pass would switch off tender
+  // rows with a sentence about newsrooms, exactly as it did to two job boards on 2026-09-21. Radar no
+  // longer reads them at all, so a repair pass judging them would be deciding the fate of sources
+  // nothing downstream consumes. Fixing radar alone would have left this half to undo it.
+  let q = db.from('sources').select('id, name, url, link_rule, tier').eq('enabled', true).not('type', 'in', '("job_board","tender")').order('id');
   if (tier) q = q.eq('tier', tier);
   if (only) {
     const terms = only.split(',').map((t) => t.trim()).filter(Boolean);

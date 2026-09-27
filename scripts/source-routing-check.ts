@@ -35,16 +35,32 @@ const read = (p: string) => readFileSync(p, 'utf8');
 /** The file with comments stripped, so a rule quoted in a comment cannot satisfy a check. */
 const code = (p: string) => read(p).replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
 
-console.log('--- job boards are not read as news ---');
+console.log('--- job boards AND tender portals are not read as news ---');
+// BOTH TYPES, ASSERTED SEPARATELY (2026-09-27). Excluding job_board in 8280af6 fixed the boards and left
+// every tender row still going through extractLead as prose: measured that morning, 71% of radar's
+// EUR 1.8778 stage-1 spend (EUR 1.3376) went to `type = 'tender'` — US state procurement portals that
+// cannot yield a European lead, plus the national below-threshold portals the owner ruled out on
+// 2026-09-19. Each type gets its own assertion so a regression names which one came back, and the
+// EXCLUSION SHAPE is asserted too: `not in` fails open for a type added later, the property the original
+// comment chose `neq` for, whereas an allow-list of the types that DO belong would fail closed.
+const EXCLUDES = /\.not\('type',\s*'in',\s*'\("job_board","tender"\)'\)/;
 const radar = code('src/lib/jobs/radar-batch.ts');
 const radarQuery = radar.match(/db\.from\('sources'\)[^;]*/)?.[0] ?? '';
-check(/\.neq\('type',\s*'job_board'\)/.test(radarQuery),
-  "radar-batch's source query excludes job_board", radarQuery.replace(/\s+/g, ' ').slice(0, 120) || 'no sources query found');
+check(EXCLUDES.test(radarQuery),
+  "radar-batch's source query excludes job_board AND tender", radarQuery.replace(/\s+/g, ' ').slice(0, 130) || 'no sources query found');
+check(!/\.neq\('type',\s*'job_board'\)/.test(radarQuery),
+  'radar-batch no longer excludes job_board ALONE — that shape left tender being read as news',
+  'the single-type exclusion is what this change replaces');
 
 const repair = code('src/app/api/jobs/repair-sources/route.ts');
 const repairQuery = repair.match(/db\.from\('sources'\)[^;]*/)?.[0] ?? '';
-check(/\.neq\('type',\s*'job_board'\)/.test(repairQuery),
-  "repair-sources' source query excludes job_board — it switches off what fails its newsroom test", repairQuery.replace(/\s+/g, ' ').slice(0, 120) || 'no sources query found');
+check(EXCLUDES.test(repairQuery),
+  "repair-sources' source query excludes job_board AND tender — it switches off what fails its newsroom test, and a procurement portal has no newsroom", repairQuery.replace(/\s+/g, ' ').slice(0, 130) || 'no sources query found');
+
+// The other arm, so this is not merely "the string is present": item 12's TED ingest must STILL be
+// reached from radar, because excluding tender SOURCES must not touch tender COVERAGE. It runs on the
+// cursor-0 batch, from the search API, for EUR 0.00 — a free structured feed the portals duplicate badly.
+check(/ingestTedAwards/.test(radar), 'radar still runs item 12\'s TED ingest — tender COVERAGE is untouched by excluding tender SOURCES');
 
 console.log('\n--- and they ARE read by their own pipeline ---');
 const boards = code('src/lib/jobs/job-boards-batch.ts');

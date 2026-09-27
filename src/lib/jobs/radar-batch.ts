@@ -55,7 +55,41 @@ export async function runRadarBatch(req: Request) {
   // drops any type added later, and this very query already goes out of its way not to do that —
   // the standard sweep deliberately includes sources with no tier, because "unread is not a reason
   // to ignore a source forever". neq fails open, `in` fails closed.
-  let q = db.from('sources').select('*').eq('enabled', true).neq('type', 'job_board');
+  //
+  // TENDER PORTALS ARE NOT RADAR'S EITHER (2026-09-27), and this is the same bug one type along.
+  // Excluding job_board fixed the boards and left every tender row still being read as news. Measured
+  // on the morning of 2026-09-27, from cost_log rather than from argument: radar spent EUR 1.8778 on
+  // 237 stage-1 Sonnet extractions, and EUR 1.3376 of it — 71% — went to `type = 'tender'` sources.
+  // The top spenders were public procurement portals: des.wa.gov, ogs.ny.gov, doas.ga.gov,
+  // boston.gov, maine.gov and usace.army.mil (US state and federal, which cannot produce a European
+  // lead and are capped at fit 25 anyway by NON_EUROPE_MAX_FIT), then app.gov.al, kozbeszerzes.hu,
+  // marchespublics.wallonie.be, serviziocontrattipubblici.it and aanbestedingskalender.nl — which are
+  // exactly the below-threshold national coverage the owner STOPPED on 2026-09-19, after measuring a
+  // 7% uplift for about EUR 165 a year. Radar was paying for it anyway, by the back door.
+  //
+  // BOTH leads created that day came from NEWS sources (windfair.net, windsystemsmag.com). Not one
+  // lead created that day has a tender-source URL.
+  //
+  // THIS TAKES NOTHING AWAY FROM TENDER COVERAGE, which is the point: item 12 ingests TED through its
+  // own path (`runTenderIngest` below, on the cursor-0 batch), from the search API, for EUR 0.00 —
+  // "fetch · TED search API · 2 requests · 56 notices". Reading procurement portals as prose is a
+  // worse duplicate of a free structured feed. And CLAUDE.md already records that the four biggest
+  // tender sources — udbud.dk, doffin.no, ted.europa.eu, simap.ted.europa.eu — read NOTHING here,
+  // each being a JavaScript app, so their last_crawled_at was null on all four.
+  //
+  // WHY THE CAP MATTERS MORE THAN THE WASTE. 158 of the 228 enabled non-board sources are tender, so
+  // on a Sunday — when radar walks the whole enabled list — they are 69% of it. The run of
+  // 2026-09-27 died at cursor 167 of 228 with `budgetStopped`, having never reached the last 61
+  // sources, and left EUR 0.0148 of the EUR 2.00 day for everything else. Item 27's website lookups
+  // could not run at all. Excluding tender takes Sunday's list from 228 to 70 and the weekday
+  // priority list from 49 to 39.
+  //
+  // LANDED BETWEEN RUNS, NOT MID-CRAWL, because the cursor is POSITIONAL (`order('id').range(...)`)
+  // and narrowing the query shifts every position. Checked rather than assumed before committing:
+  // `radarDue` scopes its lookup to `started_at >= today 04:00 UTC`, so the cursor is per-day and
+  // tomorrow's run starts at 0; and today's newest run carried `tally.budgetStopped = true`, on which
+  // radarDue returns a string and schedules no further batch. There was no live cursor to invalidate.
+  let q = db.from('sources').select('*').eq('enabled', true).not('type', 'in', '("job_board","tender")');
   // Which sources this run covers, in order of precedence:
   //
   //   only=<substrings>  an explicit list, for tuning Stage 1 on the sources that matter
