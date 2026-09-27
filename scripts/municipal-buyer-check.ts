@@ -72,9 +72,26 @@ for (const [b, why] of [
   ['LAWOG Gemeinn. Landeswohnungsgen. für OÖ für die Stadt', 'social housing'],
   ['Department of Climate Energy and the Environment', 'a government department'],
   ['Amt für Hochbau und Gebäudewirtschaft', 'a German public office'],
+  // WiBau, added 2026-09-27 on the owner's ruling. The name carries NO municipal word — no Stadt, no
+  // Amt, no Gemeinde — and "Gesellschaft mbH" is the ordinary private legal form, so this is matched by
+  // NAME on the SBH | Schulbau Hamburg precedent. It is wholly owned by the state capital of Wiesbaden
+  // and builds and runs that city's schools and car parks.
+  ['WiBau Gesellschaft mbH', 'a city-owned builder of the city’s own schools — matched by name'],
 ] as [string, string][]) {
   check(`caught (${why}): ${b.slice(0, 40)}`, !!municipalBuyer(b), municipalBuyer(b) ? `matched "${municipalBuyer(b)!.term}"` : 'NOT MATCHED');
 }
+
+// ---- THE OTHER ARM FOR WiBau, which is the whole reason it needed a ruling -----------------------
+// WiBau is municipally OWNED and municipal; a Stadtwerke is municipally OWNED and industrial. If the
+// pattern were reaching for ownership it would take both, so the Stadtwerke rows below must still
+// survive — they are asserted again further down, and this line records that the two cases were
+// weighed together rather than decided one at a time. Core business, not ownership, is the predictor.
+check('WiBau is caught WITHOUT the pattern reaching for municipal ownership in general',
+  !!municipalBuyer('WiBau Gesellschaft mbH') && municipalBuyer('Stadtwerke Prenzlau GmbH') === null,
+  'a city-owned BUILDER of town schools is ranked down; a city-owned GRID operator is not');
+// And it must not fire on a name that merely contains the letters.
+check('a name that merely contains "wibau" is not matched', municipalBuyer('Schwibauer Metallbau GmbH') === null,
+  'anchored: a named-entity pattern has no type word to fall back on if it over-reaches');
 
 // ---- STADTWERKE STAYS INDUSTRIAL (owner, 2026-09-27) -------------------------------------------
 // Municipally OWNED, but its core business is operating real infrastructure — grids, heat, water — so it

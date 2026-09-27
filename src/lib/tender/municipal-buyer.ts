@@ -76,6 +76,31 @@ const MUNICIPAL: { re: RegExp; why: string }[] = [
   { re: /\bdepartment of\b/i, why: 'Department of Climate Energy and the Environment (Ireland), twice' },
   { re: /\bamt f[üu]r\b/i, why: 'German public offices; paired with the Liegenschaftsamt case above' },
   //
+  // MATCHED BY NAME, NOT BY TYPE — the SBH | Schulbau Hamburg precedent (owner's ruling, 2026-09-27).
+  // "WiBau Gesellschaft mbH" carries no municipal word at all: not Stadt, not Amt, not Gemeinde, and
+  // "Gesellschaft mbH" is the most ordinary private legal form in Germany. It is a wholly CITY-OWNED
+  // company of the state capital of Wiesbaden, founded 2012, doing non-residential construction and
+  // facility management FOR THE CITY ITSELF — school buildings and municipal parking structures. So the
+  // city is in the owner and the customer rather than anywhere in the string, which is exactly the shape
+  // Schulbau Hamburg has, and the only way to reach it is by name.
+  //
+  // IT IS NOT A STADTWERKE, and the distinction is the one the owner already ruled on. A Stadtworks is
+  // municipally owned too and deliberately stays INDUSTRIAL, because its core business is operating real
+  // infrastructure — grids, heat, water — which is RFBT's market. CORE BUSINESS, NOT OWNERSHIP, is the
+  // predictor, and by that test WiBau falls the other way: its core business is town buildings, which is
+  // what item 29 exists to rank down. Same rule, opposite answer.
+  //
+  // This was THE ONE GENUINELY AMBIGUOUS MATCH flagged during the re-measurement of the 103 held
+  // tender-award companies, and it was left for the owner rather than guessed. It is also the buyer that
+  // made the SECOND `Hess Gerüstbau` row read as industrial — the first was Kreisausschuss
+  // Main-Taunus-Kreis, closed above — so a scaffolding firm on Wiesbaden school buildings would
+  // otherwise have been unblocked for paid website discovery on the strength of a private-looking name.
+  //
+  // ANCHORED, for the reason 2026-09-27 taught twice over elsewhere in this codebase: a bare substring
+  // `wibau` would also match anything that happens to contain it, and a named-entity pattern is exactly
+  // where that costs the most, because there is no type word to fall back on.
+  { re: /\bwibau\b/i, why: 'WiBau Gesellschaft mbH — wholly owned by the state capital of Wiesbaden, building and running ITS schools and car parks; owner-confirmed 2026-09-27' },
+  //
   // STADTWERKE IS DELIBERATELY *NOT* HERE (owner's decision, 2026-09-27). A Stadtwerke is municipally OWNED
   // but its core business is operating real infrastructure — grids, heat, water — so it belongs with Fluvius
   // System Operator and De Vlaamse Waterweg rather than with a town hall. CORE BUSINESS, NOT OWNERSHIP, is
