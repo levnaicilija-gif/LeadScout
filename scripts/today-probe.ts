@@ -65,6 +65,18 @@ const boundaryWhy = async (p: Page) => {
  * both times — service role and the RLS-bound user each return the row, and the page renders it.
  */
 const followupWhy = async (p: Page) => {
+  // THE BOUNDARY ARM COMES FIRST, and it was missing until 2026-09-27 (found by audit, after a gate
+  // failure this helper could not attribute). Every other page load in this probe asks boundaryWhy; the
+  // follow-up round trip opens its OWN context, signs in again and loads /app/today/yesterday, and this
+  // helper only knew three answers: a read error, an empty list, or no list. So when requireUser threw on
+  // the documented connect-exhaustion fault and the page rendered src/app/error.tsx instead of the
+  // section, it reported "no follow-up list rendered at all — the section never got that far" — a SERVER
+  // fault described as a missing feature, sending the reader to look for a product bug that is not there.
+  // error.tsx prints the digest on that very page as data-error-reference, which is the one piece of
+  // evidence tying a probe failure to a server error, and this helper was throwing it away. Same fix as
+  // today-probe's own boundaryWhy and design-shots' reference line, in the one place that never got it.
+  const why = await boundaryWhy(p);
+  if (why) return `the page rendered an ERROR BOUNDARY, not a missing section — ${why}`;
   const read = flat(await p.locator('body').innerText().catch(() => '')).match(/Some follow-ups could not be read:[^.]*/i);
   if (read) return read[0];
   if (await p.locator('[data-no-followups]').count() > 0) return 'the list rendered empty — "Nothing waiting on you", and the page reported no read error';
@@ -489,6 +501,25 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       check(!!chipHref && chipHref.includes('since='), 'a source chip keeps ?since= — the filter is not cleared by clicking one', String(chipHref));
       const sortHref = await p.locator('[data-sort-control] a').last().getAttribute('href').catch(() => null);
       check(!!sortHref && sortHref.includes('since='), 'and so does the sort control', String(sortHref));
+
+      // ...AND SO DOES THE "CURRENTLY HIRING" TAG (added 2026-09-27, after an audit found it did not).
+      // It shipped carrying only `industries`, so clicking it from this very view silently dropped the
+      // since window — the same defect 1ccf125 fixed for the tab control, reintroduced by a new link.
+      // This cannot pass vacuously: the seeded company carries POSTS open postings on the same company_id
+      // as the seeded won-work leads, so the tag is on screen here by construction. The count is asserted
+      // too, because a tag that rendered with the wrong number would otherwise satisfy the href check.
+      const hiringTag = p.locator('[data-currently-hiring]').first();
+      const tagCount = await p.locator('[data-currently-hiring]').count();
+      if (!tagCount) {
+        check(false, 'the "Currently hiring" tag is on the filtered Leads view', `0 tags, though the seed gives this company ${POSTS} open postings`);
+      } else {
+        const tagHref = await hiringTag.getAttribute('href').catch(() => null);
+        check(!!tagHref && tagHref.includes('since='), 'and so does the "Currently hiring" tag — it threads the filter like every other link here', String(tagHref));
+        check(!!tagHref && /tab=hiring/.test(String(tagHref)) && /ids=[0-9a-f-]{36}/.test(String(tagHref)),
+          'and it points at Hiring now filtered to one company', String(tagHref));
+        check(await hiringTag.getAttribute('data-currently-hiring') === String(POSTS),
+          `and it names the real number of open adverts (${POSTS})`, String(await hiringTag.getAttribute('data-currently-hiring')));
+      }
 
       await p.locator('[data-clear-since]').click();
       await p.waitForLoadState('domcontentloaded');

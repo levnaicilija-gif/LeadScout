@@ -65,8 +65,26 @@ export type TradeDef = {
 export const TRADES = [
   // ---------------------------------------------------------------- the original ten, unchanged
   { trade: 'welder', category: 'blue_collar', why: 'the original list' },
-  { trade: 'painter', category: 'blue_collar', why: 'the original list' },
-  { trade: 'blaster', category: 'blue_collar', why: 'the original list' },
+  // THE ACTIVITY IS A NAME FOR THE TRADE ON A STATED FIELD (owner's decision, 2026-09-27). A real candidate
+  // on file states "Coating Inspector / QC Project Coordinator (painting & blasting background)", and before
+  // these two aliases the matcher answered `["coating inspector"]` alone: `painter` is not a substring of
+  // "painting" and `blaster` is not one of "blasting", so the two trades that person actually works in were
+  // invisible on their own record.
+  //
+  // IT CHANGES NOTHING FOR SCOPE TEXT, which is why this is narrow rather than a new rule. SCOPE_RULES has
+  // always mapped /coating|painting|blasting|surface treatment/ to painter and blaster for a project
+  // description, so a lead or an article was never affected by this gap. What had no route at all was a
+  // STATED FIELD — a candidate's own `trade`, or an advert's title through jobTrades' fallback — which goes
+  // through the trade NAMES and not the scope rules, deliberately (an advert states its own trade; a project
+  // implies several).
+  //
+  // KNOWN AND DELIBERATE LIMIT: anchoring means "sandblasting" and "sandblaster" still match nothing, since
+  // the preceding "d" is a word character and there is no boundary. Measured before leaving it: sandblast*
+  // appears 0 times across every advert and every candidate trade on file, so the gap is latent rather than
+  // live, and the honest fix when it appears is its own alias rather than dropping the anchor here — the one
+  // thing 2026-09-27 proved repeatedly is that an unanchored trade term costs more than a missing one.
+  { trade: 'painter', category: 'blue_collar', aliases: [{ term: 'painting', why: 'a real candidate states a "painting & blasting background"' }], why: 'the original list' },
+  { trade: 'blaster', category: 'blue_collar', aliases: [{ term: 'blasting', why: 'the same record; note that anchoring leaves "sandblasting" unmatched on purpose' }], why: 'the original list' },
   { trade: 'pipefitter', category: 'blue_collar', why: 'the original list' },
   {
     trade: 'fitter', category: 'blue_collar',

@@ -97,6 +97,32 @@ check('a plural still counts', has('Welders required', 'welder'), 'the stored vo
 check('separators are interchangeable', has('QA / QC inspector', 'qa/qc inspector') && has('qa/qc inspector', 'qa/qc inspector'),
   'a recruiter and a job board will not agree on punctuation');
 
+// ============================================================ 3b. THE ACTIVITY NAMES THE TRADE
+// Added 2026-09-27 on the owner's instruction, from a real record: before these two aliases the candidate
+// below resolved to ["coating inspector"] alone, because `painter` is not a substring of "painting" nor
+// `blaster` of "blasting", so the two trades that person actually works in were invisible on their record.
+console.log('\n--- "painting" and "blasting" name the trade on a stated field ---');
+check('"painting" IS painter', has('Painting supervisor', 'painter'), JSON.stringify(tradesInText('Painting supervisor')));
+check('"blasting" IS blaster', has('Blasting operative', 'blaster'), JSON.stringify(tradesInText('Blasting operative')));
+const real = 'Coating Inspector / QC Project Coordinator (painting & blasting background)';
+check('the real candidate record now resolves to all three trades',
+  ['coating inspector', 'painter', 'blaster'].every((t) => tradeOfField(real).includes(t as any)),
+  `${JSON.stringify(tradeOfField(real))} — it answered ["coating inspector"] alone before`);
+check('and "Industrial painter / blaster" is unchanged', JSON.stringify(tradeOfField('Industrial painter / blaster')) === JSON.stringify(['painter', 'blaster']),
+  JSON.stringify(tradeOfField('Industrial painter / blaster')));
+// THE LIMIT, asserted rather than left to be discovered: anchoring leaves "sandblasting" unmatched, because
+// the preceding "d" is a word character. Measured the day this shipped — sandblast* appears 0 times in every
+// advert and every candidate trade on file — so this is pinned as KNOWN, and the fix when it appears is its
+// own alias, never dropping the anchor. An unanchored trade term costs more than a missing one.
+check('"sandblasting" is still unmatched, and that is recorded rather than accidental',
+  tradesInText('sandblasting').length === 0 && tradesInText('sandblaster').length === 0,
+  `${JSON.stringify(tradesInText('sandblasting'))} / ${JSON.stringify(tradesInText('sandblaster'))} — 0 occurrences on file today; add an alias if that changes`);
+// And the arm that stops this widening into prose: a scope description already had a route through
+// SCOPE_RULES, so these aliases must not be what makes a project imply painters.
+check('a coating SCOPE still implies painter and blaster through the rules, not through these aliases',
+  inferTrades([], 'surface treatment and coating scope').trades.includes('painter' as any),
+  JSON.stringify(inferTrades([], 'surface treatment and coating scope').trades));
+
 // ============================================================ 4. THE NO-REGRESSION ARM
 console.log('\n--- hasRfbtTrades cannot have moved for any value in the database ---');
 // Exactly the distinct values measured in job_posts.trades and leads.trades_inferred on 2026-09-27.
