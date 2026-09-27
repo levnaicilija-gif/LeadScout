@@ -206,6 +206,19 @@ else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("outreach-rls"); fi
 # while six live sites still named it.
 step column-exists-selftest npx tsx --env-file=.env.local scripts/column-exists-check.ts --self-test
 step column-exists npx tsx --env-file=.env.local scripts/column-exists-check.ts
+# ...and every FUNCTION it calls and BUCKET it names, which column-exists-check cannot see because neither is
+# a column. Built 2026-09-27 at zero exposure, because this class has already happened here: 0037's
+# delete_candidate_rows answered from the day it was applied while ITS TABLE NEVER EXISTED, undetected until
+# the owner queried it by hand. It protects next_reference_code (every Verify intake),
+# delete_candidate_rows (a senior's permanent deletion) and rls_tables_without_policy (the nightly sweep and
+# Home's trust pill — the mechanism this project treats as proof isolation holds).
+#
+# IT INVOKES NOTHING: next_reference_code is nextval() (0001:89), so calling it to prove it exists would burn
+# a reference code and leave a permanent gap in candidate numbering, once per gate for ever. Existence comes
+# from PostgREST's own OpenAPI document instead. Names are scanned from source, never listed here — the
+# cautionary example is migrations-status.ts, hand-kept, ungated, and probing ZERO of the five.
+step rpc-exists-selftest npx tsx --env-file=.env.local scripts/rpc-exists-check.ts --self-test
+step rpc-exists npx tsx --env-file=.env.local scripts/rpc-exists-check.ts
 # Item 20 step 3b (0052): the entitlement function, which is CALLED FROM NOTHING yet.
 #
 # The boundary is keyed on industry_limit, NOT on the follow: an UNLIMITED account that follows one
