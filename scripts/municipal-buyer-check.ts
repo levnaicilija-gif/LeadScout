@@ -64,6 +64,30 @@ for (const b of INDUSTRIAL) {
   check(`survives: ${b.slice(0, 52)}`, r === null, r ? `WRONGLY MATCHED on "${r.term}" — real work would be buried` : 'in scope');
 }
 
+
+// ---- THE FIVE PUBLIC SHAPES ADDED 2026-09-27, each with the buyer that earned it ----------------
+for (const [b, why] of [
+  ['Kreisausschuss Main-Taunus-Kreis, Hochbau- und Liegenschaftsamt', 'a district committee'],
+  ['Zweckverband Abwasserreinigung Balingen', 'a municipal special-purpose association'],
+  ['LAWOG Gemeinn. Landeswohnungsgen. für OÖ für die Stadt', 'social housing'],
+  ['Department of Climate Energy and the Environment', 'a government department'],
+  ['Amt für Hochbau und Gebäudewirtschaft', 'a German public office'],
+] as [string, string][]) {
+  check(`caught (${why}): ${b.slice(0, 40)}`, !!municipalBuyer(b), municipalBuyer(b) ? `matched "${municipalBuyer(b)!.term}"` : 'NOT MATCHED');
+}
+
+// ---- STADTWERKE STAYS INDUSTRIAL (owner, 2026-09-27) -------------------------------------------
+// Municipally OWNED, but its core business is operating real infrastructure — grids, heat, water — so it
+// belongs with Fluvius rather than with a town hall. Core business, not ownership, is the predictor, and the
+// costs are asymmetric: a false positive is one irrelevant lead, a false negative holds back a substation job.
+for (const b of ['Stadtwerke Prenzlau GmbH', 'Gothaer Stadtwerke ENERGIE GmbH', 'SWM Services GmbH']) {
+  check(`survives as industrial: ${b}`, municipalBuyer(b) === null,
+    municipalBuyer(b) ? `WRONGLY MATCHED on "${municipalBuyer(b)!.term}" — a real infrastructure operator would be buried` : 'industrial');
+}
+// Public bodies whose WORK is RFBT's market: ship repair. Public does not mean irrelevant.
+for (const b of ['Ministério da Defesa Nacional - Marinha', 'Riigilaevastik']) {
+  check(`survives (public but naval): ${b}`, municipalBuyer(b) === null, municipalBuyer(b) ? `WRONGLY MATCHED on "${municipalBuyer(b)!.term}"` : 'industrial');
+}
 // ---- THE ALL-BUYERS RULE, which is the decision this file exists to protect ---------------------
 const mixed = ['Fluvius System Operator cv (Speciale Sectoren)', 'Stadsbestuur van Harelbeke'];
 check('a contract shared by a grid operator and a city is NOT ranked down',

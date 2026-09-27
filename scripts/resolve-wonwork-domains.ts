@@ -1,7 +1,7 @@
 /**
  * Find the websites of the companies behind open won-work leads that have none — paid, under the daily cap, resumable.
  *
- *   npx tsx --env-file=.env.local scripts/resolve-wonwork-domains.ts [--write] [--limit 200] [--retries-only]
+ *   npx tsx --env-file=.env.local scripts/resolve-wonwork-domains.ts [--write] [--limit 200] [--retries-only] [--news-only]
  *
  * Search by name and country, as /api/jobs/resolve-domains does — the notice's address in the query cost 18% more and
  * missed vizoso.net (scripts/domain-lookup-sample.ts) — and use the address afterwards, for free, to check the site.
@@ -32,6 +32,7 @@ import { probeAdmin } from '../src/lib/test-data';
 
 const write = process.argv.includes('--write');
 const retriesOnly = process.argv.includes('--retries-only');
+const newsOnly = process.argv.includes('--news-only');
 const limitAt = process.argv.indexOf('--limit');
 const LIMIT = limitAt > 0 ? Number(process.argv[limitAt + 1]) : 200;
 const MAX_LOOKUPS = 2;
@@ -74,6 +75,20 @@ async function addressCheck(domain: string, a: WinnerAddress | null): Promise<Ch
   if (error) throw new Error(error.message);
   const todo = new Map<string, { id: string; name: string; notice: string | null; leadCountry: string | null; lookups: number; final: boolean }>();
   for (const l of leads ?? []) {
+    // ITEM 27, THE OWNER'S HOLD: --news-only processes ONLY news-sourced won-work leads and skips every
+    // tender award. Both kinds live under kind = 'won_work', so this script has always covered them
+    // together — and on 2026-09-27 the owner APPROVED the 31 news-sourced companies while HOLDING the 103
+    // tender-award ones pending item 29. Running unfiltered would spend on exactly the companies being
+    // held. Measured 2026-09-27, the same day: the held population is still EXACTLY 103 companies (none has
+    // gained a domain since), and item 29 calls 32 of them municipal on every buyer they have.
+    //
+    // It is a FILTER over an existing judgement, not a new one: leadSource() already distinguishes the two
+    // by source_url a few lines below, for the notice number. Nothing here decides what a lead is.
+    //
+    // The flag is opt-in rather than the default deliberately. A future run that wants both kinds should
+    // say so, and a default that silently changed which population is paid for is how the hold would be
+    // lost — the same reasoning that made item 12's admission rule explicit rather than implicit.
+    if (newsOnly && leadSource(l.source_url) !== 'news') continue;
     const c: any = l.companies;
     const notice = leadSource(l.source_url) === 'tender' ? publicationNumber(l.source_url) : null;
     const t = todo.get(c.id) ?? { id: c.id, name: c.name, notice, leadCountry: l.country ?? null, lookups: Number(c.domain_lookups ?? 0), final: c.careers_status === 'no_domain_found' };
@@ -85,7 +100,7 @@ async function addressCheck(domain: string, a: WinnerAddress | null): Promise<Ch
   const pending = eligible.sort((a, b) => (b.lookups - a.lookups) || a.name.localeCompare(b.name)).slice(0, LIMIT);
   const budget = await Budget.open(db);
   const startSpend = budget.totalToday;
-  console.log(`won-work companies with no website: ${all.length} · never looked up ${all.filter((t) => t.lookups === 0 && !t.final).length} · missed once (a retry is due) ${all.filter((t) => t.lookups === 1 && !t.final).length} · final "not found" ${all.filter((t) => t.final).length} · to look up now: ${pending.length}${retriesOnly ? ' (retries only)' : ''} · spend today €${startSpend.toFixed(4)} of €${budget.capEur} · ${write ? 'writing' : 'dry run — nothing stored'}`);
+  console.log(`won-work companies with no website: ${all.length}${newsOnly ? ' (NEWS-SOURCED ONLY — tender awards held, item 29)' : ''} · never looked up ${all.filter((t) => t.lookups === 0 && !t.final).length} · missed once (a retry is due) ${all.filter((t) => t.lookups === 1 && !t.final).length} · final "not found" ${all.filter((t) => t.final).length} · to look up now: ${pending.length}${retriesOnly ? ' (retries only)' : ''} · spend today €${startSpend.toFixed(4)} of €${budget.capEur} · ${write ? 'writing' : 'dry run — nothing stored'}`);
 
   // Without --write nothing is looked up at all: a lookup is paid for whether or not its answer is stored, so a "dry run"
   // that searched would spend the budget and throw the result away. It lists what a --write run would look up.

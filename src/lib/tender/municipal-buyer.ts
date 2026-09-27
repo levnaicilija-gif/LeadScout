@@ -66,6 +66,23 @@ const MUNICIPAL: { re: RegExp; why: string }[] = [
   { re: /\bville de\b|\bmairie\b|communaut[ée] (de|d\x27)/i, why: 'French communes and inter-communal bodies' },
   // A French public establishment: public by its own words, though not a commune.
   { re: /[ée]tablissement public/i, why: 'Etablissement public charge de la conservation... — found as a MISS' },
+  // FIVE SHAPES ADDED 2026-09-27 after re-measuring the 103 held tender companies against this rule: nine of
+  // the 76 it called "industrial" had ONLY public buyers, and both Hess Gerüstbau rows were among them — a
+  // scaffolding firm that would have been unblocked for paid website discovery on the strength of two public
+  // buyers, which is the outcome item 29 exists to prevent arriving through the back door.
+  { re: /kreisausschuss/i, why: 'Kreisausschuss Main-Taunus-Kreis, Hochbau- und Liegenschaftsamt — a district committee' },
+  { re: /zweckverband/i, why: 'Zweckverband Abwasserreinigung Balingen — a municipal special-purpose association' },
+  { re: /wohnungsgen|landeswohnung/i, why: 'LAWOG Gemeinn. Landeswohnungsgen. für OÖ — social housing' },
+  { re: /\bdepartment of\b/i, why: 'Department of Climate Energy and the Environment (Ireland), twice' },
+  { re: /\bamt f[üu]r\b/i, why: 'German public offices; paired with the Liegenschaftsamt case above' },
+  //
+  // STADTWERKE IS DELIBERATELY *NOT* HERE (owner's decision, 2026-09-27). A Stadtwerke is municipally OWNED
+  // but its core business is operating real infrastructure — grids, heat, water — so it belongs with Fluvius
+  // System Operator and De Vlaamse Waterweg rather than with a town hall. CORE BUSINESS, NOT OWNERSHIP, is
+  // the better predictor, and the costs are asymmetric: a false positive here is one irrelevant lead, while a
+  // false negative silently holds back a real substation job. The same reasoning keeps Ministério da Defesa
+  // Nacional - Marinha and Riigilaevastik (the Estonian State Fleet) industrial: both are public bodies whose
+  // work is ship repair, which is RFBT's own market. Public does not mean irrelevant.
   // English-language local government.
   { re: /\b(city|county|borough|district|parish|town) council\b|\bcouncil of\b/i, why: 'UK and Irish local authorities' },
 ];
