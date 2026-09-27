@@ -18,6 +18,7 @@ import { rankQuoted } from '@/lib/quoted-contacts';
 import { OpenRow, OpenChevron } from '@/components/OpenRow';
 import { compoundByCompany } from '@/lib/compound-signals-load';
 import { preparedSearches } from '@/lib/hiring-contacts';
+import { siteReadState } from '@/lib/site-read-state';
 import { siteTrust } from '@/lib/site-trust';
 import { boostedFit } from '@/lib/compound-signals';
 export const dynamic = 'force-dynamic';
@@ -454,7 +455,20 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
           <td>{tab === 'won_work' ? l.project_name : jp?.role}<div className="text-ink3 text-[12px]">{tab === 'won_work' ? [l.phase, l.project_value].filter(Boolean).join(' · ') : `${jp?.headcount ? `×${jp.headcount} · ` : ''}posted ${jp?.posted_at ?? '—'}`}</div></td>
           <td>{c ? <><div className="font-medium">{c.name} <a href={c.linkedin_search_url} target="_blank" rel="noopener" className="ml-1 inline-grid place-items-center w-5 h-5 border border-line rounded text-[10px] font-semibold text-ink2">in</a> <a href={c.google_search_url} target="_blank" rel="noopener" className="inline-grid place-items-center w-5 h-5 border border-line rounded text-[10px] font-semibold text-ink2">G</a></div><div className="text-ink3 text-[12px]">{c.title} · email {c.email_status}{c.phone ? ' · phone found' : ''}</div></> : l.company_people?.[0] ? <div data-company-contact><div className="font-medium">{l.company_people[0].name}</div><div className="text-ink3 text-[12px]">{l.company_people[0].title} · from their site{l.company_people[0].email ? ' · email found' : ''}{l.company_people[0].phone ? ' · phone found' : ''}{l.site_trust?.rowNote && <span data-site-note className="text-warn font-medium"> · {l.site_trust.rowNote}</span>}</div></div>
             : (l.companies?.switchboard || l.companies?.general_email) ? <div data-company-contact><div className="font-medium">{l.companies.switchboard ? 'Switchboard' : 'General email'}</div><div className="text-ink3 text-[12px]">{l.companies.switchboard ?? l.companies.general_email} · from their site{l.site_trust?.rowNote && <span data-site-note className="text-warn font-medium"> · {l.site_trust.rowNote}</span>}</div></div>
-            : <span className="text-ink3">— {l.lead_people?.length ? `${l.lead_people.length} from Industry Contacts` : src === 'tender' ? 'award notices name no person' : 'no named person'}</span>}</td>
+            : <span className="text-ink3" data-no-contact={siteReadState(l.companies)}>— {l.lead_people?.length
+              ? `${l.lead_people.length} from Industry Contacts`
+              // ITEM 27: AN EMPTY CELL MUST SAY WHICH ABSENCE IT IS (owner's decision, 2026-09-27). The
+              // three states are different actions for a recruiter — go and find the site, wait for the
+              // crawl, or run a search — and a bare "no named person" gave all three the same words. The
+              // worked example that started item 27 was exactly this: Schiffswerft Fischer had no website
+              // on file, so discovery never ran, and the row said only that nobody was named. The state
+              // comes from siteReadState, the same rule the drawer has stated since item 21, so the cell
+              // and the drawer cannot drift apart. The source tag stays where a notice names nobody,
+              // because "award notices name no person" is a fact about the SOURCE and is true whatever
+              // the website situation is — it is why we are looking at the company's own site at all.
+              : siteReadState(l.companies) === 'no_website' ? (src === 'tender' ? 'no website on file — the notice names no person' : 'no website on file')
+              : siteReadState(l.companies) === 'not_read' ? 'their site has not been read yet'
+              : src === 'tender' ? 'nothing printed on their site; the notice names no person' : 'nothing printed on their site'}</span>}</td>
           <td>{(l.trades_inferred ?? []).map((t: string) => <span key={t} className="inline-block text-[12px] px-2 py-0.5 rounded-md bg-line2 text-ink2 mr-1 mb-1">{t}</span>)}</td>
           <td>{tab === 'won_work' ? <span className="text-[13px]">{l.phase_start ?? l.phase ?? '—'}</span> : <span className={`st ${jp?.hiring_pressure === 'high' ? 'st-bad' : jp?.hiring_pressure === 'medium' ? 'st-warn' : ''}`}>{jp?.hiring_pressure ?? 'low'}</span>}</td>
           <td><span className="inline-flex items-center gap-2 font-semibold"><i className="inline-block w-[56px] h-[6px] rounded-full bg-line overflow-hidden"><i className="block h-full rounded-full bg-tool-leads" style={{ width: `${l.fit_score}%` }} /></i>{l.fit_score}</span>{l.fit_boost && <div data-fit-from title={l.fit_boost.note} className="text-ink3 text-[12px] whitespace-nowrap">{l.fit_boost.to === l.fit_boost.from ? 'boost held by the cap' : `boosted, was ${l.fit_boost.from}`}</div>}{l.publicBuyer && <div data-public-buyer title={l.publicBuyer} className="text-ink3 text-[12px] whitespace-normal">sorted lower · public buyer</div>}</td>

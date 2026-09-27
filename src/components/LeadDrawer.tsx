@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { siteReadState } from '@/lib/site-read-state';
 import { EmployerTypeOverride } from './EmployerTypeOverride';
 import { CountryPicker } from './CountryPicker';
 import { ScoredCandidate } from './ScoredCandidate';
@@ -123,9 +124,13 @@ export function LeadDrawer({ lead }: { lead: any }) {
           {trust?.lines.map((l, i) => (
             <div key={i} data-site-trust={l.kind === 'scope' ? 'group' : trust.check ?? ''} className={`mb-2 text-[13px] rounded px-2.5 py-1.5 ${l.tone === 'ok' ? 'bg-oksoft text-ok' : l.tone === 'warn' ? 'bg-warnsoft text-warn' : 'bg-line2 text-ink2'}`}>{l.text}</div>
           ))}
-          <div className="text-ink3 mb-1.5">{!co.domain
+          {/* The same three states the Won work cell shows in a few words, via the one shared rule
+              (item 27, 2026-09-27). The sentences are unchanged; only the branch moved into
+              siteReadState, so the cell and the drawer cannot come to disagree about which absence
+              this is. */}
+          <div className="text-ink3 mb-1.5" data-site-read={siteReadState(co)}>{siteReadState(co) === 'no_website'
             ? 'No website on file for this company, so its own pages have not been read. Searches to run — these are searches, not people we found:'
-            : co.contacts_checked_at
+            : siteReadState(co) === 'nothing_printed'
               ? `Nothing printed on ${co.domain} when we read it on ${String(co.contacts_checked_at).slice(0, 10)}. Searches to run — these are searches, not people we found:`
               : `${co.domain} has not been read yet. Searches to run meanwhile — these are searches, not people we found:`}</div>
           <div className="grid gap-1">{(lead.searches ?? []).map((s: any) => <a key={s.url} className="text-accent" href={s.url} target="_blank" rel="noopener">{s.label}</a>)}</div>

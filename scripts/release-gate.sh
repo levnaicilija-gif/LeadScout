@@ -77,6 +77,11 @@ step municipal-buyer npx tsx scripts/municipal-buyer-check.ts
 # able seaman. It also pins the property that let this ship without re-scoring: every one of the ten
 # original trades is blue_collar, so hasRfbtTrades answers identically for every trades array on file.
 step trades npx tsx scripts/trades-check.ts
+# Item 27: the three reasons a company has no contact must stay tellable apart — nobody looked, we looked
+# and nothing was printed, there is no site. It also asserts the property that lets the server cell and
+# the 'use client' drawer share one rule: site-read-state.ts imports NOTHING, so importing it into the
+# browser cannot drag the Anthropic SDK along with it.
+step site-read-state npx tsx scripts/site-read-state-check.ts
 # Item 20 step 3e: a signed-in user cannot WRITE a shared table, and is stopped by the GRANT rather than by
 # a policy. rls-sweep compares row COUNTS and never attempts a write, which is exactly how 0041's hole
 # survived a passing sweep. Measured before 0056: three tables — people, company_email_patterns and
