@@ -30,21 +30,52 @@ Rules:
 - Return the company's OWN website, not a directory, aggregator, LinkedIn, Bloomberg, Wikipedia, a news article or a jobs board.
 - Only answer with a domain when a page you actually read names that company as itself — its title, header or footer. Quote that text in confirmed_by.
 - THE COUNTRY MUST MATCH. Company names repeat across countries: "AXYS" in Belgium is not AXYS Technologies in British Columbia. If the site you find is a different company in a different country, that is a miss — answer null. Only accept a site whose own pages place the company in the country given, or that is plainly the same group operating there.
-- WHEN AN ADDRESS IS GIVEN, IT MUST MATCH TOO. It is the company's registered address from a public contract award notice. Use the town or postcode in your search. A company with the same name in another town is a different company — answer null — unless its own pages show it is the same company (the same address, or that office listed as its own).
+- WHEN A TOWN OR ADDRESS IS GIVEN, IT MUST MATCH TOO. It comes from the company's own registered address on a public contract award notice, never from the buyer. Put the town or postcode in your search terms. A company with the same name in another town is a different company — answer null — unless its own pages show it is the same company (the same town, that office listed as its own, or plainly the same group operating there). A company may trade from a town its website never names, so a site that matches the name and the country but prints no town is not disqualified by that alone: say so in confirmed_by rather than answering null.
 - If the company is not clearly identifiable, or you only find it mentioned on someone else's page, answer {"domain": null, "confirmed_by": null, "source_url": null}. A wrong website is far worse than none.
 - domain is the bare hostname without scheme or "www.".`;
 
+export type LookupAddress = { street?: string | null; postalCode?: string | null; city?: string | null; country?: string | null; nuts?: string | null };
+
 export type LookupInput = {
   name: string; country?: string | null; sector?: string | null;
-  address?: { street?: string | null; postalCode?: string | null; city?: string | null; country?: string | null } | null;
+  address?: LookupAddress | null;
 };
 
-/** The user message: exactly name, country and sector as before, plus the notice's address when there is one. */
+/**
+ * THE PLACE A NOTICE NAMES, AND NOT THE WHOLE ADDRESS (owner's instruction, 2026-09-28).
+ *
+ * The street is dropped on purpose. Both shapes were measured on 6 domainless winners on 2026-09-15:
+ * name + country found 6 domains and verified 3, while name + the FULL address found 5 and verified 2
+ * at +18% cost — a longer prompt and more second hops — which is why the callers have sent name and
+ * country only ever since. A street number is the part that narrows a web search to nothing; the TOWN
+ * is the part that tells two same-named companies apart, and this repo has the case on file: "AXYS"
+ * in Belgium is not AXYS Technologies in British Columbia. So the town and postcode go in and the
+ * street stays out, and the earlier measurement is not overturned by assertion — it was taken on six
+ * companies, and the 12 retry-due tender winners are the sample that will settle it.
+ *
+ * A NUTS CODE IS NOT A PLACE. `winnerAddress` reads `CountrySubentityCode` (FRI31, DEF07), which is a
+ * statistical region code no page prints and no search engine reads as a region, so it is deliberately
+ * never put in the query. Town, else postcode, else nothing.
+ */
+export function placeFrom(a: LookupAddress | null | undefined): LookupAddress | null {
+  if (!a) return null;
+  const city = a.city?.trim() || null;
+  const postalCode = a.postalCode?.trim() || null;
+  if (!city && !postalCode) return null;
+  return { city, postalCode, country: a.country ?? null };
+}
+
+/** The user message: exactly name, country and sector as before, plus the place or address when there is one. */
 export function lookupPrompt(c: LookupInput): string {
   const lines = [`Company: ${c.name}`];
   const a = c.address;
   if (a && (a.city || a.postalCode)) {
-    lines.push(`Registered address (from the contract award notice): ${[a.street, [a.postalCode, a.city].filter(Boolean).join(' '), a.country].filter(Boolean).join(', ')}`);
+    const where = [[a.postalCode, a.city].filter(Boolean).join(' '), a.country].filter(Boolean).join(', ');
+    // Named for what it actually is. A caller that passes the whole address still gets the old line, so
+    // the prompt never claims to hold a registered address when it holds only a town.
+    lines.push(a.street
+      ? `Registered address (from the contract award notice): ${[a.street, where].filter(Boolean).join(', ')}`
+      : `Town the contract award notice gives for this company (its own registered address, not the buyer's): ${where}`);
   }
   if (c.country) lines.push(`Country: ${c.country}`);
   if (c.sector) lines.push(`Sector: ${c.sector}`);

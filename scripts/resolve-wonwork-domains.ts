@@ -22,7 +22,7 @@ import { createClient } from '@supabase/supabase-js';
 import * as cheerio from 'cheerio';
 import { Budget } from '../src/lib/cost';
 import { crawlWorkspace } from '../src/lib/crawl-workspace';
-import { lookupDomain } from '../src/lib/domain-lookup';
+import { lookupDomain, placeFrom } from '../src/lib/domain-lookup';
 import { fetchNoticeXml, publicationNumber, winnerAddress, type WinnerAddress } from '../src/lib/tender/winner-address';
 import { leadSource, primaryArticle } from '../src/lib/lead-source';
 import { siteScope } from '../src/lib/site-scope';
@@ -52,6 +52,18 @@ const textOf = (h: string) => { const $ = cheerio.load(h); $('script, style, nos
 type Check = 'printed' | 'not_printed' | 'site_did_not_load' | 'no_address';
 
 /** The notice's postcode or town printed on the site's home page or one of its contact / imprint pages. */
+/**
+ * What the query actually carried, printed per company so a run says which of the three cases it was:
+ * the notice's full registered address, the town alone, or nothing at all. Without this the next
+ * result cannot be attributed — the 2026-09-15 sample found the full address WORSE than name and
+ * country, so a run has to say which winners were searched which way.
+ */
+const placeLabel = (a: WinnerAddress | null, p: { city?: string | null; postalCode?: string | null } | null) => {
+  if (!p) return 'the notice names no place';
+  const where = [p.postalCode, p.city].filter(Boolean).join(' ');
+  return a?.street ? `searched with the notice's address (${a.street}, ${where})` : `searched with the town "${where}"`;
+};
+
 async function addressCheck(domain: string, a: WinnerAddress | null): Promise<Check> {
   const wants = [a?.postalCode, a?.city?.split(/[-\s]/)[0]].filter((w): w is string => !!w && w.length >= 3).map((w) => w.toLowerCase());
   if (!wants.length) return 'no_address';
@@ -150,13 +162,26 @@ async function addressCheck(domain: string, a: WinnerAddress | null): Promise<Ch
     const attempt = t.lookups + 1;
     tally.looked++; if (attempt > 1) tally.retries++;
     try {
-      const r = await lookupDomain({ name: t.name, country }, { db, workspaceId, budget, label: t.name });
+      // WHAT THE NOTICE GIVES, GOES (owner's instruction, 2026-09-28). `lookupDomain` has taken an
+      // address since 92ea312 and `lookupPrompt` branches on whether there is a street, so the caller
+      // passes the winner's address AS READ and the prompt decides how to word it: the full
+      // registered address where the notice prints one, and the TOWN ALONE where it gives a place and
+      // no street. The notice's XML is already fetched above for the country and the address check —
+      // this stops throwing its address away before the query.
+      //
+      // NOTE FOR WHOEVER READS THE NEXT RESULT: this reverses a measured decision. On 6 domainless
+      // winners on 2026-09-15 (92ea312, domain-lookup-sample.ts) name + FULL ADDRESS found 5 domains
+      // and confirmed 2, against 6 and 3 for name + country, at +18% cost — which is why both real
+      // callers have sent name and country only ever since, and why only the sample script has ever
+      // passed an address. n was 6. The 12 retry-due winners are a bigger sample and will say more.
+      const place = placeFrom(a);
+      const r = await lookupDomain({ name: t.name, country, address: a }, { db, workspaceId, budget, label: t.name });
       const stamp = { domain_lookups: attempt, domain_looked_up_at: new Date().toISOString() };
       if (!r.domain) {
         tally.notFound++;
         const final = attempt >= MAX_LOOKUPS;
         if (final) tally.final++;
-        console.log(`  ${t.name} (${country ?? '—'}): no website · lookup ${attempt} of ${MAX_LOOKUPS}${final ? ' · now final' : ' · a retry is due'} · €${r.eur.toFixed(4)}`);
+        console.log(`  ${t.name} (${country ?? '—'}): no website · lookup ${attempt} of ${MAX_LOOKUPS}${final ? ' · now final' : ' · a retry is due'} · €${r.eur.toFixed(4)} · ${placeLabel(a, place)}`);
         if (write) await db.from('companies').update({ ...stamp, ...(final ? { careers_status: 'no_domain_found' } : {}) }).eq('id', t.id);
         continue;
       }
@@ -167,7 +192,7 @@ async function addressCheck(domain: string, a: WinnerAddress | null): Promise<Ch
       const scope = siteScope({ companyName: t.name, domain: r.domain, winnerCountry: country, sharedWith: (holders ?? []).map((h: any) => h.name) });
       if (scope.scope === 'group') tally.group++;
       const checked = a && (a.city || a.postalCode) ? [a.postalCode, a.city].filter(Boolean).join(' ') : null;
-      console.log(`  ${t.name} (${country ?? '—'}): ${r.domain}${attempt > 1 ? ' · found on retry' : ''} · €${r.eur.toFixed(4)} · address ${check.replace(/_/g, ' ')}${checked ? ` (${checked})` : ''} · ${scope.scope === 'group' ? `GROUP SITE — ${scope.reason}` : 'own site'}`);
+      console.log(`  ${t.name} (${country ?? '—'}): ${r.domain}${attempt > 1 ? ' · found on retry' : ''} · €${r.eur.toFixed(4)} · ${placeLabel(a, place)} · address ${check.replace(/_/g, ' ')}${checked ? ` (${checked})` : ''} · ${scope.scope === 'group' ? `GROUP SITE — ${scope.reason}` : 'own site'}`);
       if (write) {
         const { error: upErr } = await db.from('companies').update({
           domain: r.domain, domain_source: 'web search', domain_source_url: r.sourceUrl ?? null,
