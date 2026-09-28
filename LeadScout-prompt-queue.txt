@@ -1760,14 +1760,16 @@ weight, a re-inference over their stored scope text finds a blue-collar trade fo
 3 — Proserv, ROSEN and Vallourec, the three leads trades.ts's own comment cites as
 the reason SCOPE_RULES exist — and the OLD thirteen rules find all three too, so
 0 is attributable to the wider vocabulary. The dry run was not wasted: it found
-item B below. Do not fold this back into item 6; item 6's geography half is real
-and is now item B.
+item 33 below. Do not fold this back into item 6; item 6's geography half is real
+and is now item 33.
 
 
-ITEM A — TRADE VOCABULARY PHASE 2: THE CRAWL STILL SPEAKS THE OLD TEN WORDS
+32. TRADE VOCABULARY PHASE 2: THE CRAWL STILL SPEAKS THE OLD TEN WORDS
 
-(Lettered, not numbered: the owner has not numbered these two, and the queue's
-numbers are its own. Nothing here renumbers anything.)
+(Numbered 32 on 2026-09-28, owner's instruction. It was briefly "ITEM A", which
+collided with a later list that used (a), (b), (c) for three different items —
+so every entry now carries a unique NUMBER and no letters are in use. Nothing
+that the owner had already numbered was renumbered: 32 onwards were free.)
 
 THE BLOCKER IS A PROMPT, NOT THE MATCHER. TITLE_SYSTEM (job-posts-batch.ts:77)
 says "RFBT's taxonomy is exactly these ten words ... anything outside this list is
@@ -1794,7 +1796,7 @@ TO DO, IN THIS ORDER:
        "rock mechanics"), which wordPattern's trailing `s?` allows. CLAUDE.md
        records that anchoring fixed mechanic/"mechanical"; it did not fix this,
        and the term was never tested against the plural.
-  2. ITEM B's unknown-country scoring (below).
+  2. ITEM 33's unknown-country scoring (below).
   3. WIDEN TITLE_SYSTEM to the full 39-trade vocabulary, and only THEN clear the
      board fingerprints. Re-reading the 201 fingerprinted boards costs about
      EUR 0.22 (832 metered title passes at EUR 0.00110 each, plus EUR 0.00484 per
@@ -1818,7 +1820,7 @@ a candidate holding NDT was being shortlisted against windturbine adverts. The
 anchoring removed it.
 
 
-ITEM B — AN UNKNOWN COUNTRY IS SCORED AS NON-EUROPE
+33. AN UNKNOWN COUNTRY IS SCORED AS NON-EUROPE
 
 Found by item 30's dry run, 2026-09-28. fitScore caps a lead at
 NON_EUROPE_MAX_FIT (25) whenever isEuropean(country) is false, and
@@ -1861,3 +1863,286 @@ companies with anything callable, 0 named contacts. EXPECT A GENERAL PHONE OR
 EMAIL, NOT A NAME. Verification of the 19: 10 against a printed address, 9 on
 name and country alone, 0 group sites. 83 still outstanding (71 never looked up,
 12 retry due), EUR 1.94 to finish.
+
+
+34. PER-INDUSTRY TENDER DISCOVERY — THE CPV MAP STILL ADMITS ONLY THE OLD TEN
+
+RECORDED 2026-09-28, not started. Item 12 admits a TED notice when its MAIN CPV
+code is on cpv.ts's list of 42 codes, and those 42 codes map to the ORIGINAL TEN
+TRADES only. So the 39-trade vocabulary widened what the matcher can read and
+did NOT widen what the tender ingest will admit: a notice whose subject is
+rigging, machining, drill crew, vessel crew, ROV, overhead line, substation or
+solar work is not admitted at all unless its main code happens to sit on the old
+list. This is the same shape as item 32 one layer up — the vocabulary grew and
+the gate in front of it did not.
+
+TO DO:
+  - extend admission to the FULL vocabulary: every trade in trade-vocabulary.ts
+    that a CPV code can describe gets its code(s), checked against the eForms
+    SDK codelist by scripts/cpv-check.ts exactly as the existing 42 were.
+  - tag the INDUSTRY from the buyer and the subject codes together, not from the
+    trade code. Item 18's rule stands and is the reason: a trade code names a
+    TRADE, never an industry — the turbine codes cover gas and hydro as much as
+    wind — and 40% Other/Uncategorized on tender awards was measured, examined
+    and deliberately NOT "fixed" by tuning the classifier.
+  - KEEP ITEM 29's MUNICIPAL RULE. Widening admission without it multiplies
+    exactly the town-hall awards item 29 exists to rank down: 49 of 167 leads
+    (29%) already have a municipal buyer. Admission and ranking stay separate —
+    a widened code list must not smuggle in a ranking change.
+  - measure before and after on the real book, as item 12's own backfill did:
+    notices seen, admitted, and how many of the newly admitted are municipal.
+
+COST: EUR 0 per notice. Item 12 reads TED's search API and makes no model call,
+and that must not change — a widened code list is still pure rules.
+
+
+35. PER-ACCOUNT TRADE CHOICE INSIDE AN INDUSTRY — A PREFERENCE, NEVER AN ENTITLEMENT
+
+RECORDED 2026-09-28, not started. An account inside one industry still sees every
+trade in it. The ask is to let a recruiter say which trades they actually place.
+
+THE SHAPE IS THE DECIDING CONSTRAINT: this is a PREFERENCE like item 18's
+`industry_follow`, NOT an entitlement like `industry_limit`. It filters and
+highlights what is on screen and it changes NOTHING about what exists:
+  - leads.fit_score stays the GLOBAL STORED SCORE. It is not re-weighted per
+    account, and no per-account number is stored beside it. (The fit score is the
+    one judgement in this codebase that IS stored rather than computed on read,
+    which is exactly why a per-account variant would have to be a second column
+    and would then go stale — see item 30, closed because a stored score that
+    nobody re-computes is what makes a re-score a project.)
+  - nothing is hidden from the shared pool by a trade choice. Item 18's own rule
+    is the precedent: the entitlement caps what is FOLLOWED, never what can be
+    SEEN, and `?industries=all` is always one click away.
+
+ON SCREEN:
+  - core positions PRE-TICKED from item 32's industry-to-trade map, so a new
+    account is useful before it configures anything;
+  - an "also involved" list beneath them, unticked, for the trades that appear on
+    the same projects;
+  - a one-click ALL TRADES switch, the exact analogue of `?industries=all`.
+
+DEPENDS ON item 32 for the industry-to-trade map, so it is not startable before
+that map exists.
+
+
+36. DAILY SOURCE DISCOVERY PER INDUSTRY — SOLAR HAS NO LEADS AND SOLAR EPC AWARDS
+    ARE REPORTED DAILY
+
+RECORDED 2026-09-28, not started. The gap is a SOURCE gap, not a classifier gap,
+and it is worth stating that way because item 18's note forbids tuning the
+classifier to shrink a bucket: if an industry has no leads while the trade press
+reports awards in it daily, the crawl is not reading the places that publish
+them. Solar is the named example.
+
+TO BUILD, in this order:
+  - a COVERAGE GAP DETECTOR: per industry, leads over a window against what the
+    enabled sources actually produced. Free — it reads radar_runs.sources_seen
+    and the leads table, both already on file.
+  - a DAILY, COST-CAPPED CANDIDATE FINDER: for an industry with a gap, find
+    publications that report its awards. Capped per day, and the cap is the
+    point, not a detail.
+  - a TRIAL CRAWL of a candidate source before anything is enabled: does it
+    carry article links at all, and do they extract? scripts/feed-discovery.ts
+    already answers the first half for free and is the model for this.
+  - APPROVAL FIRST, auto-add LATER. A source that is enabled without being
+    approved is how the crawl came to read 158 tender portals as news.
+
+BUDGET: from the headroom the tender exclusion freed (1007442). That commit took
+radar's stage 1 from EUR 1.8778 to EUR 0.1430 in a morning — about EUR 1.73 a day
+— and this is the first claim on it. Nothing here may exceed that headroom, so
+the daily cap stays EUR 2.00 and no new spending ceiling is introduced.
+
+TWO THINGS ALREADY MEASURED THAT THIS MUST NOT REPEAT: many enabled source rows
+are duplicates (mercell.com x3, shell.com and rigzone.com twice each), so a finder
+that adds what is already there wastes the cap; and 7 of 12 tender portals sampled
+return 0 links because they are JavaScript apps, so "it has a newsroom" is not
+evidence it can be crawled — the trial crawl is what decides.
+
+
+ITEM 9 — UPDATE, 2026-09-28: THE NEW-RECRUITER PATH IS REOPENED, AND ITS FIRST
+BUILD STEP IS THAT THERE IS NO WAY TO ADD A JUNIOR AT ALL
+
+THE DESIGN: design/new-recruiter-complete-design.html — 23 frames plus a coverage
+table — is the complete new-recruiter design and SUPERSEDES
+design/onboarding-days-spec.html. Neither file is in the repository yet: the owner
+is adding the complete design, and it is committed when it appears. Recorded
+precisely because it matters for anyone reading this later — `git log` shows
+onboarding-days-spec.html was NEVER committed either, so there is no superseded
+version on file to compare against, and the superseding is of a document that
+lived outside the repo.
+
+FIRST BUILD STEP, AND IT BLOCKS EVERYTHING ELSE IN THIS ITEM: THERE IS NO WAY TO
+ADD A JUNIOR TO A WORKSPACE. Not "it is awkward" — the flow does not exist.
+Verified in the code on 2026-09-28, not recalled:
+  - NO invite, add-member or join-workspace flow anywhere in src/, supabase/ or
+    scripts/. The only matches for those words are an unrelated comment in the
+    directories crawler and SQL joins on workspace_lead_state.
+  - /api/team/industries can ADJUST AN EXISTING MEMBER ONLY: it reads the target
+    with .eq('id', body.userId).eq('workspace_id', <the senior's workspace>) and
+    updates it. A row that is not already in the workspace cannot be created by
+    it, and TeamIndustries.tsx is a screen over that route.
+  - handle_new_user (0001:181-182) ALWAYS creates a NEW workspace and inserts the
+    signer into it as role = 'senior'. There is no branch for joining an existing
+    workspace.
+
+  So every account that exists is a senior alone in its own workspace, and that
+  is not a coincidence or a data-entry mistake — IT IS THE ONLY THING THE TRIGGER
+  CAN DO. It also explains, with one cause, two things recorded separately: why
+  both RFBT accounts are seniors, and why item 9's days 4-7 ("outreach drafts
+  with senior review", "sends with review") cannot run as written — there is
+  nobody above a junior because there are no juniors. Day gating on
+  onboarding_day is orthogonal to role and still works; the REVIEW steps are what
+  cannot, until this step is built.
+
+  NEEDS: a senior INVITE (name, email, industry access, starting day); an invite
+  EMAIL; a JOIN PAGE; and a change to the SIGN-UP TRIGGER so an invited person
+  joins the INVITER's workspace as a RECRUITER with onboarding_day set. Note what
+  that last one touches: the trigger is 0001's, the users table takes no
+  signed-in writes at all (0028 revoked insert, update and delete from
+  authenticated, deliberately), and role and workspace are "the service role's to
+  set" — so the invite acceptance is a service-role route on /api/me/industries'
+  pattern, never a client write, and the migration that changes the trigger is
+  the first structural change to handle_new_user since 0001.
+
+THE DESIGN'S NEW PIECES, recorded so they are not lost if the HTML arrives late:
+  - A POSITION CHOICE STEP. It is a PREFERENCE — filter and highlight only — and
+    is the same mechanism as item 35, not a second one: nothing is hidden from
+    the shared pool by it and leads.fit_score stays the global stored score.
+  - AN INDUSTRY COVERAGE NOTE AT SIGN-UP: what choosing an industry will and will
+    not show, said before the choice rather than discovered after it.
+  - AN HONEST EMPTY STATE FOR AN INDUSTRY WITH NO LEADS. This is the screen half
+    of item 36: solar has no leads while solar EPC awards are reported daily, and
+    the empty state must say which case it is — nothing published, or nothing
+    covered — never render as though the industry were quiet. Same rule as the
+    Decision-maker cell, which had to learn to say WHICH absence it was showing.
+  - SAMPLE DOCUMENTS FOR DAY 1, so a new recruiter has something to drop into
+    Verify before a real candidate exists. Fixtures already exist for the probes
+    (fixtures/test-cv.pdf, test-certificate.pdf, sandblaster-cv.docx); whether
+    the day-1 samples are those files or their own is a decision, but a sample
+    document must never be able to reach a client pack.
+  - A TRADE-CARD READING SCREEN. The content is already seeded and unused by any
+    screen of its own: 10 trade cards and 88 glossary terms, English only, rates
+    and rotations deliberately unset.
+
+STILL NOT RECORDED, and not invented here: the BUILD ORDER for the rest of the
+item beyond this first step. The 23 frames may imply one; until the file is in
+the repo and read, the only ordering on file is that the invite flow comes first.
+
+
+37. CONTACT CHAIN: READ THE HOME PAGE WE ALREADY FETCHED, AND FOLLOW THE SITE'S
+    OWN CONTACT LINK INSTEAD OF GUESSING AN ENGLISH ONE
+
+RECORDED 2026-09-28, owner approved, not built. Found by a worked example, not by
+audit: Schiffswerft Fischer GmbH's website was written in by hand, contact
+discovery ran on that company alone, and it returned NOTHING — 0 contacts, no
+switchboard, no general email, EUR 0.00 spent, because it never reached a model.
+The site is not silent. Checked by hand, free:
+  - discoverAtCompany step 1 tries exactly ONE url for a company that has only a
+    domain: https://<domain>/contact. On this site that is a 404. So is /kontakt.
+  - the page that exists is /impressum (200), and it prints the landline
+    04692/20740 and a mobile. A German imprint is legally mandatory and always
+    carries a phone.
+  - the HOME PAGE LINKS TO IT: href="https://www.schiffswerft-fischer.de/impressum/".
+    The contact details are also on the home page itself, at #Contact / #Kontakt.
+  - step 1b ALREADY FETCHES THE HOME PAGE, but only to feed organisationLinks
+    (leadership/team pages). emailsOn/phoneOn are never run against it.
+
+So the failure is an ENGLISH-ONLY PATH GUESS plus a page that is fetched and not
+read. TO BUILD:
+  - run emailsOn/phoneOn on the home page ALREADY fetched in step 1b. No new
+    request, so this costs nothing at all.
+  - follow the site's OWN links whose text or href matches: contact, kontakt,
+    impressum, imprint, legal notice, about, contacto, contatti, kontakt oss,
+    over ons, o nas, nous contacter. MEASURE THAT LIST AGAINST THE LANGUAGES
+    ACTUALLY IN OUR POPULATIONS before fixing it — the tender book is heavily DE,
+    FR, NL, BE, IT, PL and the Nordics, and a list tuned to a language we do not
+    have is dead weight.
+  - KEEP the guessed /contact and /kontakt as a fallback for a site that links
+    neither.
+  - KEEP THE PAGE CAP BOUNDED. Step 1 reads at most two pages today; a link
+    follower must not turn one company into a crawl.
+  - siteTrust: ADD AN OWNER-CONFIRMED STATE (from_owner, ok tone). Today a domain
+    written in by hand renders NO trust line at all — check resolves to null, so
+    the drawer says neither "confirmed" nor "unconfirmed". Neutral rather than
+    wrong, but an owner's own confirmation deserves a line beside from_notice.
+
+PROVE BOTH ARMS, and the owner named the cases:
+  - Fischer must now return the landline 04692/20740 AND the mobile.
+  - a site with no contact details must still return NOTHING.
+  - a link such as "contact-lenses" must NOT be followed.
+
+THEN A DRY RUN, NO WRITES: re-read the companies whose sites were read and
+printed nothing (14 in the held tender population alone) and report the callable
+count BEFORE and AFTER, per population. If the gain is real, re-run them for
+real — PAGE FETCHES ONLY, no model call, so it is free. Not while a batch is
+running, and after the cap is spent for the day.
+
+
+38. CONTRACT VERSUS PERMANENT PLACEMENT — GREENFIELD, CONFIRMED IN SCOPE
+
+RECORDED 2026-09-28. Both columns already exist and are NEVER COMPARED anywhere:
+candidates.employment_preference (0035, an enum: permanent / contract / either)
+is NULL on all 5 candidates and is read only by the edit form and the pool
+search; job_posts.contract_type is FREE TEXT and populated on 0 of 110 postings.
+Nothing in the codebase reads one against the other, so this is greenfield rather
+than a repair. When taken: decide whether contract_type stops being free text,
+and note that a preference NULL on every candidate cannot be filtered on until
+something sets it.
+
+
+39. onConflict EXISTENCE CHECK — DEFERRED, AND THE REASON IT IS NOT URGENT
+
+RECORDED 2026-09-28 (raised in the 2026-09-28 audit as M1, held by the owner).
+Every .upsert(..., { onConflict: '<column>' }) names a column that must carry a
+unique index, and nothing verifies that the index exists — the same class as the
+.rpc() and storage-bucket checks already built, one layer along. NOT urgent
+because it was measured: the real owners are sources, followup_resolutions and
+radar_verdicts, and all three are fine today. The first hand-audit of this got it
+wrong by pairing onConflict targets with GUESSED tables (articles, cost_log,
+lead_articles) instead of grepping the call sites, which is the argument for
+making it a check rather than an audit.
+
+
+40. L2 — THE RECURRING cost_log_workspace_id_fkey METER LOSS
+
+RECORDED 2026-09-28 (audit L2). A probe that deletes its own workspace while a
+metered model call is still in flight makes logModelCall's insert fail on
+cost_log_workspace_id_fkey. The spend is real and REAL MONEY WAS PAID; the row is
+simply never written, so the meter under-reports and the daily cap is computed
+from a figure that is too low. removeProbe exists and detaches cost_log before
+removing the workspace, which is the fix for the probes that use it — the loss is
+what happens when something does not. Wanted: make the insert failure visible
+rather than silent (it is printed and retried once today), and count how much
+spend has been lost this way.
+
+
+41. HIRING NOW FRESHNESS ORDERING CHECK
+
+RECORDED 2026-09-28, not built. Item 17 gives Hiring now its freshness rules — a
+company row is as old as its newest advert, ageing at 60 days, re-advertised
+rows raised to the top, "Latest activity" sorting re-advertised first then fresh
+before ageing — and the ordering is asserted only inside smoke's seeded fixtures.
+Wanted: a check that holds the ORDER itself against the real book, the way
+lead-age-check holds the thresholds, so a change to grouping or sorting cannot
+quietly reorder the screen a recruiter works down.
+
+
+42. NOTE FOR stani.ai (NOT A LEADSCOUT ITEM) — A JS-RENDERED SOURCE IS SILENTLY
+    EMPTY, AND THE CRAWLER CANNOT TELL
+
+Recorded here because it was found here and belongs to the other project. A page
+that renders its list in JavaScript returns 200 with valid HTML and zero usable
+links, and every counter reads "fetched, fine". Measured in this repo: 7 of 12
+tender portals sampled return 0 links for exactly this reason, and four enabled
+sources (udbud.dk, doffin.no, ted.europa.eu, simap.ted.europa.eu) have
+last_crawled_at null with nothing ever reported wrong. The lesson that transfers:
+a crawl must treat "0 items from a page that loaded" as a FINDING, not as an
+empty result, and say which of the two it is.
+
+
+ALIASES THE OWNER USED ON 2026-09-28, recorded so the shorthand resolves:
+  "item A" = 32 (trade vocabulary phase 2)
+  "item B" = 35 (per-account trade choice)   <-- NOT 33; 33 is unknown-country
+  "item C" = 36 (daily source discovery per industry)
+Letters are not used as identifiers anywhere in this file; every entry has a
+unique NUMBER, and 34 (per-industry tender discovery) has no letter at all.
