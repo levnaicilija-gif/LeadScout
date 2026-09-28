@@ -227,6 +227,18 @@ step rpc-exists npx tsx --env-file=.env.local scripts/rpc-exists-check.ts
 # so it is compared against the migration that declared it, sound because migrations are the source of truth
 # here by hard rule. Both arms matter: a list missing a value the database accepts is rows silently unhandled.
 step status-vocabulary npx tsx --env-file=.env.local scripts/status-vocabulary-check.ts
+# EVERY PAGED READ READS ITS ERROR. PostgREST returns { data: null, error } on a failed page, so
+# `if (!data) break` cannot tell a failure from the end of the table and the loop ends early with a SHORT
+# result every later line treats as complete. Measured in the instance that earned this: the ops-relevant
+# read returns 1,000 rows then 585, and a page-2 failure silently dropped 585 of 1,585 company names — 37% of
+# the filter deciding which companies were PAID for. resolve-domains already had the correct version 35 lines
+# below the broken one, so the rule was known; what failed was carrying it to a second site in the same
+# function, which is why this is a check and not three patches. It judges allRows callers too, because
+# allRows hands the error BACK with the rows it managed, and it requires the error to be USED rather than
+# merely destructured — the author of the check bound `error: pageErr` in four scripts without handling it and
+# the first version went green. Blind spots are counted and printed, never implied.
+step paged-read-selftest npx tsx scripts/paged-read-check.ts --self-test
+step paged-read npx tsx scripts/paged-read-check.ts
 # Item 20 step 3b (0052): the entitlement function, which is CALLED FROM NOTHING yet.
 #
 # The boundary is keyed on industry_limit, NOT on the follow: an UNLIMITED account that follows one

@@ -373,7 +373,11 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   // than no link at all.
   const everyHiringCompany = hiring && (ids.length || since)
     ? await (async () => {
-      const { data } = await sb.from('job_posts').select('company_id').eq('status', 'open').not('company_id', 'is', null).limit(2000);
+      // NULL, NOT ZERO, when the read fails (2026-09-28). This number is printed to a recruiter as
+      // "Clear filter — see all N", so a failed read rendering 0 states something false about their own
+      // board. null is rendered as an unavailable count instead, which is the honest answer.
+      const { data, error } = await sb.from('job_posts').select('company_id').eq('status', 'open').not('company_id', 'is', null).limit(2000);
+      if (error) return null;
       return new Set(((data ?? []) as any[]).map((p) => p.company_id)).size;
     })()
     : null;

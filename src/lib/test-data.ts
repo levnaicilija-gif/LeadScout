@@ -135,7 +135,12 @@ export async function clearTestWorkspace(db: SupabaseClient, workspaceId: string
   const problems: string[] = [];
   // A CV-sent row (sends) and a score point at a candidate with no cascade, so they go first or the candidate delete fails
   // (item 24: the list probe and the scale test write CV-sent rows).
-  const { data: cands } = await allRows((from, to) => db.from('candidates').select('id').eq('workspace_id', workspaceId).order('id').range(from, to));
+  // THE ERROR IS READ (2026-09-28). allRows returns the rows it managed ALONG WITH the error, so a partial
+  // read here leaves some candidates' sends and scores in place, the candidate delete then fails on its
+  // foreign keys, and the workspace is STRANDED — which is the leftover this project has hunted repeatedly
+  // and blamed on transport blips without ever tying it to a read that could not say it had failed.
+  const { data: cands, error: candsErr } = await allRows((from, to) => db.from('candidates').select('id').eq('workspace_id', workspaceId).order('id').range(from, to));
+  if (candsErr) return `the candidates of workspace ${workspaceId} could not be listed in full (${candsErr.message}), so nothing was deleted — rerun rather than leaving a half-cleaned workspace`;
   const ids = (cands ?? []).map((c: any) => c.id);
   for (let i = 0; i < ids.length; i += 200) {
     for (const table of ['sends', 'scores'] as const) {

@@ -84,6 +84,10 @@ export async function GET(req: Request) {
   const id = new URL(req.url).searchParams.get('document_id');
   if (!id) return NextResponse.json({ error: 'document_id required' }, { status: 400 });
   const sb = supabaseServer();
-  const { data } = await sb.from('documents').select('*').eq('id', id).maybeSingle();
+  // A FAILED READ IS NOT "NO SUCH DOCUMENT" (2026-09-28). Both came back as { document: null }, so the
+  // caller could not tell a missing row from a read it could not perform, and Verify would show a document
+  // as absent because the database was briefly unreachable.
+  const { data, error } = await sb.from('documents').select('*').eq('id', id).maybeSingle();
+  if (error) return NextResponse.json({ error: `the document could not be read: ${error.message}` }, { status: 500 });
   return NextResponse.json({ document: data });
 }

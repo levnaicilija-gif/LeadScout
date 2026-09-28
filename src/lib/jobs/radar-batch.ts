@@ -356,7 +356,11 @@ async function company(db: any, ws: string, name: string, agencyNames: string[])
   // `ilike name`, which is how one company became two rows and a unique index would not build.
   const hit = await findOrCreateCompany(db, { workspaceId: ws, name, agencyNames, source: 'radar article' });
   if (!hit) return null;
-  const { data } = await db.from('companies').select('*').eq('id', hit.id).maybeSingle();
+  // The row was just created or found by findOrCreateCompany, so null here means the READ failed rather
+  // than that the company is absent — and the caller treats null as "no company" and drops the lead
+  // (2026-09-28). Reported so a transport blip cannot quietly discard a story Radar had already paid to read.
+  const { data, error } = await db.from('companies').select('*').eq('id', hit.id).maybeSingle();
+  if (error) { console.error(`[radar] the company just matched could not be read back: ${error.message}`); return null; }
   return data;
 }
 async function attachPeople(db: any, leadId: string, ws: string, companyName: string) {

@@ -15,7 +15,10 @@ const TABLES = ['cost_log', 'radar_runs', 'radar_verdicts', 'job_ticks', 'compan
     // Paged: one unpaged read stops at 1,000 rows, and this workspace's spend runs past that.
     const spend: any[] = [];
     for (let from = 0; ; from += 1000) {
-      const { data } = await db.from('cost_log').select('day, eur').eq('workspace_id', w.id).order('id').range(from, from + 999);
+      // The error is read: a spend total built from a partial read would UNDERSTATE the spill this check exists
+    // to catch, so the check would pass on incomplete evidence.
+    const { data, error: pageErr } = await db.from('cost_log').select('day, eur').eq('workspace_id', w.id).order('id').range(from, from + 999);
+      if (pageErr) throw new Error(`the cost rows could not be read in full — a partial read UNDERSTATES the spill this check exists to catch: ${pageErr.message}`);
       spend.push(...(data ?? []));
       if (!data || data.length < 1000) break;
     }

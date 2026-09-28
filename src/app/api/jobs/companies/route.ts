@@ -51,7 +51,13 @@ async function run(req: Request) {
     const byName = new Map<string, { name: string; countries: Record<string, number>; ops: number }>();
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
-      const { data: page } = await db.from('people').select('company_name, country, ops_relevant').eq('workspace_id', workspace).range(from, from + PAGE - 1);
+      // The error is READ (2026-09-28). This pages `people` — 21,699 rows, 22 pages — to build the list of
+      // distinct employers this job then creates companies from, so a failed page looks exactly like the end
+      // of the table and the job quietly works from a shorter list. Same defect, same table and same fix as
+      // resolve-domains' ops loop; found by paged-read-check rather than by hand, after a manual audit of
+      // this very class had already gone through the file and missed it.
+      const { data: page, error: pageErr } = await db.from('people').select('company_name, country, ops_relevant').eq('workspace_id', workspace).range(from, from + PAGE - 1);
+      if (pageErr) return NextResponse.json({ error: `the attendee list could not be read in full, so employers would be created from a partial list: ${pageErr.message}` }, { status: 500 });
       if (!page || page.length === 0) break;
       for (const p of page) {
         const raw = (p.company_name ?? '').trim();

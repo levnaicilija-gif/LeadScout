@@ -65,7 +65,10 @@ const field = (t: string, l: string) => { const m = t.match(new RegExp(`^${l}: (
 async function storedHalf() {
   const rows: any[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data } = await admin.from('articles').select('id,text').ilike('text', '%Contract award notice — TED%').order('id').range(from, from + 999);
+    // The error is read: a comparison run on a partial set of notices would report a difference that is
+    // really a missing page, which is worse than no comparison at all.
+    const { data, error: pageErr } = await admin.from('articles').select('id,text').ilike('text', '%Contract award notice — TED%').order('id').range(from, from + 999);
+    if (pageErr) throw new Error(`the notices could not be read in full — a comparison on a partial set would report a difference that is really a missing page: ${pageErr.message}`);
     rows.push(...(data ?? [])); if (!data || data.length < 1000) break;
   }
   let cpvOnly = 0, alsoBuyer = 0;

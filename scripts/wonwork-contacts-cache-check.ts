@@ -31,7 +31,10 @@ const since = sinceAt > 0 ? process.argv[sinceAt + 1] : new Date(Date.now() - 6 
   const withSite = [...byCo.values()].filter((c) => c.site);
   const logs: any[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data } = await db.from('cost_log').select('detail, created_at').eq('kind', 'hiring-contacts').gte('created_at', since).order('created_at').range(from, from + 999);
+    // The error is read: this check asserts a company is not read twice, and a missing page would make a
+    // double read invisible — the check would pass by not looking.
+    const { data, error: pageErr } = await db.from('cost_log').select('detail, created_at').eq('kind', 'hiring-contacts').gte('created_at', since).order('created_at').range(from, from + 999);
+    if (pageErr) throw new Error(`the cost rows could not be read in full, so a company read twice would be invisible and this check would pass by not looking: ${pageErr.message}`);
     logs.push(...(data ?? []));
     if (!data || data.length < 1000) break;
   }

@@ -74,7 +74,12 @@ async function run(req: Request) {
   // The universe, keyed for matching: by canonical name and by its first significant word.
   const byName = new Map<string, { id: string; name: string; domain: string | null }>();
   for (let from = 0; ; from += 1000) {
-    const { data } = await db.from('companies').select('id, name, domain').eq('workspace_id', workspace).range(from, from + 999);
+    // The error is READ: this loop builds the universe every directory row is MATCHED against, so a failed
+    // page looks exactly like "no more companies" and silently shrinks it — matches are then missed with no
+    // error anywhere. Same defect and same fix as resolve-domains' ops loop (2026-09-28); companies is 5,900
+    // rows, so this is a six-page read on every call.
+    const { data, error: pageErr } = await db.from('companies').select('id, name, domain').eq('workspace_id', workspace).range(from, from + 999);
+    if (pageErr) return NextResponse.json({ error: `the company universe could not be read in full, so matching would be incomplete: ${pageErr.message}` }, { status: 500 });
     if (!data || !data.length) break;
     for (const c of data) byName.set(canonical(c.name).toLowerCase(), { id: c.id, name: c.name, domain: c.domain });
     if (data.length < 1000) break;

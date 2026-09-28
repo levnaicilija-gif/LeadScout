@@ -96,7 +96,10 @@ async function run(req: Request) {
 
   const byName = new Map<string, any>();
   for (let from = 0; ; from += 1000) {
-    const { data } = await db.from('companies').select('id, name, domain, sector, country').eq('workspace_id', workspace).range(from, from + 999);
+    // The error is READ, for the reason directories' identical loop now does: a failed page is
+    // indistinguishable from the end of the table, so the match universe silently shrinks (2026-09-28).
+    const { data, error: pageErr } = await db.from('companies').select('id, name, domain, sector, country').eq('workspace_id', workspace).range(from, from + 999);
+    if (pageErr) return NextResponse.json({ error: `the company universe could not be read in full, so seeding would work from a partial list: ${pageErr.message}` }, { status: 500 });
     if (!data || !data.length) break;
     for (const c of data) byName.set(canonical(c.name).toLowerCase(), c);
     if (data.length < 1000) break;

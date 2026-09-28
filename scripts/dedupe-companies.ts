@@ -33,11 +33,14 @@ const weight = (c: any) =>
 (async () => {
   const all: any[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data } = await db.from('companies')
+    const { data, error: pageErr } = await db.from('companies')
       // 0049 moved the override to workspace_company_state; it is read from there and flattened, so
       // the score above still reads `c.employer_type_override`.
       .select(`id, workspace_id, name, domain, country, sector, employer_type, careers_status, careers_url, ats_type, ats_slug, ${COMPANY_STATE_LEFT}`)
       .range(from, from + 999);
+    // The error is read: a dedupe decision taken from a PARTIAL company list would merge or spare rows on
+    // the strength of pages it never saw, and a wrong merge is unrecoverable (company-identity.ts says so).
+    if (pageErr) throw new Error(`the companies could not be read in full, so no dedupe decision is safe: ${pageErr.message}`);
     if (!data?.length) break;
     all.push(...data.map(withCompanyState));
     if (data.length < 1000) break;

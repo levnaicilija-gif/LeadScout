@@ -1,5 +1,6 @@
 import { supabaseServer, currentUser } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { allRows } from '@/lib/all-rows';
 import { CandidateCountries } from '@/components/CandidateCountries';
 import { CertLibrary } from '@/components/CertLibrary';
 import { hasCandidateCountries, hasIndustryFollow, hasScorecards } from '@/lib/schema-features';
@@ -11,7 +12,17 @@ export const dynamic = 'force-dynamic';
 export default async function Settings() {
   const me = await currentUser(); if (me?.role !== 'senior') redirect('/app/today');
   const sb = supabaseServer();
-  const { data } = await sb.from('sources').select('*').order('type').order('name').limit(700);
+  // THE ERROR IS READ AND THE CEILING IS GONE (2026-09-28). Two defects on one line, so both are fixed at
+  // once rather than the line being touched twice. (1) An unread error rendered an EMPTY sources list, which
+  // is a screen reporting an absence it never checked — the Candidates "No candidates yet" defect. (2) The
+  // read was .limit(700) against 610 real rows, 13% of headroom, and PostgREST caps a single read at 1,000
+  // regardless of what .limit() asks for, so it was two growth spurts from truncating in silence. allRows
+  // pages properly and reads its own error.
+  // allRows takes a FUNCTION and the arrow rebuilds the query per page on purpose: a PostgREST builder is
+  // mutable and returns itself, so reusing one object would append a duplicate .order() on every iteration
+  // (CLAUDE.md records that trap in resolve-domains' own paging).
+  const { data, error: sourcesError } = await allRows<any>((from, to) =>
+    sb.from('sources').select('*').order('type').order('name').range(from, to));
   const ccReady = await hasCandidateCountries(sb);
   const followReady = await hasIndustryFollow(sb);
   const scorecardsReady = await hasScorecards(sb);
@@ -38,5 +49,5 @@ export default async function Settings() {
     <CertLibrary senior={me?.role === 'senior'} />
 
     <h2 className="font-display text-[18px] font-bold mb-1">Sources</h2><p className="text-ink3 mb-3">What Radar reads every morning. Admin only. Seeded from seeds/sources.csv via <code>npm run seed</code>.</p>
-    <div className="bg-panel border border-line rounded-card overflow-auto max-h-[75vh]"><table className="tbl w-full"><thead><tr><th>Source</th><th>Type</th><th>Region</th><th>Access</th><th>Last read</th><th>Enabled</th></tr></thead><tbody>{(data ?? []).map((s) => <tr key={s.id}><td><div className="font-medium">{s.name ?? s.url}</div><div className="text-ink3 text-[12px]">{s.url}</div></td><td>{s.type}</td><td>{s.region}</td><td>{s.paywalled ? 'Paywall · headlines' : 'Open'}</td><td>{s.last_crawled_at ? new Date(s.last_crawled_at).toLocaleString() : '—'}</td><td>{s.enabled ? 'On' : 'Off'}</td></tr>)}</tbody></table></div></>);
+    <div className="bg-panel border border-line rounded-card overflow-auto max-h-[75vh]"><table className="tbl w-full"><thead><tr><th>Source</th><th>Type</th><th>Region</th><th>Access</th><th>Last read</th><th>Enabled</th></tr></thead><tbody>{sourcesError && <tr><td colSpan={6} className="text-bad">The sources could not be read ({sourcesError.message}) — this list is incomplete. Reload the page.</td></tr>}{(data ?? []).map((s: any) => <tr key={s.id}><td><div className="font-medium">{s.name ?? s.url}</div><div className="text-ink3 text-[12px]">{s.url}</div></td><td>{s.type}</td><td>{s.region}</td><td>{s.paywalled ? 'Paywall · headlines' : 'Open'}</td><td>{s.last_crawled_at ? new Date(s.last_crawled_at).toLocaleString() : '—'}</td><td>{s.enabled ? 'On' : 'Off'}</td></tr>)}</tbody></table></div></>);
 }

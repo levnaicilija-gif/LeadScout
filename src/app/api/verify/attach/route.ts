@@ -41,10 +41,24 @@ export async function GET(req: Request) {
   if (!id) return NextResponse.json({ error: 'documentId is required' }, { status: 400 });
 
   const db = supabaseAdmin();
-  const { data: doc } = await db.from('documents').select('id, type, cert_body, extracted, candidate_id, workspace_id').eq('id', id).maybeSingle();
+  // A FAILED READ IS NOT A MISSING DOCUMENT (2026-09-28). Both came back as `doc == null` and answered 404,
+  // so a transport blip told the recruiter the document does not exist — and 404 is the one answer a client
+  // will not retry. 503 says "ask again", which is the truth.
+  const { data: doc, error: docError } = await db.from('documents').select('id, type, cert_body, extracted, candidate_id, workspace_id').eq('id', id).maybeSingle();
+  if (docError) return NextResponse.json({ error: 'The document could not be read — nothing has been changed. Try again in a moment.', detail: docError.message }, { status: 503 });
   if (!doc || doc.workspace_id !== me.workspace_id) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
-  const { data: known } = await allRows<{ id: string; reference_code: string; full_name: string }>((from, to) => db.from('candidates').select('id, reference_code, full_name').eq('workspace_id', me.workspace_id).order('id').range(from, to));
+  // THE SAME RULE AS readPoolForMatching, AND FOR THE SAME REASON (2026-09-28). This GET feeds the
+  // recruiter's own duplicate decision — `matchName(known, holder)` builds the suggestion list the card
+  // shows — and `allRows` returns THE ROWS IT MANAGED ALONG WITH the error when a later page fails. So an
+  // unread error here does not produce an empty list, it produces a SHORT one: the recruiter is told "no
+  // match" for somebody who is on file, and opens a duplicate record. That is the outcome that already
+  // happened once (RFBT-P-0625 and RFBT-P-0626, one CV byte for byte, 85 seconds apart), and the fix then
+  // was applied to the paths that CREATE records while this one, which informs the human, was left reading
+  // `{ data }` alone. A partial read cannot answer "is this person already on file?", because the page that
+  // failed is exactly where the duplicate would have been.
+  const { data: known, error: poolError } = await allRows<{ id: string; reference_code: string; full_name: string }>((from, to) => db.from('candidates').select('id, reference_code, full_name').eq('workspace_id', me.workspace_id).order('id').range(from, to));
+  if (poolError) return NextResponse.json({ error: POOL_UNREADABLE, detail: poolError.message }, { status: 503 });
   const holder = (doc.extracted as any)?.holder ?? null;
   return NextResponse.json({
     document: { id: doc.id, type: doc.type, cert_body: doc.cert_body, holder, attached: doc.candidate_id },

@@ -89,7 +89,9 @@ async function pool<T>(items: T[], size: number, fn: (t: T, i: number) => Promis
   if (!applyOnly) {
     const all: any[] = [];
     for (let from = 0; ; from += 1000) {
-      const { data } = await db.from('sources').select('id, name, url, type').order('id').range(from, from + 999);
+      // The error is read: a failed page would look like the end of the source list and leave sources unclassified.
+    const { data, error: pageErr } = await db.from('sources').select('id, name, url, type').order('id').range(from, from + 999);
+    if (pageErr) throw new Error(`the sources could not be read in full: ${pageErr.message}`);
       if (!data?.length) break;
       all.push(...data);
       if (data.length < 1000) break;

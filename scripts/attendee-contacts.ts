@@ -48,7 +48,9 @@ type Quoted = { id: string; name: string; email: string | null; phone: string | 
   }
   const domainByCanon = new Map<string, string>();
   for (let from = 0; ; from += 1000) {
-    const { data } = await db.from('companies').select('name, domain').eq('workspace_id', W).not('domain', 'is', null).range(from, from + 999);
+    // The error is read: a failed page would silently shorten the company list this script works through.
+    const { data, error: pageErr } = await db.from('companies').select('name, domain').eq('workspace_id', W).not('domain', 'is', null).range(from, from + 999);
+    if (pageErr) throw new Error(`the companies could not be read in full, so this run would work from a short list: ${pageErr.message}`);
     if (!data?.length) break;
     for (const c of data) if (c.domain && !domainByCanon.has(canonCompany(c.name))) domainByCanon.set(canonCompany(c.name), c.domain);
     if (data.length < 1000) break;

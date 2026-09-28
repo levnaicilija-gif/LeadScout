@@ -56,11 +56,18 @@ export const SENDABLE: CertState[] = ['verified_register', 'verified_credential'
 export async function loadCertBody(db: SupabaseClient, workspaceId: string, body?: string | null): Promise<CertBody | null> {
   if (!body) return null;
   // A workspace's own row wins over the built-in one.
-  const { data } = await db.from('cert_bodies')
+  // A failed read used to be indistinguishable from "this scheme is not in the library", which silently
+  // demotes a certificate to the manual route and loses its issuer instructions (2026-09-28).
+  const { data, error } = await db.from('cert_bodies')
     .select('body, name, route, url, email, instructions, adapter')
     .eq('body', body).or(`workspace_id.is.null,workspace_id.eq.${workspaceId}`)
     .order('workspace_id', { ascending: false, nullsFirst: false })
     .limit(1).maybeSingle();
+  // SAID OUT LOUD rather than returned as "not in the library". The signature stays `CertBody | null`
+  // because every caller expects that, so this is surfaced in the server log rather than to the recruiter —
+  // a partial fix, and better than the silence it replaces: the connect-exhaustion fault was diagnosed from
+  // exactly these lines. If the certificate screen ever needs to tell the two apart, the signature is where.
+  if (error) console.error(`[verify] the certificate library could not be read for "${body}", so its issuer route is unavailable: ${error.message}`);
   return (data as CertBody) ?? null;
 }
 

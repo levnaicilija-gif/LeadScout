@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isLeadStatus } from '@/lib/statuses';
 import { supabaseServer, currentUser } from '@/lib/supabase/server';
 import { jdFromLead, screeningQuestions, draftOutreachChecked, scoreWithRightToWork, anonymize } from '@/lib/ai/documents';
 import { meterRecruiter } from '@/lib/ai/meter';
@@ -48,6 +49,13 @@ async function handle(req: Request, me: SignedIn) {
       return NextResponse.json({ ok: true });
     }
     case 'status': {
+      // VALIDATED BEFORE IT REACHES POSTGRES (2026-09-28). b.status came straight off the request body into
+      // the lead_status ENUM, so any other string was a 22P02 surfaced as a 500 — an unhandled-looking
+      // failure for what is really a bad request. The sibling route has always validated (api/hiring), and
+      // the trap is one letter wide: a COMPANY's status is 'pursued' while a LEAD's is 'pursue', and this
+      // drawer's own button reads "Mark pursued" while correctly sending 'pursue'. isLeadStatus comes from
+      // src/lib/statuses.ts, whose list the gate compares against the live enum in both directions.
+      if (!isLeadStatus(b.status)) return NextResponse.json({ error: `unknown status: ${String(b.status)}` }, { status: 400 });
       const { error } = await setLeadState(sb, me.workspace_id, lead.id, { status: b.status }, me.id);
       if (error) return NextResponse.json({ error: `the status was not saved: ${error}` }, { status: 500 });
       return NextResponse.json({ ok: true });
