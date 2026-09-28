@@ -1694,3 +1694,59 @@ OWNER'S DECISIONS, 2026-09-27, and the measurement that shaped them:
   Ranking and classification stay fully separate.
 
 Commit after each step, two lines per step.
+
+
+31. WHY A BROWSER NAVIGATION TIMES OUT UNDER GATE LOAD — MEASUREMENT ONLY, NO FIX
+
+RUN AFTER THE DISCOVERY BATCHES. Owner's instruction, 2026-09-28: measurement
+first, no fix. Nothing in this item changes product code.
+
+WHY IT IS OPEN. Four release gates on 2026-09-28 failed a single browser step
+with "page.goto: Timeout 60000ms exceeded" and nothing else: no
+AuthRetryableFetchError, no TypeError: fetch failed, no UND_ERR_CONNECT_TIMEOUT,
+no error boundary, no line in the server log, no Next digest to match. Every one
+of the four passed in ISOLATION against the identical build (smoke 71 of 71,
+real exit 0). Memory was blamed first and that was WRONG twice over: a run at a
+verified 7.03 GB free failed the same way, ended with MORE free RAM than it
+started with (7.15 GB), and the two steps that had failed at 6.06 GB — today and
+design-shots — both passed in it. CLAUDE.md carries the corrected entry and the
+memory check that remains worth keeping for its two-second refusal.
+
+THE HYPOTHESIS TO TEST, stated as one so it cannot quietly become a finding: an
+AUTHENTICATED read stalls under the connection load a full gate creates, and a
+stalled read logs nothing and renders nothing, so the page never finishes and
+Playwright reports the navigation timeout. Evidence for it: the absence of any
+error at all is what a hang produces and a rejection does not; the documented
+connect-exhaustion fault already predicts the quiet form ("a failed data read
+degrades quietly" — requireUser is merely the loud one); and the same routes
+answer UNAUTHENTICATED in 0.08 s and 0.009 s (307 both), so the slowness is in
+the authenticated data path, not in routing, the build or the browser. Evidence
+missing, and it is the only evidence that would settle it: NO QUERY HAS BEEN
+SHOWN TO STALL.
+
+WHAT TO DO:
+  - time the authenticated /app/today reads WHILE A GATE IS RUNNING. The
+    comparison that matters is the same reads timed on an idle machine against
+    the same reads timed during the browser steps, not an average over a run.
+  - instrument per QUERY, not per page. "The page took 60 s" is what is already
+    known; the answer wanted is which read did not return.
+  - record whether the stall is a rejection that is being swallowed or a genuine
+    hang. scripts/fetch-spy.mjs already wraps globalThis.fetch inside next start
+    before Next patches it and is how UND_ERR_CONNECT_TIMEOUT was caught in the
+    first place — start there rather than writing a second spy.
+  - report a negative result as a result. If the authenticated reads all return
+    promptly while a navigation still times out, the hypothesis is dead and the
+    next suspect is the browser side, which is worth knowing and is cheap to
+    establish.
+
+DO NOT, and each of these is a trap this repo has already paid for:
+  - do NOT fix anything in this item. A fix built on an untested story is how
+    the undici dispatcher was nearly shipped as a plausible no-op.
+  - do NOT run it during a discovery batch, and never start a gate while a batch
+    is running.
+  - do NOT read a green gate as a disproof. The fault takes roughly four gates in
+    nine, so one clean run says nothing at all.
+  - THE DIFFERENT-NETWORK GATE RUN IS STILL UNTAKEN and is still five minutes.
+    It remains the cheapest decisive test of the connect-exhaustion fault, and if
+    this item's measurement points at the transport, run that before building
+    anything.

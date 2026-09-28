@@ -337,6 +337,22 @@ else
   BASE="http://localhost:$PORT"
   step pdf-check env LEADSCOUT_TEST_RUN=pdf-check npx tsx --env-file=.env.local scripts/pdf-check.ts
   step pdf-name-audit npx tsx --env-file=.env.local scripts/pdf-name-audit.ts
+  # ENOUGH MEMORY FOR THE BROWSER STEPS, checked HERE and not at the top of the gate. The floor used to be read
+  # once before `next build`, which is the wrong moment: the build front-loads its own memory and the gate then
+  # opens several Chromium contexts from this point on, by which time the headroom measured at the start has
+  # gone. Measured 2026-09-28 — a gate begun at a verified 6.06-6.20 GB ended at 5.6 GB free with no node or
+  # Chromium left. Four points on the same machine: 5.86 GB FAILED, 6.06 GB FAILED, 6.05 GB passed, and 7.03 GB
+  # FAILED — so 6 GB is inside the noise, 6.5 GB is the refusal line, and MEMORY IS NOT THE CAUSE. Below the
+  # line the browser steps are likelier to fail with "page.goto: Timeout 60000ms exceeded", which reads exactly
+  # like a broken page and is not one — that ambiguity sent this session hunting a product defect twice, and a
+  # starved gate keeps creating throwaway accounts, which is how two probe workspaces ended up stranded. What
+  # this step buys is a two-second refusal instead of a 25-minute ambiguous one; it does not buy a green gate.
+  # All four failures passed in ISOLATION against the identical build, so the shared factor is gate load —
+  # CLAUDE.md holds the stalled-read hypothesis and item 31 is the measurement that would test it.
+  step memory-preflight npx tsx scripts/memory-preflight.ts
+  if [[ " ${FAILED[*]-} " == *" memory-preflight "* ]]; then
+    echo "=== the browser steps were SKIPPED: not enough memory. Everything before this point passed." | tee -a "$LOG"
+  else
   step verify-e2e npx tsx --env-file=.env.local scripts/verify-e2e.ts "$BASE"
   step lead-drawer-e2e npx tsx --env-file=.env.local scripts/lead-drawer-e2e.ts "$BASE"
   # Today's queue item opens the leads it names and nothing else: ?ids= on each tab, the cross-link between
@@ -423,6 +439,7 @@ else
   else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("industry-follow"); fi
   step smoke npx tsx --env-file=.env.local scripts/smoke.ts "$BASE"
   step design-shots env SCREEN_BASE="$BASE" SHOT_DIR=".cache/shots" npx tsx --env-file=.env.local scripts/design-shots.ts
+  fi
   killport
 fi
 
