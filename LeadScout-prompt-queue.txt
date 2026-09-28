@@ -1797,6 +1797,13 @@ TO DO, IN THIS ORDER:
        records that anchoring fixed mechanic/"mechanical"; it did not fix this,
        and the term was never tested against the plural.
   2. ITEM 33's unknown-country scoring (below).
+     (Two later items HANG OFF THIS ONE and cannot start before it: item 35,
+     per-account trade choice, needs the industry-to-trade map built here for its
+     pre-ticked core positions; and item 34, per-industry tender discovery, needs
+     the same widened vocabulary to extend what cpv.ts will admit. Item 36, daily
+     source discovery, is the other half of the same coverage question — 34
+     widens what is admitted from a source we already read, 36 finds the sources
+     we do not read at all.)
   3. WIDEN TITLE_SYSTEM to the full 39-trade vocabulary, and only THEN clear the
      board fingerprints. Re-reading the 201 fingerprinted boards costs about
      EUR 0.22 (832 metered title passes at EUR 0.00110 each, plus EUR 0.00484 per
