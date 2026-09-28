@@ -1750,3 +1750,114 @@ DO NOT, and each of these is a trap this repo has already paid for:
     It remains the cheapest decisive test of the connect-exhaustion fault, and if
     this item's measurement points at the transport, run that before building
     anything.
+
+
+ITEM 30 — CLOSED 2026-09-28 BY ITS OWN DRY RUN. Nothing to re-score.
+
+hasRfbtTrades over the stored arrays answers 213 of 246 under the OLD rules and
+213 of 246 under the NEW ones: 0 differences. Of the 33 leads carrying no trades
+weight, a re-inference over their stored scope text finds a blue-collar trade for
+3 — Proserv, ROSEN and Vallourec, the three leads trades.ts's own comment cites as
+the reason SCOPE_RULES exist — and the OLD thirteen rules find all three too, so
+0 is attributable to the wider vocabulary. The dry run was not wasted: it found
+item B below. Do not fold this back into item 6; item 6's geography half is real
+and is now item B.
+
+
+ITEM A — TRADE VOCABULARY PHASE 2: THE CRAWL STILL SPEAKS THE OLD TEN WORDS
+
+(Lettered, not numbered: the owner has not numbered these two, and the queue's
+numbers are its own. Nothing here renumbers anything.)
+
+THE BLOCKER IS A PROMPT, NOT THE MATCHER. TITLE_SYSTEM (job-posts-batch.ts:77)
+says "RFBT's taxonomy is exactly these ten words ... anything outside this list is
+discarded downstream", and its own worked examples map "Rigger" and "Kranfører"
+to fitter. Only titles the model returns in `keep` are ever inserted, so a title
+outside the ten is discarded at crawl time and stored NOWHERE — there is no row,
+no record of the discard, and nothing for a widened vocabulary to re-read later.
+
+MEASURED 2026-09-28:
+  - 7,722 titles read across every recorded tick, 210 kept: 97% discarded.
+  - per board, 484 seen and 19 kept; 31 of 39 boards kept NOTHING.
+  - biggest discard pools: Kongsberg Maritime 51 of 51, Northern Endurance
+    Partnership 60 of 60, BP Europe 20 of 20, ERM 20 of 20, Expro 16 of 16.
+  - consequence: the 29 new trades cannot reach Hiring now at all. Re-tagging
+    what is already stored adds ZERO rows — the Hiring now query filters on
+    status='open' and company_id and never on trades, so a stored posting that
+    gains a tag was already on screen.
+
+TO DO, IN THIS ORDER:
+  1. THE TWO FALSE POSITIVES, both introduced by the expansion itself:
+     - DROP the 'dogger' alias on rigger. It matches DOGGER BANK in 11 articles,
+       in a corpus whose subject is offshore wind. Anchoring cannot save it.
+     - STOP 'mechanic' matching the plural "mechanics" ("quantum mechanics",
+       "rock mechanics"), which wordPattern's trailing `s?` allows. CLAUDE.md
+       records that anchoring fixed mechanic/"mechanical"; it did not fix this,
+       and the term was never tested against the plural.
+  2. ITEM B's unknown-country scoring (below).
+  3. WIDEN TITLE_SYSTEM to the full 39-trade vocabulary, and only THEN clear the
+     board fingerprints. Re-reading the 201 fingerprinted boards costs about
+     EUR 0.22 (832 metered title passes at EUR 0.00110 each, plus EUR 0.00484 per
+     newly kept posting). Re-reading BEFORE the prompt is widened buys nothing:
+     the same prompt rejects the same titles.
+
+AND A SCOPE RULE THAT CAME OUT OF THE MEASUREMENT: DO NOT INFER WHITE-COLLAR OR
+CREW TRADES FROM ARTICLE PROSE — only from job titles and candidate fields. Of
+154 articles that gain a trade under the new vocabulary, the gains are site
+furniture: one repeated "Military Sealift Command" job sidebar supplies machinist
+(52) and able seaman (20), and a magazine's subscribe blurb ("for project and
+site managers, equipment producers ...") supplies project manager (46) and site
+manager (12). Nothing about the story itself.
+
+BUILD WHEN THE DATABASE IS IDLE, AFTER THE DAILY CAP IS SPENT.
+
+ONE THING THE EXPANSION DID BUY, MEASURED THE SAME DAY: the old unanchored
+matcher tagged 5 Dutch "windturbine monteur" postings as ndt — "wi-NDT-urbine" —
+and 261 of 2,076 articles the same way. job-shortlist used exactly that test, so
+a candidate holding NDT was being shortlisted against windturbine adverts. The
+anchoring removed it.
+
+
+ITEM B — AN UNKNOWN COUNTRY IS SCORED AS NON-EUROPE
+
+Found by item 30's dry run, 2026-09-28. fitScore caps a lead at
+NON_EUROPE_MAX_FIT (25) whenever isEuropean(country) is false, and
+isEuropean(null) is FALSE — so a lead whose country was never resolved is scored
+as though it were KNOWN to be elsewhere. regionFor, in the same file, already
+distinguishes 'unknown' from 'non_europe'; fitScore does not make that
+distinction.
+
+MEASURED:
+  - 32 leads carry no country. Every one is capped at 25.
+  - 6 of them are STORED at 60-68 and would DROP to 25 on any re-score: their
+    stored scores predate the geography cap. They include Bellrock (off
+    Aberdeenshire), Riffgat (German North Sea) and the East Coast Cluster
+    (Teesside) — real European work.
+  - 18 of the 32 have a recoverable country in their OWN text: 9 in
+    project_location, 9 in project_name, and NONE that needs the company name.
+    15 of those are European, including TED awards whose project_name literally
+    begins "Germany - ..." or "France - ..." while sitting at the non-Europe cap.
+    Those move 25 -> 80/88.
+
+ORDER, AND IT MATTERS:
+  1. fix fitScore so an UNKNOWN country is not treated as non-Europe;
+  2. backfill leads.country from project_location and project_name ONLY — never
+     from the company name;
+  3. then re-score, with a dry run that stores nothing first.
+  Doing 3 before 2 demotes genuinely European leads to the cap.
+
+OWNER'S RULE, 2026-09-28: A LEAD'S COUNTRY IS WHERE THE LABOUR IS NEEDED. For a
+supply package that is the mill or the yard, not the field the pipe ends up in —
+so Corinth Pipeworks' Rovuma LNG line-pipe package is GR, and the location text
+naming both Mozambique and the Greek mill is resolved in favour of the mill.
+
+
+TENDER DISCOVERY — WHAT IT BUYS, MEASURED 2026-09-28
+
+102 of the held 103 tender companies remain identifiable (one has left the
+population through a status change or a news lead landing on the same company),
+plus 2 arrivals since from TED's free daily ingest. 19 websites found, 5
+companies with anything callable, 0 named contacts. EXPECT A GENERAL PHONE OR
+EMAIL, NOT A NAME. Verification of the 19: 10 against a printed address, 9 on
+name and country alone, 0 group sites. 83 still outstanding (71 never looked up,
+12 retry due), EUR 1.94 to finish.
