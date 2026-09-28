@@ -58,6 +58,22 @@ const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
     }
     console.error(`  "${w.name}"  ${w.id}  created ${mins} minute(s) ago — ${held.join('; ') || 'nothing'}`);
   }
-  console.error('Remove them with removeProbe (it detaches cost_log first, which otherwise blocks the delete), then re-run.');
+  // THE ADVICE NAMES THE REAL ORDER, because the old advice did not work (2026-09-28). It said "remove them
+  // with removeProbe", which CANNOT: removeProbe's clearContent deliberately does not touch `leads` or
+  // `companies`, so the workspace delete is then blocked by companies_workspace_id_fkey, and clearing
+  // companies is itself blocked by contacts_company_id_fkey. Followed literally at 3am it fails twice and
+  // tells you neither reason. Two traps inside that order, both met for real: `contacts` has NO
+  // workspace_id column and must go by company_id, and `job_posts` needs company_id too because its
+  // workspace_id can be null (the writer gap fixed in eb64fd2 left 37 such rows).
+  console.error('Remove them in this order — removeProbe alone CANNOT do it, because clearContent leaves leads and companies behind:');
+  console.error('  1. workspace_lead_state     .eq(workspace_id)');
+  console.error('  2. workspace_company_state  .eq(workspace_id)');
+  console.error('  3. leads                    .eq(workspace_id)');
+  console.error('  4. contacts                 .in(company_id, <the workspace’s company ids>)   — contacts has no workspace_id');
+  console.error('  5. job_posts                .in(company_id, <same>)                          — its workspace_id can be null');
+  console.error('  6. companies                .eq(workspace_id)');
+  console.error('  7. removeProbe(db, userId, workspaceId, null, { clearContent: true }) for each user — it detaches cost_log,');
+  console.error('     which otherwise blocks the delete. A workspace with no users can be deleted directly at this point.');
+  console.error('Read every delete’s error: a silent failure here leaves the next step blocked and the workspace stranded again.');
   process.exitCode = 1;
 })();

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { allRows } from '@/lib/all-rows';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { crawlWorkspace } from '@/lib/crawl-workspace';
 import { detectEmployerType } from '@/lib/agency-detector';
@@ -98,7 +99,14 @@ async function run(req: Request) {
   }
 
   // Every company without a tag gets one — including the ones Radar created.
-  const { data: untagged } = await db.from('companies').select('id, name, country, sector_note').eq('workspace_id', workspace).is('tier', null).limit(5000);
+  // .limit(5000) COULD NOT READ 5,000, tested live on this very table: 1,000 of 5,900 came back, and
+  // .limit(1500) and .limit(10000) returned the same 1,000. Only the tier filter kept it honest — 169 match
+  // today — so truncation was one growth spurt away, and the error was unread on top, so a failed read looked
+  // like "nothing left to tag". A company silently never given a tier or sector is invisible until somebody
+  // asks why it has no region.
+  const { data: untagged, error: untaggedErr } = await allRows<any>((from, to) =>
+    db.from('companies').select('id, name, country, sector_note').eq('workspace_id', workspace).is('tier', null).range(from, to));
+  if (untaggedErr) return NextResponse.json({ error: `the untagged companies could not be read in full, so tagging would skip some in silence: ${untaggedErr.message}` }, { status: 500 });
   for (const c of untagged ?? []) {
     const country = c.country ?? countryFromText(c.sector_note);
     await db.from('companies').update({

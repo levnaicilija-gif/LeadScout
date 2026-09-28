@@ -26,6 +26,20 @@ const check = (ok: boolean, what: string, detail = '') => {
 };
 const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
 
+/**
+ * Empty when the page rendered; otherwise the error boundary AND ITS REFERENCE — the digest src/app/error.tsx
+ * prints as data-error-reference, which is the only thing tying a probe failure to a specific server error.
+ * Added 2026-09-28: a boundary on Leads cascaded into nine failures and the reference, printed on that very
+ * page, was discarded, so the cause could be argued from co-occurrence but never proved. It matters most here
+ * because smoke runs against PRODUCTION, where there is no server log to compare against afterwards.
+ */
+const faultOn = async (page: Page) => {
+  const body = await bodyOf(page);
+  if (!/Application error|Something went wrong — reload the page/.test(body)) return '';
+  const ref = await page.locator('[data-error-reference]').first().innerText().catch(() => '');
+  return `error boundary on screen — ${ref ? ref.replace(/\s+/g, ' ').trim() : 'NO reference on the page'} — ${body.replace(/\s+/g, ' ').trim().slice(0, 120)}`;
+};
+
 (async () => {
   const { data: created, error } = await admin.auth.admin.createUser({
     email: EMAIL, password: PASSWORD, email_confirm: true,
@@ -267,7 +281,8 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     await page.waitForTimeout(1200);
     const today = await bodyOf(page);
     // The error page since 2026-09-15 says "Something went wrong — reload the page", not Next's "Application error".
-    check(!/Application error|Something went wrong — reload the page/.test(today) && today.length > 60, 'Today renders');
+    const todayFault = await faultOn(page);
+    check(todayFault === '' && today.length > 60, 'Today renders', todayFault);
     // Priority is ONE ROW PER LEAD since 2026-09-21, so these seeded companies are their own rows
     // rather than names inside a single "Read N new leads — X first" sentence. What each check asserts
     // is unchanged; where it reads it from is, and so is the detail, which used to quote that sentence
@@ -309,7 +324,9 @@ const bodyOf = (page: Page) => page.locator('body').innerText().catch(() => '');
     // checks failed from this one early read while the screen was fine (checked as a signed-in user straight after).
     await page.waitForSelector('tr[data-lead-source]', { timeout: 60000 }).catch(() => {});
     const leads = await bodyOf(page);
-    check(/Smoke Offshore AS/.test(leads), 'Leads lists the seeded lead', /Smoke Offshore AS/.test(leads) ? '' : leads.replace(/\s+/g, ' ').slice(0, 200));
+    const leadsFault = await faultOn(page);
+    check(/Smoke Offshore AS/.test(leads), 'Leads lists the seeded lead',
+      /Smoke Offshore AS/.test(leads) ? '' : (leadsFault || leads.replace(/\s+/g, ' ').slice(0, 200)));
     // Each row carries its source as an attribute and a visible word. Read both off the row that
     // names the company, so the check cannot pass on a tag belonging to some other lead.
     const tags = await page.evaluate(() => Array.from(document.querySelectorAll('tr[data-lead-source]')).map((tr) => ({

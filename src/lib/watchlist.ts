@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { allRows } from '@/lib/all-rows';
 import { INDUSTRIES, type IndustryId } from '@/lib/industry';
 import { followedIndustries } from '@/lib/industry-follow';
 import { hasIndustries, hasIndustryFollow, hasTestFlag } from '@/lib/schema-features';
@@ -41,9 +42,11 @@ export async function watchedIndustries(db: SupabaseClient): Promise<{ industrie
 export async function watchedBoards(db: SupabaseClient, now = new Date()): Promise<{ ids: string[]; dueIds: string[] } | null> {
   const watched = await watchedIndustries(db);
   if (!watched || !watched.industries.length) return watched ? { ids: [], dueIds: [] } : null;
-  const { data, error } = await db.from('companies').select('id, last_jobs_crawl_at')
+  // allRows rather than .limit(2000), which one read truncates to 1,000: past that a watched industry's
+  // companies would simply stop being recrawled, with nothing on screen to show it.
+  const { data, error } = await allRows<any>((from, to) => db.from('companies').select('id, last_jobs_crawl_at')
     .eq('careers_status', 'found').neq('employer_type', 'staffing_agency')
-    .overlaps('industries', watched.industries).limit(2000);
+    .overlaps('industries', watched.industries).range(from, to));
   if (error) throw new Error(`watched companies could not be read: ${error.message}`);
   const cutoff = now.getTime() - WATCH_RECRAWL_HOURS * 3600000;
   const rows = (data ?? []) as { id: string; last_jobs_crawl_at: string | null }[];
