@@ -1,5 +1,5 @@
 /**
- * Gate step 0: is a probe workspace stranded in the real project BEFORE anything runs?
+ * Gate step 0: is a probe workspace — or a probe-named USER inside a real workspace — stranded BEFORE anything runs?
  *
  * WHY THIS IS THE FIRST STEP AND NOT THE LAST. Three probes — entitlement, state-write-visibility and
  * shared-pool — already assert "no is_test workspace remains" in their own cleanup, so a leftover DOES
@@ -39,11 +39,66 @@ const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
     return;
   }
 
-  const strays = ws.data.filter((w: any) => w.is_test);
-  if (!strays.length) {
-    console.log(`clean — ${ws.data.length} workspace(s), none marked is_test`);
+  // ---- A STRAY USER INSIDE A REAL WORKSPACE, WHICH COUNTING is_test CANNOT SEE ------------------
+  //
+  // Found on 2026-09-28: this check reported "clean — 2 workspace(s), none marked is_test" while a
+  // "Design Shots" account had been sitting in RFBT Recruitment as a SENIOR for two days, next to an
+  // "RLS Sweep" recruiter from that morning. Both were correct until they weren't: design-shots.ts:46
+  // and rls-sweep.ts:142 deliberately MOVE their throwaway user into the real workspace, so the shots
+  // and the sweep read real screens, and the ONLY cleanup is the auth-user delete —
+  // `deleteTestWorkspace` refuses a workspace passed as `keep`, which the real one always is. So one
+  // failed auth delete (a transport blip, a Supabase outage) strands a real-workspace account that no
+  // is_test count can ever find. CLAUDE.md has recorded that exact failure twice, on 2026-09-14 and
+  // 2026-09-16, and the instrument still could not see it.
+  //
+  // Matched on the NAME the probes give themselves, because there is nothing else to match on: the row
+  // is a real user in a real workspace and looks like a colleague. A false positive is a person called
+  // "Smoke" or a workspace member with "probe" in their name, which is why this REFUSES rather than
+  // deletes and prints what each one owns.
+  const PROBE_NAMES = [/^design shots$/i, /^rls sweep$/i, /\bprobe\b/i, /^smoke\b/i, /^queue ids\b/i];
+  const realIds = ws.data.filter((w: any) => !w.is_test).map((w: any) => w.id);
+  const members = realIds.length
+    ? await db.from('users').select('id, name, role, workspace_id, created_at').in('workspace_id', realIds)
+    : { data: [], error: null as any };
+  if (members.error) {
+    console.error(`could not read the users of the real workspace(s), so this check cannot say the project is clean: ${members.error.message}`);
+    process.exitCode = 1;
     return;
   }
+  const intruders = (members.data ?? []).filter((u: any) => PROBE_NAMES.some((re) => re.test(String(u.name ?? ''))));
+
+  const strays = ws.data.filter((w: any) => w.is_test);
+  if (!strays.length && !intruders.length) {
+    console.log(`clean — ${ws.data.length} workspace(s), none marked is_test; no probe-named user in a real workspace`);
+    return;
+  }
+
+  if (intruders.length) {
+    console.error(`${intruders.length} PROBE-NAMED USER(S) SITTING IN A REAL WORKSPACE — an is_test count cannot see these:`);
+    for (const u of intruders) {
+      const wsName = ws.data.find((w: any) => w.id === u.workspace_id)?.name ?? '?';
+      const age = Math.round((Date.now() - new Date(u.created_at).getTime()) / 3600000);
+      const owns: string[] = [];
+      // Only the columns a probe realistically fills, and each read is reported rather than assumed:
+      // a failed count here must not read as "owns nothing", which is how the first audit of these two
+      // printed "safe to delete" while five of its reads had failed.
+      for (const [table, col] of [['candidates', 'created_by'], ['documents', 'uploaded_by'], ['sends', 'sent_by'],
+        ['scorecards', 'user_id'], ['scorecard_targets', 'set_by'], ['workspace_lead_state', 'updated_by'],
+        ['workspace_company_state', 'updated_by'], ['followup_resolutions', 'resolved_by']] as const) {
+        const r = await db.from(table).select('*', { count: 'exact', head: true }).eq(col, u.id);
+        if (r.error) owns.push(`${table}.${col}: COULD NOT BE READ (${r.error.code ?? '?'})`);
+        else if ((r.count ?? 0) > 0) owns.push(`${table}.${col}: ${r.count}`);
+      }
+      console.error(`  "${u.name}" (${u.role}) in "${wsName}" — ${age}h old — ${owns.join('; ') || 'owns nothing on the columns checked'}`);
+      console.error(`     id ${u.id}`);
+    }
+    console.error('These are left by design-shots.ts:46 and rls-sweep.ts:142, which move their throwaway user into the real');
+    console.error('workspace on purpose; the only cleanup is the auth-user delete, so one failed delete strands the account.');
+    console.error('Remove one with: auth.admin.deleteUser(<id>) — users.id references auth.users(id) ON DELETE CASCADE (0001:21),');
+    console.error('so the users row goes with it. Check what it owns FIRST: a real colleague must never be deleted by this.');
+    process.exitCode = 1;
+  }
+  if (!strays.length) return;
 
   console.error(`${strays.length} probe workspace(s) stranded in the real project. A gate started now would fail three probes with this as the cause:`);
   for (const w of strays) {
