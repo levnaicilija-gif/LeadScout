@@ -1,4 +1,5 @@
 import { Help } from './Help';
+import { decisionMaker, type DecisionMaker } from '@/lib/decision-maker';
 import { OpenRow, OpenChevron } from './OpenRow';
 import { postingAge, reAdverts, roleKey, ageSink, latestActivityCompare, AGE_TEXT, AGE_DIM, REPOST_WINDOW_DAYS, type Age } from '@/lib/lead-age';
 import { boostedPressure, type Compound } from '@/lib/compound-signals';
@@ -33,12 +34,26 @@ export type Posting = {
   poster_type?: string | null;
   is_secondary?: boolean | null;
   duplicate_of?: string | null;
-  companies: { name: string; employer_type: string | null; country: string | null } | null;
+  /** The contact printed on the advert itself (0020), where the crawl found one. */
+  contact_name?: string | null;
+  contact_title?: string | null;
+  contact_email?: string | null;
+  companies: {
+    name: string; employer_type: string | null; country: string | null;
+    /** Everything the Decision-maker cell needs, all of it already stored (2026-09-29). */
+    domain?: string | null;
+    switchboard?: string | null;
+    general_email?: string | null;
+    contacts_checked_at?: string | null;
+    contacts?: { name: string | null; title: string | null; phone: string | null; email: string | null }[] | null;
+  } | null;
 };
 
 type Group = {
   companyId: string;
   company: string;
+  /** Who to ring — the Decision-maker cell's answer, decided once per company (src/lib/decision-maker.ts). */
+  contact: DecisionMaker;
   employerType: string | null;
   country: string | null;
   /**
@@ -119,9 +134,20 @@ export function groupByCompany(postings: Posting[], compounds?: Record<string, C
     const lifted = signals && signals.factor > 1 ? boostedPressure(base, signals) : null;
     const pressure: Group['pressure'] = lifted?.pressure ?? base;
 
+    // WHO TO RING, decided once per company here rather than in the cell, so the table and any probe
+    // read the same answer. The advert contact is taken from the postings in the order they arrive, which
+    // is the same order the drawer lists them in.
+    const advert = ps.find((p) => String(p.contact_name ?? '').trim());
+    const contact = decisionMaker({
+      people: ps[0].companies?.contacts ?? null,
+      advert: advert ? { name: advert.contact_name, title: advert.contact_title, email: advert.contact_email } : null,
+      company: ps[0].companies ?? null,
+    });
+
     return {
       companyId: ps[0].company_id,
       company: ps[0].companies?.name ?? 'Unknown company',
+      contact,
       employerType: ps[0].companies?.employer_type ?? null,
       country: ps[0].country ?? ps[0].companies?.country ?? null,
       countries: [...new Set(ps.map((p) => p.country ?? p.companies?.country).filter(Boolean) as string[])].sort(),
@@ -248,7 +274,7 @@ export function HiringNow({
     <div className="bg-panel border border-line rounded-card overflow-auto max-h-[calc(100vh-220px)]">
       <table className="tbl w-full min-w-[1100px] border-collapse">
         <thead>
-          <tr><th>Company</th><th>Roles open</th><th>Where</th><th>Trades</th><th>Certificates asked for</th><th>Pressure</th><th>Latest</th></tr>
+          <tr><th>Company</th><th>Roles open</th><th>Decision-maker</th><th>Where</th><th>Trades</th><th>Certificates asked for</th><th>Pressure</th><th>Latest</th></tr>
         </thead>
         <tbody>
           {groups.map((g) => (
@@ -270,6 +296,21 @@ export function HiringNow({
                 <div>{g.roles.slice(0, 4).map((r) => `${r.name}${r.n > 1 ? ` ×${r.n}` : ''}`).join(', ')}</div>
                 {g.roles.length > 4 && <div className="text-ink3 text-[12px]">+{g.roles.length - 4} more</div>}
                 <div className="text-ink3 text-[12px]">{g.postings.length} advert{g.postings.length === 1 ? '' : 's'}</div>
+              </td>
+              {/* DECISION-MAKER (2026-09-29). A pure display of what was already found and already shown in
+                  the drawer: measured before building, 20 of 29 companies had a name, a number or an
+                  address on file while this table showed none of it. The order is the owner's — a named
+                  person on the COMPANY, then one on the ADVERT, then the switchboard, then the general
+                  email — and an empty cell is never blank: it says WHICH absence it is, from the same
+                  `siteReadState` Won work's cell uses, so the two cannot drift apart. */}
+              <td className="text-[13px]" data-decision-maker={g.contact.kind === 'none' ? g.contact.state : g.contact.kind === 'person' ? `person:${g.contact.from}` : g.contact.what}>
+                {g.contact.kind === 'person' ? (
+                  <><div className="font-medium whitespace-nowrap">{g.contact.name}</div><div className="text-ink3 text-[12px]">{g.contact.detail}</div></>
+                ) : g.contact.kind === 'general' ? (
+                  <><div className="font-medium whitespace-nowrap">{g.contact.what === 'switchboard' ? 'Switchboard' : 'General email'}</div><div className="text-ink3 text-[12px]">{g.contact.detail}</div></>
+                ) : (
+                  <span className="text-ink3">— {g.contact.text}</span>
+                )}
               </td>
               <td className="text-[13px]">
                 {g.places.slice(0, 3).join(', ') || g.country || '—'}
@@ -300,7 +341,7 @@ export function HiringNow({
           ))}
 
           {groups.length === 0 && (
-            <tr><td colSpan={7} className="text-ink3 p-6">
+            <tr><td colSpan={8} className="text-ink3 p-6">
               {companiesWithBoards === 0
                 ? 'No careers pages found yet. Discovery has not run over the company list.'
                 : hiddenAgencies > 0

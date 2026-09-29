@@ -2211,3 +2211,33 @@ ALIASES THE OWNER USED ON 2026-09-28, recorded so the shorthand resolves:
   "item C" = 36 (daily source discovery per industry)
 Letters are not used as identifiers anywhere in this file; every entry has a
 unique NUMBER, and 34 (per-industry tender discovery) has no letter at all.
+
+
+43. NARROW /api/hiring's SERVICE-ROLE READ OF contacts, AND CORRECT THE COMMENT
+    THAT ARGUES FOR IT
+
+Owner's decision 2026-09-29: its own change, not bundled with the Decision-maker
+column. Found while investigating that column.
+
+/api/hiring reads `contacts` with supabaseAdmin() and explains why in a comment:
+"contacts' policy from 0001 lets a user see a contact only through a lead in their
+workspace ... 0022 fixes the policy; until it is applied this read is the fix."
+
+0022 IS APPLIED, and its policy was read rather than assumed:
+    or company_id in (select id from companies where workspace_id = my_workspace())
+
+So a signed-in user can read a contact that hangs from a company, and the
+service-role read is no longer required. Proved twice over the same day: the
+Hiring now table now embeds `companies(contacts(...))` under the SIGNED-IN user's
+client and gets the rows.
+
+WHY IT IS WORTH DOING rather than leaving: a service-role read bypasses RLS
+entirely, so it is the one shape that cannot be caught by rls-sweep — and the
+comment beside it will tell the next person the policy is broken when it is not.
+The comment is the more dangerous half.
+
+WHEN TAKEN: switch the read to the caller's own client, keep the `co` lookup that
+already 404s a company outside the workspace, rewrite the comment to say 0022
+made this an ordinary read, and check as a SIGNED-IN user that the same rows come
+back — Karstensens' René Hansen is the row that was invisible before 0022 and is
+the right one to assert on.

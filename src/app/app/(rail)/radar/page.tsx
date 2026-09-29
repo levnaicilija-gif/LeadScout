@@ -92,7 +92,13 @@ export default async function Radar({ searchParams }: { searchParams: { tab?: st
   const { data: postingsRaw } = hiring
     ? await (() => {
       const q = sb.from('job_posts')
-        .select(`id, company_id, title, role, location, country, trades, certs_required, rotation, contract_type, headcount, posted_at, first_seen_at, source_url, via${jpBoard}${jpContact}, companies!inner(name, employer_type, country, domain${coWsState}${industriesOn ? ', industries' : ''})`)
+        // The company side of Hiring now's Decision-maker cell (2026-09-29). Every field here already
+        // existed and was already shown in the DRAWER — the table simply never read them, which is why
+        // 20 of 29 companies showed nothing while something was on file. `contacts` embeds unambiguously:
+        // it has two foreign keys but only ONE to companies, so 0013's "name the foreign key" trap does
+        // not apply. 0022's policy lets a signed-in user read a contact that hangs from a company, so
+        // this needs no service-role read — the drawer's own comment saying otherwise predates 0022.
+        .select(`id, company_id, title, role, location, country, trades, certs_required, rotation, contract_type, headcount, posted_at, first_seen_at, source_url, via${jpBoard}${jpContact}, companies!inner(name, employer_type, country, domain, switchboard, general_email, contacts_checked_at, contacts(name, title, phone, email)${coWsState}${industriesOn ? ', industries' : ''})`)
         .eq('status', 'open').not('company_id', 'is', null);
       // The named companies are filtered HERE rather than on the grouped rows, because this query keeps
       // only the newest 400 postings: a company whose adverts fall outside that window would vanish from

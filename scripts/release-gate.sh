@@ -88,6 +88,11 @@ step trades npx tsx scripts/trades-check.ts
 # the 'use client' drawer share one rule: site-read-state.ts imports NOTHING, so importing it into the
 # browser cannot drag the Anthropic SDK along with it.
 step site-read-state npx tsx scripts/site-read-state-check.ts
+# Hiring now's Decision-maker cell: the owner's precedence (company person, advert contact, switchboard,
+# general email, honest absence) and the rule that a cell is never blank while anything is known. Both
+# arms on each step, because the failure is silent — a cell falling through to a weaker source while a
+# better one is on file looks exactly like a cell with nothing to show.
+step decision-maker npx tsx scripts/decision-maker-check.ts
 # The order paid website discovery works its queue: freshest lead first, undated last. It exists as a check
 # because the obvious basis is the wrong one and fails SILENTLY — ordering on leads.created_at makes 32 of 32
 # news and 103 of 103 tender companies look "30 days or younger", because the TED backfill ran 2026-09-13, so
