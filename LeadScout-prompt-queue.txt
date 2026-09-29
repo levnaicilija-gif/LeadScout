@@ -2039,7 +2039,65 @@ the repo and read, the only ordering on file is that the invite flow comes first
 37. CONTACT CHAIN: READ THE HOME PAGE WE ALREADY FETCHED, AND FOLLOW THE SITE'S
     OWN CONTACT LINK INSTEAD OF GUESSING AN ENGLISH ONE
 
-RECORDED 2026-09-28, owner approved, not built. Found by a worked example, not by
+*** DONE 2026-09-29, shipped as 60d61ea (gate PASSED 83 of 83, deploy verified,
+production smoke 71 of 71). IT WAS THREE FAULTS, NOT ONE, and only the first was
+the one this item set out to fix:
+
+  1. THE WRONG PAGE — the guessed /contact, fixed as specified below.
+  2. phoneOn COULD NOT READ THE NUMBER. PHONE_RE required a leading + or 00, so
+     every number in DOMESTIC format was invisible — and 460 of the 788 companies
+     with a website are NO, NL, DK or DE, where domestic format is how a company
+     ordinarily prints its own number. Fixing the page alone would have changed
+     nothing at all. A fax label is now dropped and a labelled phone beats an
+     unlabelled digit run; over 15 digits is not a phone, which caught a real
+     false positive the old 00 arm had ("Konto 1004692207401" → "004692207401").
+  3. THE APEX/www ORIGIN TRAP, found only by the LIVE run while every
+     single-host fixture passed. The apex fetch REDIRECTS, finalUrl is www, all
+     27 of the page's links are www, and the origin was taken from the REQUESTED
+     url — so every candidate was dropped and the step reported "no contact
+     links", indistinguishable from a site that links none.
+  4. AND ONE THIS CHANGE INTRODUCED: with the new reach a later page OVERWROTE an
+     earlier find, because the fill-a-blank conditions tested the database value
+     but not what this run had already found.
+
+THE apex/www BUG IS IN organisationLinks TOO, and has been since item 13 — the
+same one-line origin rule, fixed in the same commit. CONSEQUENCE FOR AN EXISTING
+MEASUREMENT: the "2 of 25 home pages linked an organisation page" figure from
+2026-09-15 cannot be trusted as a ceiling, because every home page fetched at one
+host form that linked its own pages at the other had all candidates silently
+dropped. Re-measuring it is free.
+
+siteTrust gained from_owner (ok tone): a hand-entered domain had NO line at all.
+
+THE RE-READ, run the same day: dry run first (no writes, page fetches only) over
+the 54 companies already read that printed nothing — 39 of 54 (72%) would gain a
+callable detail, from ZERO. The real pass then gained 36, 18 still nothing, 0
+failed, at EUR 0.00 and not one cost_log row: the Budget was opened at EUR 0.0001
+so canAfford(0.01) is false and the organisation-page model read cannot fire, and
+deadlineAt was 30s out so the person-on-site crawl is skipped by its own guard.
+Page fetches only BY CONSTRUCTION rather than by hope. Across the whole book: 117
+companies read, CALLABLE 82 — 70%, against 45 before. Examples of what the old
+chain walked past: Equinor +47 51 99 00 00 via /about-us/contact-us, AF Gruppen
++47 930 02 600 via /kontakt-oss/, COLAS France 01 47 61 75 00 via
+/mentions-legales, ISKRA brodogradilište +386 1 513 10 00 · info@iskra.eu.
+
+NOT DONE IN THAT PASS: named people. That is the organisation-page model read,
+which the zero budget deliberately blocked, and it is the step most likely to
+produce an actual decision-maker rather than a switchboard. It needs budget.
+
+THE WORKED EXAMPLE, PROVED LIVE from a reset row: contact links followed
+["/impressum/"], switchboard 034692/20740 stored from the home page with the
+imprint recorded as contact_page_url. THE NUMBER IS 034692/20740, NOT 04692/20740
+as first reported — that came from a crude shell regex that ate the leading digit,
+and the extractor is right where the earlier reading was wrong. The fax on the
+same page was correctly skipped. The mobile is NOT kept: there is one switchboard
+column, and a second number needs a migration.
+
+Checks: contact-links-check (new, in the gate — 30 assertions, both arms on every
+rule, including both directions of the apex/www trap and the "contact-lenses"
+case) and 12 new arms on phone-on-check. ***
+
+RECORDED 2026-09-28, owner approved. Found by a worked example, not by
 audit: Schiffswerft Fischer GmbH's website was written in by hand, contact
 discovery ran on that company alone, and it returned NOTHING — 0 contacts, no
 switchboard, no general email, EUR 0.00 spent, because it never reached a model.
