@@ -68,6 +68,48 @@ const PHONE_MIN_DIGITS = 9;
 const PHONE_MAX_DIGITS = 15;
 /** A number introduced as a fax is never a switchboard: a recruiter would dial it and reach a machine. */
 const FAX_LABEL = /(?:fax|telefax|faks|fax\.?nr)\W{0,4}$/i;
+/**
+ * A PLACEHOLDER IS NOT A PHONE NUMBER (2026-09-29). A real one was stored: Simon Metallverarbeitungs
+ * GmbH, a GERMAN company on a .de domain, came back with "+44 1234 567 890" — a UK number, and the
+ * classic template digit run — read off a site template nobody had filled in. A recruiter would dial it
+ * and reach nothing, which is the same harm as the fax rule above and worse than finding no number.
+ *
+ * THE THRESHOLDS ARE SET AGAINST OUR OWN REAL NUMBERS, not chosen for tidiness, because a guard that
+ * eats a real switchboard is far more expensive than one that misses a fake:
+ *   - six identical digits in a row, because Wärtsilä's real "+358 10 709 0000" has FOUR and Equinor's
+ *     "+47 51 99 00 00" has pairs throughout;
+ *   - seven consecutive ascending or descending digits, because no real number in the book has more
+ *     than three, while "1234 567 890" has seven;
+ *   - and the ranges regulators RESERVE for fiction, which are real-looking by design.
+ */
+const SEQUENTIAL_MIN = 7;
+const REPEAT_MIN = 6;
+/** Ofcom's drama ranges and the North American 555-01xx block: reserved so they can never reach anyone. */
+const RESERVED_RANGES: { re: RegExp; why: string }[] = [
+  { re: /^(?:44|0)?1632960/, why: "Ofcom drama range 01632 960xxx" },
+  { re: /^(?:44|0)?2079460/, why: "Ofcom drama range 020 7946 0xxx" },
+  { re: /^(?:44|0)?7700900/, why: "Ofcom drama mobile range 07700 900xxx" },
+  { re: /^(?:44|0)?(?:113|114|115|116|117|118|121|131|141|151|161|191)4960/, why: "Ofcom drama range 0xxx 496 0xxx" },
+  { re: /^(?:44|0)?8081570/, why: "Ofcom drama freephone range 08081 570xxx" },
+  { re: /^(?:44|0)?3069990/, why: "Ofcom drama range 03069 990xxx" },
+  { re: /55501\d\d$/, why: "North American fictional range 555-01xx" },
+];
+
+/** Digits only, then: is this a number nobody can be reached on? */
+function isPlaceholder(number: string): string | null {
+  const d = number.replace(/\D/g, '');
+  const repeat = new RegExp(`(\\d)\\1{${REPEAT_MIN - 1},}`).exec(d);
+  if (repeat) return `${repeat[0].length} identical digits in a row`;
+  let run = 1;
+  for (let i = 1; i < d.length; i++) {
+    const step = Number(d[i]) - Number(d[i - 1]);
+    run = (step === 1 || step === -1) && (i < 2 || Number(d[i - 1]) - Number(d[i - 2]) === step) ? run + 1 : 2;
+    if (run >= SEQUENTIAL_MIN) return `${run} consecutive digits`;
+  }
+  for (const r of RESERVED_RANGES) if (r.re.test(d)) return r.why;
+  return null;
+}
+
 /** A number a page LABELS as its phone beats an unlabelled digit run on the same page. */
 const TEL_LABEL = /(?:tel|telefon|telefone|telephone|téléphone|phone|tlf|tlf\.|mobil|mobile|sentralbord|switchboard|kontakt)\w*\W{0,4}$/i;
 
@@ -117,6 +159,8 @@ export function phoneOn(page: { text: string }) {
       // The words immediately before it decide what it IS. "Telefax: 04692/20742" is not a switchboard.
       const before = text.slice(Math.max(0, m.index - 24), m.index);
       if (FAX_LABEL.test(before)) continue;
+      // A template's unfilled example number is not somewhere a recruiter can ring.
+      if (isPlaceholder(number)) continue;
       if (seen.some((s) => s.number === number)) continue;
       seen.push({ number, at: m.index, labelled: TEL_LABEL.test(before) });
     }

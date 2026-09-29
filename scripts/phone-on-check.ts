@@ -46,5 +46,32 @@ check('Auftragsnummer 0123456789012345678 vom Lager', null, 'a nineteen-digit or
 check('Konto 1004692207401 bei der Sparkasse', null, 'a trunk zero found INSIDE a longer digit run is not the start of a phone number');
 check('28832 Achim, Am Osterfeld 35a', null, 'a postcode and a house number are not a phone number');
 
+// ---- A PLACEHOLDER IS NOT A PHONE NUMBER (2026-09-29) ----------------------------------------------
+// A real one reached the database: Simon Metallverarbeitungs GmbH, a GERMAN company on a .de domain,
+// stored "+44 1234 567 890" — a UK number and the classic template run — read off a site template nobody
+// had filled in. Cleared by hand; this is the guard. Same standard as the fax rule: BOTH arms, and the
+// arm that matters more is that a REAL number still passes.
+check('Kontakt +44 1234 567 890 info@simon-metallverarbeitung.de', null, 'the exact fake that was stored is refused: seven consecutive digits');
+check('Tel 0123456789', null, 'an ascending run is a template, not a switchboard');
+// Written as "0987654321" and "+1 415 555 0123" ON PURPOSE. The first drafts were "9876543210" and
+// "555-0123", and the mutation that disabled the guard showed both still passing: neither is matched by
+// the extractor at all (no leading 0 or +, and seven digits is under the floor), so they were VACUOUS —
+// they could never have failed, whatever the guard did. Each now reaches the guard to be refused by it.
+check('Tel 0987654321', null, 'and a descending run is too');
+check('Phone +49 000000 000', null, 'six identical digits in a row is a placeholder');
+check('Tel: 01632 960123 (press office)', null, "Ofcom's drama range 01632 960xxx can never reach anyone");
+check('Media +44 20 7946 0123', null, 'nor the London drama range 020 7946 0xxx');
+check('Mobile 07700 900461', null, 'nor the drama mobile range 07700 900xxx');
+check('Reception +1 415 555 0123', null, 'nor the North American fictional range 555-01xx');
+
+// THE OTHER ARM, and the one worth more: real numbers already in this book must still be read.
+check('Wärtsilä Tel +358 10 709 0000', '+358 10 709 0000', 'a real number with FOUR zeros in a row still passes — the repeat threshold is six');
+check('Equinor sentralbord +47 51 99 00 00', '+47 51 99 00 00', 'a real number of repeated PAIRS still passes');
+check('AF Gruppen +47 930 02 600', '+47 930 02 600', 'a real Norwegian switchboard still passes');
+check('Tel.: 034692/20740 Fax.: 034692/38995', '034692/20740', "Fischer's real landline still passes beside its fax");
+check('XERVON +49 221 7177600', '+49 221 7177600', 'a real German number with a repeated 7 still passes');
+check('Rail Power Systems +49 89 4 19 99-0', '+49 89 4 19 99-0', 'a real number ending in a dashed extension still passes');
+check('ELBUD +48 22) 591 53 00', '+48 22) 591 53 00', 'a real number with a stray bracket still passes');
+
 console.log(failed ? `\n${failed} failed` : '\nphoneOn: all checks passed');
 process.exitCode = failed ? 1 : 0;
