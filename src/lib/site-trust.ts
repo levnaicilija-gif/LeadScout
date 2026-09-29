@@ -12,7 +12,7 @@ import { siteScope } from './site-scope';
  * domain the award notice itself printed (set at ingest with source 'ted award notice') is confirmed by the notice. A
  * domain from anywhere else, never checked, says nothing — it is not called confirmed or unconfirmed.
  */
-export type SiteCheck = 'printed' | 'not_printed' | 'site_did_not_load' | 'no_address' | 'from_notice';
+export type SiteCheck = 'printed' | 'not_printed' | 'site_did_not_load' | 'no_address' | 'from_notice' | 'from_owner';
 export type SiteTrust = {
   check: SiteCheck | null;
   scope: 'own' | 'group';
@@ -40,7 +40,13 @@ export function siteTrust(co: Company | null | undefined): SiteTrust | null {
   if (!co?.domain) return null;
   const check: SiteCheck | null = (co.domain_address_check as SiteCheck | null)
     ?? LEGACY[co.source ?? '']
-    ?? (co.source === 'ted award notice' && !co.domain_source ? 'from_notice' : null);
+    ?? (co.source === 'ted award notice' && !co.domain_source ? 'from_notice' : null)
+    // OWNER-CONFIRMED (item 37, 2026-09-28). A domain written in by hand had NO line at all: the address
+    // check is null, the legacy strings do not match, and the from_notice arm requires domain_source to be
+    // empty — so the drawer said neither "confirmed" nor "unconfirmed" about a domain a person had checked
+    // themselves. It sits AFTER domain_address_check on purpose: a printed address is stronger evidence
+    // than a recollection, so a later check overrides this rather than being hidden by it.
+    ?? (/owner confirmed/i.test(co.domain_source ?? '') ? 'from_owner' : null);
   const stored = co.domain_scope === 'own' || co.domain_scope === 'group';
   const scoped = stored ? { scope: co.domain_scope as 'own' | 'group', reason: co.domain_scope_reason ?? null } : siteScope({ companyName: co.name ?? '', domain: co.domain, winnerCountry: co.country });
   const where = co.domain_checked_address ? ` (${co.domain_checked_address})` : '';
@@ -50,10 +56,11 @@ export function siteTrust(co: Company | null | undefined): SiteTrust | null {
   }
   if (check === 'printed') lines.push({ tone: 'ok', kind: 'check', text: `Confirmed: ${co.domain} prints the award notice's address${where}.` });
   if (check === 'from_notice') lines.push({ tone: 'ok', kind: 'check', text: `Confirmed: the award notice itself gives ${co.domain} as the winner's website.` });
+  if (check === 'from_owner') lines.push({ tone: 'ok', kind: 'check', text: `Confirmed by hand: ${co.domain} was checked and entered by the account owner, not found by a search.` });
   if (check === 'not_printed') lines.push({ tone: 'warn', kind: 'check', text: `Not confirmed: ${co.domain} does not print the award notice's address${where}. Check it is the right company before calling.` });
   if (check === 'site_did_not_load') lines.push({ tone: 'neutral', kind: 'check', text: `Not confirmed: ${co.domain} did not load when it was checked against the award notice's address${where}.` });
   if (check === 'no_address') lines.push({ tone: 'neutral', kind: 'check', text: `Not confirmed: the award notice gives no address to check ${co.domain} against.` });
-  const confirmed = check === 'printed' || check === 'from_notice';
+  const confirmed = check === 'printed' || check === 'from_notice' || check === 'from_owner';
   const notes = [check && !confirmed ? 'unconfirmed' : null, scoped.scope === 'group' ? 'group site' : null].filter(Boolean);
   return { check, scope: scoped.scope, confirmed, lines, rowNote: notes.length ? notes.join(' · ') : null };
 }

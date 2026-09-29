@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { fetchPage } from '@/lib/fetch-page';
 import { askJson, MODEL_CLASSIFY } from '@/lib/ai/claude';
-import { emailsOn, phoneOn, organisationLinks, contactsFromOrgPage, fromAttendeeList } from '@/lib/hiring-contacts';
+import { emailsOn, phoneOn, organisationLinks, contactLinks, contactsFromOrgPage, fromAttendeeList } from '@/lib/hiring-contacts';
 import { attendeesAt } from '@/lib/attendee-match';
 import { findPeopleOnSites, type PersonOnPage } from '@/lib/person-on-site';
 import { recordPersonContact, addToQuotedContact } from '@/lib/person-contact';
@@ -51,19 +51,60 @@ export async function discoverAtCompany(
   const out: Record<string, any> = { company: co.name, pages: 0 };
   const patch: Record<string, unknown> = { contacts_checked_at: new Date().toISOString() };
 
-  // ---- 1. the company's own contact or careers page
-  const pages = [co.contact_page_url, co.careers_url, co.domain ? `https://${bareHost(co.domain)}/contact` : null].filter(Boolean) as string[];
-  for (const url of [...new Set(pages)].slice(0, 2)) {
+  // ---- 1. the company's own contact or imprint page
+  //
+  // ITEM 37 (2026-09-28). This step used to try exactly ONE guessed url for a company that had only a
+  // domain — `https://<host>/contact` — and Schiffswerft Fischer GmbH is the worked example of why that
+  // is not enough: /contact and /kontakt are both 404 there, the page that exists is /impressum, and the
+  // home page links straight to it. The home page ALSO prints a number itself, and step 1b was already
+  // fetching it for `organisationLinks` without ever running the extractors over it. So:
+  //
+  //   1. the home page is fetched ONCE, here, and read for an address and a number (free — no new
+  //      request, it was being fetched anyway);
+  //   2. the site's OWN contact/imprint links are followed (`contactLinks`, exact-segment matched so
+  //      "contact-lenses" can never be one);
+  //   3. the guessed /contact and /kontakt remain as a FALLBACK for a site that links neither.
+  //
+  // The page budget stays bounded: the home page plus at most three contact candidates, so a link
+  // follower can never turn one company into a crawl.
+  const host = co.domain ? bareHost(co.domain) : null;
+  const home = host ? await fetchPage(`https://${host}`) : null;
+  if (home?.status === 'live') {
+    out.pages++;
+    const { hr, general } = emailsOn(home, co.domain);
+    const phone = phoneOn(home);
+    if (general && !co.general_email) { patch.general_email = general; patch.general_email_source_url = home.url; }
+    if (hr && !co.general_email && !patch.general_email) { patch.general_email = hr; patch.general_email_source_url = home.url; }
+    if (phone && !co.switchboard) { patch.switchboard = phone; patch.switchboard_source_url = home.url; }
+    out.general = patch.general_email ?? co.general_email ?? null;
+    out.switchboard = patch.switchboard ?? co.switchboard ?? null;
+    out.homePagePrinted = { email: !!(general ?? hr), phone: !!phone };
+  }
+
+  const followed = home?.status === 'live' ? contactLinks(home, 2) : [];
+  out.contactLinksFollowed = followed;
+  const pages = [
+    co.contact_page_url, co.careers_url,
+    ...followed,
+    // The guesses go LAST: a link the site itself printed beats a path we invented.
+    host ? `https://${host}/contact` : null,
+    host ? `https://${host}/kontakt` : null,
+  ].filter(Boolean) as string[];
+  for (const url of [...new Set(pages)].slice(0, 3)) {
+    // Stop early once the site has given up both details — every further fetch is a page read for nothing.
+    if ((patch.switchboard ?? co.switchboard) && (patch.general_email ?? co.general_email)) break;
     const page = await fetchPage(url);
     if (page.status !== 'live') continue;
     out.pages++;
     const { hr, general } = emailsOn(page, co.domain);
     const phone = phoneOn(page);
-    // Only ever fill a blank. A detail already on the company was confirmed once; this does not get to quietly
-    // replace it with something read off a different page.
-    if (general && !co.general_email) { patch.general_email = general; patch.general_email_source_url = page.url; }
+    // Only ever fill a blank — and "a blank" now means blank in the DATABASE *and* not already found
+    // earlier in THIS run. The conditions used to test `co.` alone, which was harmless while step 1 read a
+    // single page; with the home page plus up to three candidates (item 37) a later page silently
+    // overwrote an earlier find, so the same rule the comment states was being broken by the new reach.
+    if (general && !co.general_email && !patch.general_email) { patch.general_email = general; patch.general_email_source_url = page.url; }
     if (hr && !co.general_email && !patch.general_email) { patch.general_email = hr; patch.general_email_source_url = page.url; }
-    if (phone && !co.switchboard) { patch.switchboard = phone; patch.switchboard_source_url = page.url; }
+    if (phone && !co.switchboard && !patch.switchboard) { patch.switchboard = phone; patch.switchboard_source_url = page.url; }
     if (!co.contact_page_url) patch.contact_page_url = page.url;
     out.general = patch.general_email ?? co.general_email ?? null;
     out.switchboard = patch.switchboard ?? co.switchboard ?? null;
@@ -72,7 +113,9 @@ export async function discoverAtCompany(
   // ---- 1b. the organisation / leadership / team page, once per company
   let orgFound = 0;
   try {
-    const home = co.domain ? await fetchPage(`https://${bareHost(co.domain)}`) : null;
+    // The SAME home page fetched in step 1 — not fetched twice. Before item 37 this step owned that
+    // fetch and step 1 never saw it, which is how the extractors came to be run on every page except
+    // the one the site puts its own number on.
     const orgUrls = home && home.status === 'live' ? organisationLinks(home, 2) : [];
     for (const orgUrl of orgUrls) {
       if (!ctx.budget.canAfford(0.01)) { out.stopped = 'daily budget reached'; break; }

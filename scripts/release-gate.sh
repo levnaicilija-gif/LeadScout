@@ -62,6 +62,12 @@ step phone-on npx tsx scripts/phone-on-check.ts
 step winner-address npx tsx scripts/winner-address-check.ts
 step site-scope npx tsx scripts/site-scope-check.ts
 step site-trust npx tsx scripts/site-trust-check.ts
+# Item 37: the site's OWN contact/imprint link is followed, the home page is read for a number, a wrong
+# page never is, and a hand-entered domain says so. The dangerous half is what it must NOT follow — a
+# contact page belonging to something else attributes a phone number to the wrong company — so every rule
+# carries both arms, including the apex/www origin trap that made the live site return nothing while
+# every single-host fixture passed.
+step contact-links npx tsx scripts/contact-links-check.ts
 # Item 27's permanent scope rule: the institutions stay out of the paid queue and the CONTRACTORS survive.
 # Both arms on every row, because a pattern list narrowed until it catches nothing passes every "is this
 # kept" assertion. The port exception is the one that needs watching — "authority" would otherwise drop

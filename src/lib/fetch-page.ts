@@ -10,6 +10,13 @@ export type Fetched = {
   text: string;
   /** Absolute hrefs found on the page, deduped. */
   links: string[];
+  /**
+   * The visible text of each link, index-aligned with `links` (item 37, 2026-09-28). A site that links
+   * its contact page at a CMS slug — /p/12345, /kontakt-2, /de/node/44 — is unreachable by path alone,
+   * and the anchor text is the only thing that says what it is. Empty where a link had no text (an
+   * image link), and absent on a feed, which has no anchors.
+   */
+  linkTexts?: string[];
   screenshot: Buffer | null;
   fetchedAt: string;
   /** How it was read, so a source audit can say which sources cost money. */
@@ -83,12 +90,24 @@ export async function fetchPage(url: string, opts: { allowBrowser?: boolean; for
     const $ = cheerio.load(res.body);
     const title = $('title').first().text().trim();
     const text = readable($);
-    const links = [...new Set($('a[href]').map((_, a) => {
-      try { return new URL($(a).attr('href')!, res.url).toString(); } catch { return ''; }
-    }).get().filter(Boolean))];
+    // Built as PAIRS and deduped by url keeping the first text, so `linkTexts` stays index-aligned with
+    // `links`. Deduping a mapped array with a Set and then mapping the texts separately would misalign
+    // the two the moment a page linked the same url twice, which is the ordinary case for a header and
+    // a footer both linking /kontakt.
+    const pairs: { href: string; text: string }[] = [];
+    const seen = new Set<string>();
+    $('a[href]').each((_, a) => {
+      let href = '';
+      try { href = new URL($(a).attr('href')!, res.url).toString(); } catch { return; }
+      if (!href || seen.has(href)) return;
+      seen.add(href);
+      pairs.push({ href, text: ($(a).text() ?? '').replace(/\s+/g, ' ').trim().slice(0, 80) });
+    });
+    const links = pairs.map((p) => p.href);
+    const linkTexts = pairs.map((p) => p.text);
 
     const problem = needsBrowser(res.body, text, links.length);
-    if (!problem) return { url, status: 'live', title, text, links, screenshot: null, fetchedAt: now(), via: 'http', finalUrl: res.url, ...dates };
+    if (!problem) return { url, status: 'live', title, text, links, linkTexts, screenshot: null, fetchedAt: now(), via: 'http', finalUrl: res.url, ...dates };
 
     // The page itself was thin — try its advertised feed before paying for a browser.
     const feedHref = $('link[rel="alternate"][type*="rss"], link[rel="alternate"][type*="atom"]').first().attr('href');

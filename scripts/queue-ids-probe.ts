@@ -36,6 +36,25 @@ const shim = 'globalThis.__name = globalThis.__name || function (f) { return f; 
 let failures = 0;
 const check = (ok: boolean, what: string, detail = '') => { if (!ok) failures++; console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${what}${detail ? ` — ${detail}` : ''}`); };
 const flat = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+/**
+ * A WAIT THAT FAILS ITS OWN CHECK (2026-09-28). Every wait in this probe used to end `.catch(() => {})`,
+ * so a 30-second timeout was discarded and the NEXT line counted whatever happened to be on screen. On
+ * 2026-09-28 that turned one failed data read at 390px into `Won work shows exactly the 3 named leads —
+ * 0 row(s)`, which reads as a filter regression and was nothing of the kind: the gate's server log
+ * carried three `AuthRetryableFetchError 0` and the page had not rendered. The comment above that wait
+ * claimed a timeout "still fails, but with the real count in the message rather than a timing loss
+ * dressed up as missing data" — it produced precisely the disguise it said it prevented.
+ *
+ * So the timeout is now a failure IN ITS OWN NAME, and the caller skips whatever depended on it. A
+ * skipped check is honest; a check that reads an unrendered page is not.
+ */
+const waited = async (what: () => Promise<unknown>, label: string) => {
+  try { await what(); return true; } catch (e: any) {
+    check(false, `${label} — THE WAIT ITSELF TIMED OUT, so nothing below it is evidence`, String(e?.name ?? e).slice(0, 60));
+    return false;
+  }
+};
 const hydrated = (p: Page) => p.waitForFunction(() => document.documentElement.dataset.hydrated === 'true', undefined, { timeout: 60000 }).catch(() => {});
 const sideways = (p: Page) => p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
@@ -185,18 +204,27 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       // 2 — Won work, filtered to the named leads only.
       await page.goto(wonUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await hydrated(page);
-      await page.waitForSelector('[data-ids-filter]', { timeout: 30000 }).catch(() => {});
-      const banner = flat(await page.locator('[data-ids-filter]').first().innerText().catch(() => ''));
-      const rows = await wonRows(page);
-      check(rows.length === NAMED_LEADS, `Won work shows exactly the ${NAMED_LEADS} named leads`, `${rows.length} row(s)`);
-      // Built from the constants, never typed as a literal: a hardcoded "3 of 5" silently stops testing
-      // what it claims the moment the seed changes, the same way an ordinal does.
-      check(new RegExp(`Showing ${NAMED_LEADS} of ${ALL_LEADS} open leads`).test(banner),
-        'the banner counts the same rows the table shows', banner.slice(0, 120));
-      const tableText = await page.locator('table.tbl tbody').innerText().catch(() => '');
-      check(decoys.every((d: any) => !tableText.includes(d.project_name)),
-        'the decoy leads are not in the filtered table', decoys.map((d: any) => d.project_name).join(', '));
-      check(new RegExp(`and ${NAMED_COMPANIES} on the other tab`).test(banner), 'it says how many are on the other tab', banner.slice(0, 160));
+      // The wait now fails its own check and the table checks are SKIPPED when it does — see `waited`.
+      // Counting rows on a page that never rendered is how a transport blip reported itself as a filter
+      // regression at 390px on 2026-09-28 while passing at 1500px in the same run.
+      if (await waited(() => page.waitForSelector('[data-ids-filter]', { timeout: 30000 }), `${tag}: the filtered Won work view rendered its banner`)) {
+        const banner = flat(await page.locator('[data-ids-filter]').first().innerText().catch(() => ''));
+        const rows = await wonRows(page);
+        check(rows.length === NAMED_LEADS, `Won work shows exactly the ${NAMED_LEADS} named leads`, `${rows.length} row(s)`);
+        // Built from the constants, never typed as a literal: a hardcoded "3 of 5" silently stops testing
+        // what it claims the moment the seed changes, the same way an ordinal does.
+        check(new RegExp(`Showing ${NAMED_LEADS} of ${ALL_LEADS} open leads`).test(banner),
+          'the banner counts the same rows the table shows', banner.slice(0, 120));
+        const tableText = await page.locator('table.tbl tbody').innerText().catch(() => '');
+        check(decoys.every((d: any) => !tableText.includes(d.project_name)),
+          'the decoy leads are not in the filtered table', decoys.map((d: any) => d.project_name).join(', '));
+        check(new RegExp(`and ${NAMED_COMPANIES} on the other tab`).test(banner), 'it says how many are on the other tab', banner.slice(0, 160));
+      } else {
+        // Named rather than silent: these four are not passing, they were never asked. The decoy check is
+        // the reason this matters — it is an ABSENCE check, and an empty page satisfies it, so leaving it
+        // to run would print a PASS beside the failures and make the page look half-working.
+        console.log(`  SKIP  the 4 filtered-table checks at ${tag}: the view never rendered${await boundaryWhy(page) ? ` — ${await boundaryWhy(page)}` : ''}`);
+      }
       check(await sideways(page) <= 2, `nothing scrolls sideways at ${tag}`, `${await sideways(page)}px`);
 
       // 2b — the TAB carries the filter too. This is the one control on the page that threaded nothing, so
@@ -204,7 +232,17 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       // production and the URL was a bare /app/radar?tab=hiring. Clearing is the Clear filter link's job.
       // The ids must SWAP, not carry: lead ids on Won work, company ids on Hiring now, so handing them over
       // unchanged would filter company_id against lead ids and show a filtered view of nothing.
-      const tabHref = await page.locator('[data-tab="hiring"]').getAttribute('href') ?? '';
+      // GUARDED (2026-09-28), in the shape of the five sites guarded on 2026-09-19/20. Bare, this line
+      // threw an uncaught `locator.getAttribute: Timeout 30000ms exceeded` the moment the assertions above
+      // it failed, and the uncaught TimeoutError killed the run — losing every later check AND the probe's
+      // own summary, so the gate reported a stack trace instead of a verdict. Guarding one line only moves
+      // the crash to the next bare locator, so the WHOLE dependent block is skipped with a line saying why.
+      const tabHref = await page.locator('[data-tab="hiring"]').getAttribute('href', { timeout: 15000 }).catch(() => null);
+      if (tabHref === null) {
+        const why = await boundaryWhy(page);
+        check(false, 'the Hiring now tab control is on the page to be read', why || 'locator([data-tab="hiring"]) never appeared');
+        console.log(`  SKIP  the 7 tab-filter checks at ${tag}: the control was not there to click, so they were never asked`);
+      } else {
       check(/[?&]ids=/.test(tabHref), 'the Hiring now TAB keeps the filter rather than dropping it', tabHref.slice(0, 120));
       check(namedCompanyIds.every((id) => tabHref.includes(id)), 'and it carries the COMPANY ids, not the lead ids', tabHref.slice(0, 160));
       // The ids segment only — `also` legitimately holds the lead ids, so searching the whole href would
@@ -219,6 +257,9 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       check(await page.locator('[data-ids-filter]').count() > 0, 'and the filter banner is still there — the filter did not vanish silently');
       const afterTab = await page.locator('[data-row-href]').count();
       check(afterTab === NAMED_COMPANIES, `and it shows the ${NAMED_COMPANIES} named companies, not the whole list`, `${afterTab} row(s)`);
+      }
+      // Outside the guard on purpose: the state is restored either way, so section 2c starts from a known
+      // page whether the tab block ran or was skipped.
       await page.goto(wonUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await hydrated(page);
 
@@ -293,7 +334,7 @@ async function signIn(p: Page, a: { email: string; password: string }) {
       // already showing. A link promising what is on screen is worse than no link.
       check(new RegExp(`see all ${ALL_COMPANIES}`).test(sinceBanner), `and "Clear filter" offers every company (${ALL_COMPANIES}), not the filtered ${RECENT_COMPANIES}`, sinceBanner.slice(0, 160));
       await page.locator('[data-clear-since]').first().click();
-      await page.waitForURL((u) => !u.href.includes('since='), { timeout: 30000 }).catch(() => {});
+      await waited(() => page.waitForURL((u) => !u.href.includes("since="), { timeout: 30000 }), `${tag}: clearing the time filter left the since= URL`);
       await hydrated(page);
       check(!page.url().includes('since='), 'clearing the time filter returns to the unfiltered tab', page.url().replace(BASE, ''));
       check(await page.locator('[data-row-href]').count() === ALL_COMPANIES, `and all ${ALL_COMPANIES} companies are back`, `${await page.locator('[data-row-href]').count()} row(s)`);

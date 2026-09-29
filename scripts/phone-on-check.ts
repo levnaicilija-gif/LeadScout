@@ -26,5 +26,25 @@ check('Tel +49 5407 805 20 Fax +49 5407 805 29', '+49 5407 805 20', 'a fax numbe
 check('Tel +49 5407 805 20 – Mo–Fr 8–17 Uhr', '+49 5407 805 20', 'opening hours after a dash are not joined on');
 check('Updated 2026-09-15 by the webmaster', null, 'a date is not a phone number');
 
+// ---- NATIONAL FORMAT, with a trunk zero and no country code (item 37, 2026-09-28) -------------------
+// Until now PHONE_RE required a leading + or 00, so a number printed the way a German, Danish or
+// Norwegian company ordinarily prints its own was INVISIBLE. Schiffswerft Fischer is the worked example:
+// discovery stored nothing for it while its imprint printed a landline and its home page a mobile.
+check('Impressum Schiffswerft Fischer GmbH Telefon: 04692/20740 Telefax: 04692/20742', '04692/20740', "Fischer's imprint: a German landline in domestic format is read");
+check('Werft Mobil 0172 4611282 Kontakt', '0172 4611282', "Fischer's home page: a German mobile in domestic format is read");
+check('Ring oss på 22 33 44 55 66 i dag', null, 'a Norwegian number printed with NO trunk zero is not invented out of a digit run');
+check('Tlf. 0047 22 33 44 55 Om oss', '0047 22 33 44 55', 'a 00-prefixed international number still reads as before');
+
+// A FAX is never offered, whichever format it is in: a recruiter would dial it and reach a machine.
+check('Telefax: 04692/20742 Impressum', null, 'a number introduced as a fax is refused outright, not stored as a switchboard');
+check('Fax 04692/20742 Telefon 04692/20740', '04692/20740', 'and where both are printed, the phone is the one taken — whatever the order');
+check('04692/20999 Telefon: 04692/20740', '04692/20740', 'a LABELLED number beats an unlabelled digit run earlier on the page');
+
+// Things with the right number of digits that are not phone numbers.
+check('USt-IdNr. DE 123456789 Handelsregister', null, 'a VAT number is not a phone number');
+check('Auftragsnummer 0123456789012345678 vom Lager', null, 'a nineteen-digit order number is not a phone number — E.164 allows fifteen');
+check('Konto 1004692207401 bei der Sparkasse', null, 'a trunk zero found INSIDE a longer digit run is not the start of a phone number');
+check('28832 Achim, Am Osterfeld 35a', null, 'a postcode and a house number are not a phone number');
+
 console.log(failed ? `\n${failed} failed` : '\nphoneOn: all checks passed');
 process.exitCode = failed ? 1 : 0;

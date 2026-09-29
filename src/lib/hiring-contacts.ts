@@ -44,9 +44,32 @@ const EMAIL_RE = /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/gi;
 // An en dash and a slash continue a number as printed: "+49 (0)3435 – 666 2-0", "+49 (0) 25 93 / 95 93 - 0". Without
 // them the read stopped at the area code and stored Kattner Stahlbau and Daldrup & Söhne as "+49 (0)3435" and
 // "+49 (0) 25 93" (2026-09-15) — a number a recruiter would dial and reach nobody.
-const PHONE_RE = /(?:\+|00)\d[\d\s().\-–/]{7,24}\d/g;
+/**
+ * The + form only. The `00` alternative used to live here and had NO boundary guard, so it matched a
+ * trunk zero found in the MIDDLE of a longer digit run — "Konto 1004692207401" came back as the
+ * switchboard "004692207401" (found 2026-09-28 by the check below, not in production). Every 0-leading
+ * form, national and 00-international, now goes through PHONE_NAT_RE, which has the lookbehind. The `+`
+ * form keeps no lookbehind on purpose: a page stripped of punctuation can print "Tel+49 30 818 700 140",
+ * and requiring a boundary there would lose a real number to a missing space.
+ */
+const PHONE_RE = /\+\d[\d\s().\-–/]{7,24}\d/g;
+/**
+ * A NATIONAL number with a trunk zero (item 37, 2026-09-28). `PHONE_RE` requires a leading + or 00, so
+ * every number printed in domestic format was invisible — which is how Schiffswerft Fischer's imprint
+ * could print "Telefon: 04692/20740" and discovery still store nothing. Domestic format is the ORDINARY
+ * way a German, Danish or Norwegian company prints its own number, and 460 of the 788 companies with a
+ * website on file are NO, NL, DK or DE. The trunk zero must not be picked out of the middle of a longer
+ * digit run, hence the lookbehind.
+ */
+const PHONE_NAT_RE = /(?<![\w+])0\d[\d\s().\-–/]{6,22}\d/g;
 /** Fewer digits than this is a fragment — an area code on its own — and a fragment is never offered to dial. */
 const PHONE_MIN_DIGITS = 9;
+/** E.164 allows 15 at most, so a longer run is an order number, an account number or an ID, not a phone. */
+const PHONE_MAX_DIGITS = 15;
+/** A number introduced as a fax is never a switchboard: a recruiter would dial it and reach a machine. */
+const FAX_LABEL = /(?:fax|telefax|faks|fax\.?nr)\W{0,4}$/i;
+/** A number a page LABELS as its phone beats an unlabelled digit run on the same page. */
+const TEL_LABEL = /(?:tel|telefon|telefone|telephone|téléphone|phone|tlf|tlf\.|mobil|mobile|sentralbord|switchboard|kontakt)\w*\W{0,4}$/i;
 
 /** Addresses that are a company's front door rather than a person's. */
 const GENERAL = /^(info|post|mail|office|kontakt|contact|firmapost|enquiries|hello|admin|sales)@/i;
@@ -73,13 +96,34 @@ export function emailsOn(page: { text: string; url: string }, domain?: string | 
   };
 }
 
-/** A switchboard number, normalised only in whitespace — never reformatted into something else. */
+/**
+ * A switchboard number, normalised only in whitespace — never reformatted into something else.
+ *
+ * Both formats are read (item 37): international, and national with a trunk zero. Two rules decide which
+ * of several numbers on a page is offered, and both exist to stop a recruiter dialling the wrong thing:
+ * a number introduced as a FAX is dropped outright, and a number a page LABELS as its phone beats an
+ * unlabelled digit run. Otherwise the first match wins, as before. A run of more than 15 digits is not a
+ * phone number at all — E.164 allows 15 — so an order or account number can no longer be stored as one.
+ */
 export function phoneOn(page: { text: string }) {
-  for (const hit of page.text.match(PHONE_RE) ?? []) {
-    const number = clean(hit);
-    if (number.replace(/\D/g, '').length >= PHONE_MIN_DIGITS) return number;
+  const text = page.text ?? '';
+  const seen: { number: string; at: number; labelled: boolean }[] = [];
+  for (const re of [PHONE_RE, PHONE_NAT_RE]) {
+    re.lastIndex = 0;
+    for (let m = re.exec(text); m; m = re.exec(text)) {
+      const number = clean(m[0]);
+      const digits = number.replace(/\D/g, '').length;
+      if (digits < PHONE_MIN_DIGITS || digits > PHONE_MAX_DIGITS) continue;
+      // The words immediately before it decide what it IS. "Telefax: 04692/20742" is not a switchboard.
+      const before = text.slice(Math.max(0, m.index - 24), m.index);
+      if (FAX_LABEL.test(before)) continue;
+      if (seen.some((s) => s.number === number)) continue;
+      seen.push({ number, at: m.index, labelled: TEL_LABEL.test(before) });
+    }
   }
-  return null;
+  if (!seen.length) return null;
+  const inOrder = seen.sort((a, b) => a.at - b.at);
+  return (inOrder.find((s) => s.labelled) ?? inOrder[0]).number;
 }
 
 /**
@@ -247,14 +291,16 @@ const ORG_WORDS = [
 ];
 
 /** Links on a site that look like an organisation or leadership page, best first. */
-export function organisationLinks(page: { links: string[]; text: string; url: string }, limit = 3): string[] {
-  let origin = '';
-  try { origin = new URL(page.url).origin; } catch { return []; }
-
+export function organisationLinks(page: { links: string[]; text: string; url: string; finalUrl?: string | null }, limit = 3): string[] {
   const scored: { url: string; score: number }[] = [];
   for (const href of page.links) {
-    if (!href.startsWith(origin)) continue;                       // never leave the company's site
-    const path = href.slice(origin.length).toLowerCase();
+    // THE SAME apex/www FIX as contactLinks, and this one has been costing yield since item 13: a home
+    // page fetched at the apex that links its own pages as www had EVERY candidate dropped here, which is
+    // the likeliest reason only 2 of 25 home pages were found to link an organisation page on 2026-09-15.
+    // That measurement is not re-stated as a finding — it simply cannot be trusted as a ceiling.
+    if (!onSameSite(href, page.url, page.finalUrl)) continue;      // never leave the company's site
+    let path = '';
+    try { const u = new URL(href); path = `${u.pathname}${u.search}`.toLowerCase(); } catch { continue; }
     if (!path || path === '/' || /\.(pdf|jpe?g|png|svg|zip|docx?)$/i.test(path)) continue;
     // A careers page is already read elsewhere, and a news index is not an organisation page.
     if (/\b(job|jobs|karriere|career|vacatur|vacancies|ledige|news|nyhed|press|blog|produkt|product|shop)\b/.test(path)) continue;
@@ -264,6 +310,101 @@ export function organisationLinks(page: { links: string[]; text: string; url: st
     // Earlier in the list is a better word: "leadership" beats "about".
     scored.push({ url: href, score: 100 - hit });
   }
+  return [...new Map(scored.sort((a, b) => b.score - a.score).map((s) => [s.url, s])).values()]
+    .slice(0, limit).map((s) => s.url);
+}
+
+/**
+ * THE SITE'S OWN CONTACT PAGE, FOUND BY FOLLOWING ITS LINKS RATHER THAN GUESSING AN ENGLISH PATH
+ * (item 37, 2026-09-28). Found by a worked example: Schiffswerft Fischer GmbH's website was written in
+ * by hand, discovery ran on that company alone and returned NOTHING — no switchboard, no email, EUR 0.00,
+ * never reaching a model — and the site is not silent. For a company with only a domain, step 1 tried
+ * exactly ONE url, `https://<domain>/contact`, which is a 404 there; so is `/kontakt`. The page that
+ * exists is `/impressum` (a German imprint is legally mandatory and always carries a phone), the home
+ * page LINKS to it, and the contact details are also on the home page itself at `#Contact`/`#Kontakt`.
+ *
+ * MATCHED ON THE LAST PATH SEGMENT, EXACTLY, NOT AS A SUBSTRING. `scripts/resolve-wonwork-domains.ts`
+ * has a substring version for its address CHECK, where a wrong page is harmless — it simply fails to
+ * find the postcode. Here a wrong page is a phone number attributed to the wrong company, so the rule is
+ * strict: "contact-lenses" contains "contact" and must never be followed, and exact-segment matching is
+ * what stops it. Compound forms are listed explicitly instead of loosening the match.
+ *
+ * SAME-PAGE FRAGMENTS ARE SKIPPED, because `#Kontakt` is the home page, which is read directly — that is
+ * the other half of this fix and it costs nothing, since the home page is already fetched for
+ * `organisationLinks`.
+ *
+ * THE VOCABULARY IS MEASURED AGAINST THE POPULATIONS WE ACTUALLY HAVE, not guessed: of 788 companies with
+ * a website on file, NO 221, NL 213, DK 73, DE 26, GB 19, BE 17, ES 10, SE 4, FR 4, IE 3. So Norwegian,
+ * Dutch, Danish and German carry the weight and are covered first; Italian and Polish are one row each
+ * and are included because a term costs nothing, while Greek (2 rows) is deliberately absent rather than
+ * transliterated on a guess.
+ */
+const CONTACT_SEGMENTS: string[] = [
+  // best first: a contact page beats an imprint, which beats an "about" page
+  'contact', 'contacts', 'contact-us', 'contactus', 'contact-me',
+  'kontakt', 'kontakt-oss', 'kontakta-oss', 'kontakt-os', 'kontaktformular',
+  'contacto', 'contactanos', 'contactar', 'contatti', 'nous-contacter', 'contactez-nous',
+  'impressum', 'imprint', 'legal-notice', 'mentions-legales', 'aviso-legal', 'informacion-legal',
+  'om-oss', 'om-os', 'over-ons', 'o-nas', 'chi-siamo', 'about-us', 'about', 'empresa', 'firma',
+];
+/** The same words as a link's visible TEXT, normalised. A site may link /kontakt as "Kontakt oss". */
+const CONTACT_TEXT: string[] = [
+  'contact', 'contact us', 'contacts', 'kontakt', 'kontakt oss', 'kontakta oss', 'kontakt os',
+  'contacto', 'contáctanos', 'contactanos', 'contatti', 'nous contacter', 'contactez-nous',
+  'impressum', 'imprint', 'legal notice', 'mentions légales', 'mentions legales', 'aviso legal',
+  'om oss', 'om os', 'over ons', 'o nas', 'chi siamo', 'about', 'about us', 'empresa',
+];
+
+/**
+ * APEX AND www ARE THE SAME SITE for the purpose of following a link, and treating them as different
+ * origins silently drops every link on the page (item 37, 2026-09-28). Found on the live site rather than
+ * in a fixture: `fetchPage('https://schiffswerft-fischer.de')` redirects, so `finalUrl` is
+ * `https://www.schiffswerft-fischer.de/` and all 27 of its links are `www.` — while the origin was taken
+ * from the REQUESTED url. Every candidate was thrown away and the step reported "no contact links", which
+ * is indistinguishable from a site that links none.
+ *
+ * This is the same trap `scripts/feed-discovery.ts` records for `articleLinks`, where a feed could parse
+ * perfectly and yield NOTHING because the index was read at the other host form. There it is solved by
+ * trying both host forms; here the question is only "is this link on the same company's site", and for
+ * that apex and www are the same answer.
+ */
+const bareHostOf = (u: string) => { try { return new URL(u).host.replace(/^www\./i, '').toLowerCase(); } catch { return ''; } };
+const onSameSite = (href: string, pageUrl: string, finalUrl?: string | null) => {
+  const h = bareHostOf(href);
+  if (!h) return false;
+  return h === bareHostOf(pageUrl) || (!!finalUrl && h === bareHostOf(finalUrl));
+};
+
+/** The last path segment, lowercased, separators normalised, extension and trailing slash removed. */
+function lastSegment(path: string): string {
+  const clean = path.split('?')[0].split('#')[0].replace(/\/+$/, '');
+  const seg = clean.split('/').filter(Boolean).pop() ?? '';
+  return seg.toLowerCase().replace(/_/g, '-').replace(/\.(html?|php|aspx?)$/, '');
+}
+
+/**
+ * The company's own contact / imprint pages, best first, never leaving its origin and never the home
+ * page itself. `texts` is the visible text of each link, index-aligned with `links` where the caller has
+ * it; a caller without it passes nothing and only the path is matched.
+ */
+export function contactLinks(page: { links: string[]; url: string; linkTexts?: string[]; finalUrl?: string | null }, limit = 2): string[] {
+  const scored: { url: string; score: number }[] = [];
+  page.links.forEach((href, i) => {
+    if (!onSameSite(href, page.url, page.finalUrl)) return;          // never leave the company's site
+    let path = '';
+    try { const u = new URL(href); path = `${u.pathname}${u.search}${u.hash}`; } catch { return; }
+    // A pure fragment or the bare root IS the home page, which is read directly rather than re-fetched.
+    if (!path || path === '/' || path.startsWith('#') || /^\/#/.test(path)) return;
+    if (/\.(pdf|jpe?g|png|svg|zip|docx?|xlsx?)$/i.test(path)) return;
+    const seg = lastSegment(path);
+    const byPath = CONTACT_SEGMENTS.indexOf(seg);
+    const text = (page.linkTexts?.[i] ?? '').replace(/\s+/g, ' ').trim().toLowerCase().replace(/[:•|]+$/, '').trim();
+    const byText = text ? CONTACT_TEXT.indexOf(text) : -1;
+    if (byPath === -1 && byText === -1) return;
+    // Earlier in the list is a better page: a contact page outranks an imprint, which outranks "about".
+    const rank = byPath === -1 ? byText + CONTACT_SEGMENTS.length : byPath;
+    scored.push({ url: href, score: 1000 - rank });
+  });
   return [...new Map(scored.sort((a, b) => b.score - a.score).map((s) => [s.url, s])).values()]
     .slice(0, limit).map((s) => s.url);
 }
