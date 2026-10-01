@@ -43,7 +43,17 @@ const check = (ok: boolean, what: string, detail = '') => {
   const { data: own } = await admin.from('users').select('workspace_id').eq('id', uid).maybeSingle();
   const throwaway = own?.workspace_id as string;
   await markWorkspaceTest(admin, throwaway);
-  await admin.from('users').update({ workspace_id: ws!.id, role: 'senior', onboarding_day: 30 }).eq('id', uid);
+  // UNCAPPED AND FOLLOWING EVERYTHING, or this probe tests nothing (2026-10-01). 0061 caps every new
+  // sign-up at one industry with no choice made, and a capped-and-unchosen account sees only UNCLASSIFIED
+  // rows — so Karstensens, which is classified, is invisible to it and the drawer has no contact to show.
+  // The first run of this probe inside the gate failed all five contact assertions for exactly that
+  // reason, and the failure looked like a regression in the read it was added to guard. `industry_limit:
+  // null` is required rather than optional: 0032 refuses 'all' alongside a limit, because "all industries"
+  // and "unlimited" are the same statement in this schema.
+  await admin.from('users').update({
+    workspace_id: ws!.id, role: 'senior', onboarding_day: 30,
+    industry_follow: ['all'], industry_limit: null,
+  }).eq('id', uid);
 
   const browser = await chromium.launch();
   try {

@@ -92,14 +92,23 @@ async function handle(req: Request, me: SignedIn) {
       // Anyone read off the company's own organisation or leadership page. contacts.lead_id is
       // nullable, so these hang from the company with no lead invented for them.
       //
-      // Read with the service role, and only for this company. contacts' policy from 0001 lets a
-      // user see a contact only through a lead in their workspace, so every contact that hangs
-      // from a company alone — all three the organisation-page pass had ever found, René Hansen at
-      // Karstensens among them — came back as an empty list for every signed-in user, while the
-      // job that wrote them saw them fine. 0022 fixes the policy; until it is applied this read
-      // is the fix. It cannot reach another workspace's rows: `co` was loaded through the user's
-      // own RLS above, so a company outside their workspace has already returned 404.
-      const { data: onFile, error: onFileError } = await supabaseAdmin().from('contacts')
+      // READ AS THE CALLER (item 43, 2026-10-01). This used to be a service-role read, and the comment
+      // explaining why said "contacts' policy from 0001 lets a user see a contact only through a lead in
+      // their workspace … 0022 fixes the policy; until it is applied this read is the fix." 0022 WAS
+      // APPLIED on 2026-09-13, and 0053 then replaced that policy with `read_contacts`, which reaches the
+      // PARENT: a contact hanging from a company alone is visible whenever the company is. So the
+      // service role stopped being necessary two and a half weeks ago, and the comment arguing for it was
+      // the more dangerous half — it told the next reader the policy was broken when it was not.
+      //
+      // Verified rather than assumed, twice: the policy text was read out of 0053, and Hiring now's own
+      // table embeds `companies(contacts(...))` as the SIGNED-IN user and gets the rows.
+      //
+      // Why it matters beyond tidiness: a service-role read BYPASSES RLS, so it is the one shape
+      // `rls-sweep` cannot judge — the sweep compares counts for a signed-in user, and a route that never
+      // reads as one is invisible to it. Narrowing this puts the read back under the policy that is
+      // supposed to govern it. `co` was loaded through the caller's own RLS above, so a company outside
+      // their entitlement has already returned 404 — and with 0061 that now includes a capped account.
+      const { data: onFile, error: onFileError } = await sb.from('contacts')
         .select('name, title, email, email_status, email_source_url, phone, phone_source_url, source_url, linkedin_search_url, google_search_url, found_at')
         .eq('company_id', co.id).limit(10);
       if (onFileError) return NextResponse.json({ error: `Contacts on file for ${co.name} could not be read: ${onFileError.message}` }, { status: 500 });

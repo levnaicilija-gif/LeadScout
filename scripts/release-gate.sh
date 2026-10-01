@@ -382,6 +382,15 @@ else
   # Today's queue item opens the leads it names and nothing else: ?ids= on each tab, the cross-link between
   # the two halves, "Clear filter" back to the whole list, and both tabs unchanged with no ids at all.
   step queue-ids npx tsx --env-file=.env.local scripts/queue-ids-probe.ts "$BASE"
+  # Item 43: the Hiring now drawer's company-level contacts, read AS A SIGNED-IN USER. It existed as a
+  # manual script and nothing in the gate covered it — which is exactly the gap that let the original bug
+  # live: contacts' 0001 policy showed a company-level contact only through a lead, so René Hansen at
+  # Karstensens was in the table and invisible on screen for weeks while the job that wrote him saw him
+  # fine. 0022 fixed the policy and 0053 re-keyed it on the parent, and item 43 moved this read off the
+  # service role and back under that policy — a change nothing in the gate would have caught. CLAUDE.md's
+  # rule for any company-level table is "write the policy, then check it as a USER, never as the job";
+  # this is that rule as a step.
+  step drawer-contacts npx tsx --env-file=.env.local scripts/drawer-contacts-probe.ts "$BASE"
   # Item 20 step 3c (0053): discovery is shared - a second workspace sees a COMPLETE lead and cannot
   # touch it, and learns nothing about what the first workspace decided.
   #
