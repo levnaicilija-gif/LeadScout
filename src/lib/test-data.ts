@@ -300,7 +300,13 @@ export async function capProbeToOneIndustry(db: SupabaseClient, uid: string, ind
 }
 
 export async function followAllForProbe(db: SupabaseClient, uid: string): Promise<string | null> {
-  const { error } = await withTransportRetry(() => db.from('users').update({ industry_follow: ['all'], industry_follow_set_at: new Date().toISOString() }).eq('id', uid));
+  // `industry_limit: null` IS REQUIRED, not a workaround (2026-10-01). 0061 caps every new sign-up at one
+  // industry, and 0032's trigger refuses "all" under a cap — '"all" needs an unlimited entitlement; this
+  // account may follow 1' — so this helper began failing for all 32 probes that call it the moment the cap
+  // shipped, and ten gate steps went red at once. "All industries" and "unlimited" are the same statement
+  // in this schema, which is why 0032 pairs them; a probe that must see the whole pool is an UNLIMITED
+  // account, so it says so here rather than leaving the limit behind for the trigger to reject.
+  const { error } = await withTransportRetry(() => db.from('users').update({ industry_follow: ['all'], industry_limit: null, industry_follow_set_at: new Date().toISOString() }).eq('id', uid));
   if (!error || error.code === '42703' || /industry_follow/.test(error.message) && /does not exist|schema cache/i.test(error.message)) return null;
   return `the probe account could not be set to follow all industries: ${error.message}`;
 }

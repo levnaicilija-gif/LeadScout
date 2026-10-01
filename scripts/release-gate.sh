@@ -273,18 +273,18 @@ code=$?
 if [ "$code" -eq 0 ]; then echo "    pass" | tee -a "$LOG"
 elif [ "$code" -eq 2 ]; then echo "    not judged (0052 not applied)" | tee -a "$LOG"
 else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("entitlement"); fi
-# 0058: a capped account that has NOT CHOSEN yet reads no classified row, and a new sign-up is capped
+# 0061: a capped account that has NOT CHOSEN yet reads no classified row, and a new sign-up is capped
 # from the moment it exists. Measured before it was written: a fresh probe account created exactly as a
 # self-signup read 256 of 256 leads, 5,903 of 5,903 companies and 88 of 88 CONTACTS — named people with
 # phone numbers — because handle_new_user set no industry_limit and can_see_industries returns true
 # outright when the limit is null. BOTH ARMS: a capped-and-unchosen account reading 0 leads means
 # nothing unless an UNCAPPED one still reads them all, or a database that had stopped serving leads to
-# anybody would pass. Exit 2 = 0058 not applied yet: not judged.
+# anybody would pass. Exit 2 = 0061 not applied yet: not judged.
 echo "=== entitlement-cap" | tee -a "$LOG"
 npx tsx --env-file=.env.local scripts/entitlement-cap-probe.ts >> "$LOG" 2>&1
 code=$?
 if [ "$code" -eq 0 ]; then echo "    pass" | tee -a "$LOG"
-elif [ "$code" -eq 2 ]; then echo "    not judged (0058 not applied)" | tee -a "$LOG"
+elif [ "$code" -eq 2 ]; then echo "    not judged (0061 not applied)" | tee -a "$LOG"
 else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("entitlement-cap"); fi
 # Item 20 step 3a (0051): a workspace records state against a lead it can SEE, and nothing else.
 #

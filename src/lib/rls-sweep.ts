@@ -139,7 +139,17 @@ export async function runRlsSweep(opts: { workspaceName?: string } = {}): Promis
     // A recruiter, never the senior every new account starts as. What a user can read is decided by
     // workspace, not role, so the counts are the same — but on 2026-09-14 a failed delete left this
     // account behind inside the real workspace as a senior, until it was found and removed by hand.
-    await admin.from('users').update({ workspace_id: workspaceId, role: 'recruiter' }).eq('id', uid);
+    // UNLIMITED, DELIBERATELY (2026-10-01). This sweep's whole method is to compare what a signed-in user
+    // reads against what the service role reads, and to fail when the user reads FEWER rows. 0061 caps every
+    // new sign-up at one industry, so the moment it shipped this account became capped-and-unchosen and the
+    // sweep reported the entitlement working as a hidden-rows defect: leads 0 of 259, companies 5,636 of
+    // 5,912, contacts 2 of 94. Those numbers were correct and the verdict was wrong, which is the worst
+    // combination a check can produce. An uncapped account restores the premise the comparison needs.
+    //
+    // IT ALSO LEAVES A REAL GAP, recorded rather than papered over: once customers are capped, "a user reads
+    // what the service role reads" stops being true in production, so this sweep can no longer tell a hidden
+    // table from an entitlement. Comparing against what the account is ENTITLED to is its own item.
+    await admin.from('users').update({ workspace_id: workspaceId, role: 'recruiter', industry_follow: ['all'], industry_limit: null }).eq('id', uid);
 
     const user = createClient(url, anonKey, { auth: { persistSession: false } });
     const { error: signIn } = await user.auth.signInWithPassword({ email, password });

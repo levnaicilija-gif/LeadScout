@@ -1,5 +1,5 @@
 /**
- * 0058: a capped account that has NOT chosen yet reads no classified row, and a new sign-up is capped
+ * 0061: a capped account that has NOT chosen yet reads no classified row, and a new sign-up is capped
  * from the moment it exists.
  *
  *   npx tsx --env-file=.env.local scripts/entitlement-cap-probe.ts
@@ -14,8 +14,8 @@
  * simply stopped serving leads to anybody would pass.
  *
  * EXIT 2 = NOT JUDGED, the idiom priority-window and industry-follow already use: migrations here are
- * applied by hand, so until 0058 is applied this must not pass on the strength of the old function. It
- * tells them apart by asking what a FRESH sign-up was given: industry_limit 1 means 0058 is live.
+ * applied by hand, so until 0061 is applied this must not pass on the strength of the old function. It
+ * tells them apart by asking what a FRESH sign-up was given: industry_limit 1 means 0061 is live.
  *
  * It signs in as its own throwaway account and never touches a real one. Everything it makes is removed.
  */
@@ -72,25 +72,25 @@ const leadsVisibleTo = async (user: any) => {
 
     capped = await signup('capped');
 
-    // ---- IS 0058 EVEN APPLIED? ------------------------------------------------------------------
+    // ---- IS THE CAP (0061) EVEN APPLIED? ------------------------------------------------------------------
     if (capped.given?.industry_limit !== 1) {
       // Measure the exposure anyway. A probe that goes quiet when the fix is absent tells you nothing
       // about why the fix exists — and this number IS the reason: it is what a stranger reads today.
       const exposed = await leadsVisibleTo(capped.user);
-      console.log(`TODAY, WITHOUT 0058: this fresh sign-up reads ${exposed} of ${everyLead} leads (${everyLead ? Math.round(exposed / everyLead * 100) : 0}%).`);
+      console.log(`WITHOUT THE CAP: this fresh sign-up reads ${exposed} of ${everyLead} leads (${everyLead ? Math.round(exposed / everyLead * 100) : 0}%).`);
       console.log(`NOT JUDGED: a fresh sign-up was given industry_limit ${JSON.stringify(capped.given?.industry_limit)}, not 1.`);
-      console.log('0058 has not been applied yet, so this probe cannot say anything about the narrowed function.');
-      console.log('Apply supabase/migrations/0058_capped_unchosen_sees_nothing_classified.sql and run it again.');
+      console.log('0061 has not been applied yet, so this probe cannot say anything about the narrowed function.');
+      console.log('Apply supabase/migrations/0061_signup_capped_to_one_industry.sql and run it again.');
       process.exitCode = 2;
       return;
     }
     check(capped.given?.industry_follow == null, 'a fresh sign-up is capped but has chosen NOTHING — industry_follow stays null', capped.given);
-    check(capped.given?.role === 'senior', 'and it is still a senior in its own workspace, as before 0058', capped.given?.role);
+    check(capped.given?.role === 'senior', 'and it is still a senior in its own workspace, as it was before the cap', capped.given?.role);
 
     // ---- ARM 1: capped and unchosen reads no CLASSIFIED lead ------------------------------------
     const seen = await leadsVisibleTo(capped.user);
     check(seen === unclassified, `capped and unchosen reads only the ${unclassified} unclassified lead(s), not the pool`, { seen, unclassified, everyLead });
-    check(seen < everyLead, 'so it does NOT read the whole pool the way it did before 0058', { seen, everyLead });
+    check(seen < everyLead, 'so it does NOT read the whole pool the way it did before the cap', { seen, everyLead });
 
     // ---- ARM 2: an UNCAPPED account still reads everything --------------------------------------
     // Without this, a database that had simply stopped serving leads to anyone would pass arm 1.
@@ -103,14 +103,20 @@ const leadsVisibleTo = async (user: any) => {
 
     // ---- ARM 3: choosing an industry opens exactly that industry --------------------------------
     // The cap must bite on what is NOT followed, not on everything for ever.
-    const one = await admin.from('users').update({ industry_follow: ['offshore_wind'] }).eq('id', capped.uid);
+    // `wind`, NOT `offshore_wind`. A FOLLOW OPTION IS NOT AN INDUSTRY: 0032's allowed list offers `wind`,
+    // which industry_follow_leaves() expands to offshore_wind AND onshore_wind, and 0052's own header says
+    // so. The first version of this arm chose `offshore_wind` — an industry leaf — and 0032's trigger
+    // refused it outright: 'industry_follow: {offshore_wind} holds an industry that is not offered'. The
+    // trigger catching that is the system working; the lesson is that the expansion must be asserted
+    // against BOTH leaves, or this arm would silently under-count a wind account's leads.
+    const one = await admin.from('users').update({ industry_follow: ['wind'] }).eq('id', capped.uid);
     if (one.error) throw new Error(`the capped account could not choose an industry: ${one.error.message}`);
     const afterChoice = await leadsVisibleTo(capped.user);
     const wind = await admin.from('leads').select('*', { count: 'exact', head: true })
-      .not('workspace_id', 'is', null).overlaps('industries', ['offshore_wind']);
-    if (wind.error) throw new Error(`the offshore-wind leads could not be counted: ${wind.error.message}`);
+      .not('workspace_id', 'is', null).overlaps('industries', ['offshore_wind', 'onshore_wind']);
+    if (wind.error) throw new Error(`the wind leads could not be counted: ${wind.error.message}`);
     check(afterChoice === (wind.count ?? 0) + unclassified,
-      `after choosing offshore_wind it reads those ${wind.count} plus the ${unclassified} unclassified, and nothing else`,
+      `after choosing "wind" it reads the ${wind.count} offshore+onshore wind lead(s) plus the ${unclassified} unclassified, and nothing else`,
       { afterChoice, wind: wind.count, unclassified });
     check(afterChoice > seen, 'choosing an industry ADDS rows rather than leaving the account blind', { seen, afterChoice });
   } finally {

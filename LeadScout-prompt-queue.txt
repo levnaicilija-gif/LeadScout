@@ -2241,3 +2241,57 @@ already 404s a company outside the workspace, rewrite the comment to say 0022
 made this an ordinary read, and check as a SIGNED-IN user that the same rows come
 back — Karstensens' René Hansen is the row that was invisible before 0022 and is
 the right one to assert on.
+
+
+44. rls-sweep MUST COMPARE AGAINST WHAT AN ACCOUNT IS ENTITLED TO, NOT AGAINST
+    THE SERVICE ROLE
+
+Recorded 2026-10-01, the day 0061 made the existing method false. Its own item
+because the check is now WEAKER THAN IT READS, and nothing on screen says so.
+
+THE METHOD, AND WHY IT WAS SOUND UNTIL NOW. rls-sweep reads every table twice —
+once as the service role, once as a signed-in user — and fails when the user reads
+FEWER rows. That was exactly right while every account saw the whole pool: a table
+with RLS on and no policy, or a policy switched on in the dashboard between
+commits, shows up as a count that dropped. It is the only check that notices a
+change nobody committed.
+
+0061 MAKES THE PREMISE FALSE. A capped account legitimately reads less. The moment
+the cap shipped, the sweep's own throwaway account became capped-and-unchosen and
+the sweep reported the entitlement working as a hidden-rows defect:
+
+    leads      0 of 259      companies  5636 of 5912
+    contacts   2 of  94      job_posts     0 of  98
+    articles   0 of 256      lead_people   0 of 277
+
+Every one of those numbers was CORRECT and the verdict was WRONG — the worst
+combination a check can produce, because the output looks like a real finding.
+
+THE STOPGAP NOW IN PLACE: src/lib/rls-sweep.ts sets its throwaway account to
+industry_follow ['all'] and industry_limit null, so the comparison has its premise
+back. That is fine for the gate and is NOT fine as the end state: once real
+customers are capped, "a signed-in user reads what the service role reads" is
+false in production, so the sweep can no longer tell a hidden table from an
+entitlement — the thing it exists to detect becomes indistinguishable from the
+thing it must now tolerate.
+
+WHAT IT SHOULD DO INSTEAD: compute the EXPECTED count per table for the account it
+signs in as, from can_see_industries' own rule, and fail on a shortfall against
+THAT. The rule is already exposed and already testable — industry_follow_leaves()
+is public specifically so entitlement-probe can compare it against
+followedIndustries() — so the expected figure is derivable rather than guessed.
+
+WHEN TAKEN:
+  - keep the service-role total in the output. It is the denominator a reader
+    needs, and dropping it would hide the difference between "entitled to less"
+    and "cannot see what it is entitled to".
+  - sweep with TWO accounts, not one: an uncapped account must still read
+    everything (the current arm), and a CAPPED one must read exactly its
+    entitlement. Two arms, because one alone cannot tell the two cases apart.
+  - do NOT widen the pass condition to "reads fewer is fine". That would retire
+    the only check that catches an uncommitted dashboard change, which is the
+    failure this whole mechanism exists for (articles, lead_articles and
+    lead_people had RLS on with no policy for weeks and every screen degraded
+    quietly).
+  - and keep the stopgap's comment in place until it is done, so the next reader
+    knows the sweep is currently measuring with an artificially uncapped account.
