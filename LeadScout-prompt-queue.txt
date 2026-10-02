@@ -2295,3 +2295,52 @@ WHEN TAKEN:
     quietly).
   - and keep the stopgap's comment in place until it is done, so the next reader
     knows the sweep is currently measuring with an artificially uncapped account.
+
+BUILT AND SHIPPED 2026-10-02. All four constraints met, and each one checked
+rather than asserted.
+
+  - the service-role total is still the denominator: the capped arm prints
+    service / entitled / user per table, so "entitled to less" and "cannot see
+    what it is entitled to" stay distinguishable on sight.
+  - TWO accounts. The existing account stays deliberately UNCAPPED, so the
+    original comparison against the service role still catches a missing policy;
+    a SECOND account, industry_limit 1 following 'wind', must read EXACTLY its
+    entitlement on the seven tables 0053 put behind can_see_industries.
+  - the pass condition was NOT widened. Fewer than entitled is a hidden table,
+    MORE than entitled is a leak, and both fail. There is no "reads fewer is
+    fine" anywhere in it.
+  - the stopgap comment is gone BECAUSE the stopgap is gone, replaced by a note
+    saying why that account is uncapped on purpose.
+
+THE EXPECTED COUNT IS DERIVED INDEPENDENTLY AND NEVER FROM can_see_industries. A
+check that asks the function under test what the answer should be proves nothing,
+so the arm reimplements the policy's predicate — unclassified stays visible, else
+the row must touch a followed leaf — against the service role's own rows. The leaf
+expansion comes from followedIndustries(), which entitlement-probe already holds
+to industry_follow_leaves() for every id 0032 allows, so the two cannot drift
+without that check failing first. 'wind' is the chosen follow DELIBERATELY: it is
+one option that expands to TWO leaves, so an expansion that quietly stopped
+expanding changes the expected count and is caught.
+
+FIRST RUN, EXACT ON ALL SEVEN: leads 18 of 18, companies 5642 of 5642, contacts
+23 of 23, job_posts 10 of 10, lead_articles 18 of 18, lead_people 81 of 81,
+articles 18 of 18 — independently-derived expectations matching the live policy
+across seven tables and five orders of magnitude.
+
+PROVED BY THREE MUTATIONS, each failure attributable to its own mutation:
+  - narrowing the expectation (dropping "unclassified stays visible") fires the
+    LEAK arm on companies and contacts — 5642 read against 7 entitled — exit 1.
+  - widening it to every row fires the HIDDEN arm on all seven, exit 1, which is
+    what proves no table's assertion is vacuous in that direction.
+  - leaving the second account uncapped is caught by its own guard before any
+    table is read: "reads industry_limit null — it must be 1, or the arm measures
+    an uncapped account", exit 1. That guard exists because drawer-contacts-probe
+    silently tested nothing on 2026-10-01 for exactly this reason.
+
+TWO THINGS WORTH KNOWING. The leads arm is insensitive to the unclassified clause
+today — every entitled lead is wind-classified and no lead is unclassified — so
+companies (5,642 unclassified rows) is what carries that signal; if companies ever
+stops being swept, that half of the rule stops being tested. And an expectation
+that cannot be computed is NOT JUDGED rather than SUSPECT, the exit-2 idiom: this
+sweep runs nightly and its verdict is on Home for everyone, so a manufactured
+SUSPECT on a correct table would redden it for every user.

@@ -22,6 +22,17 @@ import { probeAdmin } from '../src/lib/test-data';
     console.log(`${row.table.padEnd(26)}${String(row.service).padStart(9)}${String(row.expected ?? '-').padStart(10)}${String(row.user).padStart(9)}  ${row.verdict}`);
   }
   console.log(`\nnot judged by counting (no rows): ${r.unjudged.join(', ') || 'none'}`);
+  // ITEM 44's second arm, printed as its own table rather than folded into the first: the two ask
+  // different questions of different accounts, and merging them is what made an entitlement look like a
+  // hidden table. Here "expected" is what the capped account is ENTITLED to, not what the workspace holds.
+  if (r.capped.length) {
+    console.log(`\ncapped account (industry_limit 1, following wind) — expected = its entitlement, and it must read EXACTLY that`);
+    console.log(`${'table'.padEnd(26)}${'service'.padStart(9)}${'entitled'.padStart(10)}${'user'.padStart(9)}  verdict`);
+    for (const row of r.capped) {
+      console.log(`${row.table.padEnd(26)}${String(row.service).padStart(9)}${String(row.expected ?? '-').padStart(10)}${String(row.user).padStart(9)}  ${row.verdict}`);
+    }
+    if (r.cappedUnjudged.length) console.log(`not judged: ${r.cappedUnjudged.join(', ')}`);
+  }
   console.log(r.catalog.checked
     ? `catalogue: ${r.catalog.noPolicy.length ? `RLS on with no policy — ${r.catalog.noPolicy.join(', ')}` : 'no table has RLS on without a policy'}`
     : 'catalogue: not checked (rls_tables_without_policy arrives with migration 0026)');
