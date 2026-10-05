@@ -2651,3 +2651,118 @@ because the title names the trade. Every refusal added in 46(a) has a counter-ex
 in board-title-check but the PROMPT has only the refusals, and a prompt is exactly
 where a one-sided rule over-reaches. Re-crawl Equinor afterwards and require it to
 keep 2 of 11, not 0 and not 3.
+
+
+48. DUPLICATE COMPANY ROWS FOR THE OWNER TO MERGE — LISTED, NOTHING MERGED
+
+Compiled 2026-10-05 from item 39's investigation, by grouping all 5,929 company rows
+on careers_url and on domain. NOTHING WAS MERGED: findOrCreateCompany's own docstring
+says a wrong merge moves another company's provenance onto the survivor with no way
+back, so this is a list for a person.
+
+18 groups share a CAREERS URL, which is the costly kind — both rows are crawled, so
+the board is read twice and the second row's postings collide on
+job_posts_source_url_uidx (item 39 now refreshes instead of dropping them).
+
+CLEAR DUPLICATES OF ONE FIRM — a name variant, misspelling or rebrand:
+  VESTAS / Vestas Manufacturing                     careers.vestas.com
+  Nadara / renantis                                 nadara.com (rebrand)
+  FSE Flaeminger Stahl- & Energieeelementebau GmbH /
+    Flaeminger Stahl- uns Energieelementebau GmbH   fse-stahlbau.de (two misspellings)
+  NIDEC SSB Wind Systems / Nidec SSB Windsystems    nidec-conversion.com
+  Siemens Gamesa / Siemens Gamesa Renewable Energy  siemensgamesa.com
+  Nordex Group / "nordex online"                    nordex-online.com
+  PASSER / PASSER PRODUCTS                          passergroup.com
+  BAM / BAM UK                                      bam.co.uk
+  RWE Offshore / RWE Offshore Wind                  rwe.com
+  DTU WIND / DTU Wind & Energy Systems              wind.dtu.dk
+  COLAS / COLAS FRANCE / COLAS France ETABLISSEMENT COTE BASQUE  (3 rows)
+
+PARENT AND SUBSIDIARY — a judgement, NOT an obvious merge. They share a careers
+portal but may be distinct employers:
+  Acteon / Acteon - UTEC · VARD / Vard Electro · Brunvoll / Brunvoll Mar-El
+  Boskalis / Baggermaatschappij Boskalis · Pondera / Royal HaskoningDHV vs
+  royalhaskoningdhv
+
+NOT DUPLICATES — DO NOT MERGE:
+  Rogaland Fylkeskommune / Fagskolen Rogaland — a county council and its vocational
+    college, two real organisations sharing one public job portal.
+  Ocean Winds / "Premium" and European Energy / "nl" — the second row of each pair is
+    a JUNK NAME scraped as a company. These want deleting or renaming, not merging.
+
+AND A WORSE PROBLEM FOUND ALONGSIDE, which is not duplication at all: NINE unrelated
+companies carry floatingwinddays.com as their domain — Logi Trans, Polaris Offshore
+Technologies, Marine Technologies, Argus Remote Systems, WindCarrier, Segwell, KOSMOS
+ENERGY, Olympic Subsea, Vintralea. That is a CONFERENCE website, almost certainly a
+web-search lookup landing on an exhibitor list. Any contact discovery on those nine
+would read the conference's pages and attribute its contacts to the wrong company,
+which is the fabrication risk this codebase exists to avoid. Six more carry
+nesfircroft.com (NES Offshore Wind, NES EPC, NES Oil & Gas, NES Construction, NES
+Fircroft, "Fircroft (brand under NES)") — brands of one agency, less alarming but
+equally wrong as a per-company domain. WORTH FIXING BEFORE ANY MORE PAID DISCOVERY:
+clear a domain shared by more than about three differently-named companies and let it
+be looked up again, since site-scope's shared-domain rule only fires when neither
+name contains the other and cannot catch nine unrelated names.
+
+
+49. SHARED AND WRONG DOMAINS — CLEARED, AND THE LOOKUP CAN NO LONGER STORE ONE
+    (DONE 2026-10-05). THE ORIGIN WAS A DIRECTORY IMPORT, NOT THE LOOKUP.
+
+MY EARLIER WRITE-UP GUESSED WRONG ABOUT THE CAUSE, and the provenance says so
+plainly: every one of the nine floatingwinddays.com rows carries domain_lookups = 0
+and NO domain_source, so no paid lookup ever set them. They came from
+source="Norwegian Offshore Wind", source_url=.../members/directory, and "Premium" on
+oceanwinds.com came from source="NedZero (formerly NWEA)", .../nl/members — where
+"Premium" is a membership TIER scraped as a company name. A MEMBER-DIRECTORY IMPORT
+mis-assigned both the name and the domain. The precise parse fault in
+/api/jobs/directories is NOT diagnosed and is its own item: the fallback at
+route.ts:102 names a company from the host word of any external link, which is also
+where "nordex online" and "nl" as company names come from.
+
+WHAT WAS FOUND: of 28 domains held by 2+ companies, SEVEN were held by unrelated
+names. Five of those seven are legitimate and were left alone — nesfircroft.com (one
+agency, six brand rows, owner's instruction), fse-stahlbau.de (the two misspelt
+Flaeminger rows, item 48), nordex-online.com (a junk NAME, a correct domain), gac.com
+(GAC Denmark and GAC Norway, two entities of one group, already documented as such)
+and v-hr.com (one firm under two names).
+
+CLEARED: 10 rows — the nine on floatingwinddays.com and "Premium" on oceanwinds.com.
+Ocean Winds itself KEPT its domain (web search, address-verified, scope own). No
+company was deleted. `source`/`source_url` are untouched, and how each domain was set
+plus why it was cleared is written into domain_scope_reason as text, since there is no
+column for a cleared-domain history and adding one would need a hand-applied
+migration. Each row is made re-lookupable: domain null, domain_lookups 0,
+careers_checked_at null, careers_status null (it was 'none_found', which the queue's
+predicate would have excluded).
+
+THE CAUSE FIX, in three parts, all in site-scope.ts with both arms each:
+  - looksLikeDirectory(): a measured host list (the two member directories themselves,
+    the conference, the platforms and registries) plus a SHORT word list. It errs
+    towards rejecting, because a wrong entry costs a company its website — recoverable
+    — while a missing one lets contact discovery attribute a conference's people to a
+    company that never employed them, which is fabrication.
+  - mayStoreDomain(): the REFUSAL, kept separate from siteScope's WARNING. A group site
+    is stored deliberately (a group switchboard is a real number); a domain belonging
+    to another company altogether is not. THE DISCRIMINATOR IS THE BRAND: "GAC Denmark"
+    carries "gac", so gac.com is right for it; "Logi Trans AS" carries nothing of
+    "floatingwinddays".
+  - siteScope's shared arm no longer lets CONTAINMENT alone exempt a sharer. Either
+    name must also carry the domain's brand, so "Energy" inside "KOSMOS ENERGY" on a
+    conference host is still two companies while "Vestas" inside "Vestas Manufacturing"
+    on vestas.com is still one.
+  - AND THE ROUTE NOW PASSES sharedWith AT ALL. /api/jobs/resolve-domains never did, so
+    the shared-domain rule was DORMANT across the whole Industry Contacts population —
+    the very population these rows belong to. Both lookup paths now read the holders,
+    read the error of that read, refuse on a bad answer, stamp the attempt so the same
+    wrong answer is not paid for twice, and report refusals separately from errors.
+
+THREE OF MY OWN ASSERTIONS CAUGHT THE FIX BEING WRONG, which is the part worth
+keeping. The brand test compared a SPACED name against a SQUASHED brand and broke two
+pre-existing assertions — "Siemens Gamesa Renewable Energy" does not start with
+"siemensgamesa" once the space is there, and "NIDEC SSB Wind Systems" carries
+"ssbwindsystems" in the middle. Then it needed BOTH directions, because "Winergy" sits
+inside the brand "winergy-group" rather than the other way round. Then requiring BOTH
+names to be on-brand broke "Winergy / Flender", so EITHER is enough. Four mutations
+prove the rules; one of them shows defence in depth — with the host list disabled,
+Logi Trans is still refused by the shared-domain arm, and the assertion checks WHICH
+rule fired rather than only that something did.

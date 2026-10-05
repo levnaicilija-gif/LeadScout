@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { crawlWorkspace } from '@/lib/crawl-workspace';
 import { lookupDomain } from '@/lib/domain-lookup';
-import { siteScope } from '@/lib/site-scope';
+import { siteScope, mayStoreDomain } from '@/lib/site-scope';
 import { nonProspect } from '@/lib/prospect-scope';
 import { hasDomainProvenance } from '@/lib/schema-features';
 import { Budget, spentEur } from '@/lib/cost';
@@ -129,7 +129,11 @@ async function run(req: Request) {
     if (out) skipped.push({ name: c.name, category: out.category, term: out.term });
     return !out;
   }).slice(0, limit);
-  const stats = { eligible: pool.length, withOpsContact: inScope.length, skippedNonProspect: skipped.length, looked: 0, resolved: 0, notFound: 0, errors: 0 };
+  const stats = { eligible: pool.length, withOpsContact: inScope.length, skippedNonProspect: skipped.length, looked: 0, resolved: 0, notFound: 0, errors: 0, refusedDomain: 0 };
+  // Domains a lookup found and this route REFUSED to store — a directory site, or already held by an
+  // unrelated company. Reported separately from errors: the lookup worked, its answer was rejected.
+  const refusedDomains: string[] = [];
+  const writeErrors: string[] = [];
   const found: any[] = [];
 
   // DRY RUN: build the queue, report exactly what it would do, and look nothing up. Added because item 27's
@@ -162,9 +166,35 @@ async function run(req: Request) {
 
       const attempt = Number(c.domain_lookups ?? 0) + 1;
       const stamp = provenance ? { domain_lookups: attempt, domain_looked_up_at: new Date().toISOString() } : {};
+      // A DOMAIN ALREADY HELD BY AN UNRELATED COMPANY, OR A DIRECTORY SITE, IS REFUSED RATHER THAN STORED
+      // (2026-10-05). This route never passed `sharedWith` to siteScope, so the shared-domain rule was DORMANT
+      // on the whole Industry Contacts population — the one the nine floatingwinddays.com rows belong to. Those
+      // nine came from a member-directory import rather than from here, so this does not fix their origin; it
+      // closes the paid path, where the same mistake costs money per company AND sends contact discovery to a
+      // conference's pages to attribute its people to a company that never employed them.
+      const holders = domain
+        ? await db.from('companies').select('name').eq('domain', domain).neq('id', c.id).limit(5)
+        : { data: [] as { name: string }[], error: null };
+      // Read the error: an unreadable holder list must not look like "nobody else holds it", which is the
+      // permissive answer and exactly the class this codebase keeps meeting.
+      if (holders.error) {
+        stats.errors++;
+        writeErrors.push(`${c.name}: the existing holders of ${domain} could not be read, so the domain was NOT stored: ${holders.error.message}`.slice(0, 200));
+        continue;
+      }
+      const allowed = domain ? mayStoreDomain(c.name, domain, (holders.data ?? []).map((h) => h.name)) : { ok: true, reason: null };
+      if (domain && ans.confirmed_by && !allowed.ok) {
+        // Counted as a miss, not an error: the lookup worked and its answer was rejected. The attempt is
+        // stamped so the company is not paid for again and again on the same wrong answer.
+        await db.from('companies').update({ ...stamp, ...(!provenance || attempt >= 2 ? { careers_status: 'no_domain_found' } : {}) }).eq('id', c.id);
+        stats.notFound++;
+        stats.refusedDomain++;
+        refusedDomains.push(`${c.name}: ${allowed.reason}`.slice(0, 220));
+        continue;
+      }
       if (domain && ans.confirmed_by) {
         // With 0033 the search's result has its own columns and companies.source keeps where the company came from.
-        const scope = siteScope({ companyName: c.name, domain, winnerCountry: c.country });
+        const scope = siteScope({ companyName: c.name, domain, winnerCountry: c.country, sharedWith: (holders.data ?? []).map((h) => h.name) });
         await db.from('companies').update(provenance
           ? { domain, domain_source: 'web search', domain_source_url: ans.source_url ?? null, domain_address_check: 'no_address', domain_scope: scope.scope, domain_scope_reason: scope.reason, sector_note: null, ...stamp }
           : { domain, source: 'web search', source_url: ans.source_url ?? null, sector_note: null },
@@ -203,6 +233,10 @@ async function run(req: Request) {
 
   return NextResponse.json({
     ok: true, stats, found, chained, skippedNonProspect: skipped.slice(0, 20),
+    // Domains found and REFUSED — a directory site, or already held by an unrelated company. Named, because
+    // a silent refusal is indistinguishable from "the search found nothing" and the two want different fixes.
+    refusedDomains: refusedDomains.slice(0, 20),
+    writeErrors: writeErrors.slice(0, 10),
     spentOnSearchEur: Number(spent.toFixed(3)), capEur,
     remainingInScope: remaining,
   });

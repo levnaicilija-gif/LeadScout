@@ -25,7 +25,7 @@ import { crawlWorkspace } from '../src/lib/crawl-workspace';
 import { lookupDomain, placeFrom } from '../src/lib/domain-lookup';
 import { fetchNoticeXml, publicationNumber, winnerAddress, type WinnerAddress } from '../src/lib/tender/winner-address';
 import { leadSource, primaryArticle } from '../src/lib/lead-source';
-import { siteScope } from '../src/lib/site-scope';
+import { siteScope, mayStoreDomain } from '../src/lib/site-scope';
 import { hasDomainProvenance } from '../src/lib/schema-features';
 import { CLOSED_LEAD_STATUSES, LEAD_STATE_EMBED, LEAD_STATE_TABLE } from '../src/lib/workspace-state';
 import { probeAdmin } from '../src/lib/test-data';
@@ -159,7 +159,7 @@ async function addressCheck(domain: string, a: WinnerAddress | null): Promise<Ch
     return;
   }
 
-  const tally = { looked: 0, retries: 0, found: 0, foundOnRetry: 0, final: 0, printed: 0, notPrinted: 0, didNotLoad: 0, noAddress: 0, group: 0, notFound: 0, errors: 0, stoppedAtCap: 0 };
+  const tally = { looked: 0, retries: 0, found: 0, foundOnRetry: 0, final: 0, printed: 0, notPrinted: 0, didNotLoad: 0, noAddress: 0, group: 0, refused: 0, notFound: 0, errors: 0, stoppedAtCap: 0 };
   for (const t of pending) {
     if (!budget.canAfford(0.05)) { tally.stoppedAtCap = pending.length - tally.looked; console.log(`\nstopped: the daily cap cannot take another lookup — ${tally.stoppedAtCap} left for after 00:00 UTC`); break; }
     const xml = t.notice ? await fetchNoticeXml(t.notice) : null;
@@ -194,7 +194,28 @@ async function addressCheck(domain: string, a: WinnerAddress | null): Promise<Ch
       tally.found++; if (attempt > 1) tally.foundOnRetry++;
       const check = await addressCheck(r.domain, a);
       if (check === 'printed') tally.printed++; else if (check === 'not_printed') tally.notPrinted++; else if (check === 'site_did_not_load') tally.didNotLoad++; else tally.noAddress++;
-      const { data: holders } = await db.from('companies').select('name').eq('domain', r.domain).neq('id', t.id).limit(3);
+      // Read the error: an unreadable holder list must never look like "nobody else holds it", which is the
+      // permissive answer. Five holders rather than three, so the refusal message can name more than a pair.
+      const { data: holders, error: holdersErr } = await db.from('companies').select('name').eq('domain', r.domain).neq('id', t.id).limit(5);
+      if (holdersErr) {
+        tally.errors++;
+        console.log(`  ${t.name}: the existing holders of ${r.domain} could not be read, so it was NOT stored — ${holdersErr.message}`);
+        continue;
+      }
+      // A DIRECTORY SITE, OR A DOMAIN ALREADY HELD BY AN UNRELATED COMPANY, IS REFUSED (2026-10-05). This is a
+      // different question from siteScope's: a GROUP site is stored deliberately with a warning, because a group
+      // switchboard is a real number, while a domain belonging to another company altogether is simply wrong and
+      // storing it would point contact discovery at the wrong firm's pages.
+      const allowed = mayStoreDomain(t.name, r.domain, (holders ?? []).map((h: any) => h.name));
+      if (!allowed.ok) {
+        tally.refused++;
+        console.log(`  ${t.name} (${country ?? '—'}): REFUSED ${r.domain} · €${r.eur.toFixed(4)} · ${allowed.reason}`);
+        // The attempt is stamped so the same wrong answer is not paid for again and again; `final` is
+        // recomputed here rather than reused, because the miss branch above is a different scope.
+        const refusedFinal = attempt >= MAX_LOOKUPS;
+        if (write) await db.from('companies').update({ ...stamp, ...(refusedFinal ? { careers_status: 'no_domain_found' } : {}) }).eq('id', t.id);
+        continue;
+      }
       const scope = siteScope({ companyName: t.name, domain: r.domain, winnerCountry: country, sharedWith: (holders ?? []).map((h: any) => h.name) });
       if (scope.scope === 'group') tally.group++;
       const checked = a && (a.city || a.postalCode) ? [a.postalCode, a.city].filter(Boolean).join(' ') : null;
@@ -212,6 +233,6 @@ async function addressCheck(domain: string, a: WinnerAddress | null): Promise<Ch
     }
   }
   const spent = budget.totalToday - startSpend;
-  console.log(`\nlooked up ${tally.looked} (retries ${tally.retries}) · website found ${tally.found} (on retry ${tally.foundOnRetry}) · address printed ${tally.printed}, not printed ${tally.notPrinted}, site did not load ${tally.didNotLoad}, notice gave no address ${tally.noAddress} · group site ${tally.group} · no website ${tally.notFound} (now final ${tally.final}) · errors ${tally.errors}`);
+  console.log(`\nlooked up ${tally.looked} (retries ${tally.retries}) · website found ${tally.found} (on retry ${tally.foundOnRetry}) · address printed ${tally.printed}, not printed ${tally.notPrinted}, site did not load ${tally.didNotLoad}, notice gave no address ${tally.noAddress} · group site ${tally.group} · REFUSED (directory or another company's) ${tally.refused} · no website ${tally.notFound} (now final ${tally.final}) · errors ${tally.errors}`);
   console.log(`this run spent €${spent.toFixed(4)} · €${tally.looked ? (spent / tally.looked).toFixed(4) : '—'} a company · spend today €${budget.totalToday.toFixed(4)} of €${budget.capEur}${tally.stoppedAtCap ? ` · ${tally.stoppedAtCap} still to look up` : ''}`);
 })().catch((e) => { console.error(e.message ?? e); process.exitCode = 1; });
