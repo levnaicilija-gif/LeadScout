@@ -26,7 +26,7 @@ import {
 } from '../src/lib/trades';
 // The crawl's own title taxonomy, read from the module that builds it: the point of item 32's third part is
 // that the prompt and the vocabulary are ONE source, so the check must read the real string, not a copy.
-import { TITLE_TAXONOMY } from '../src/lib/jobs/job-posts-batch';
+import { TITLE_TAXONOMY, TITLE_MAX_TOKENS } from '../src/lib/jobs/job-posts-batch';
 
 let fail = 0;
 const check = (name: string, pass: boolean, detail: string) => {
@@ -290,6 +290,21 @@ check(`all ${RFBT_TRADE_LIST.length} trades are in the crawl's title taxonomy`, 
   missingFromPrompt.length ? `MISSING ${JSON.stringify(missingFromPrompt)} — the crawl cannot keep a title it is not told about` : 'every one present');
 check('the taxonomy is not the old ten words', RFBT_TRADE_LIST.length > 10 && TITLE_TAXONOMY.includes('rigger'),
   'rigger reaches the prompt, which it could not before');
+
+// THE TOKEN CEILING IS PART OF THE SAME CHANGE, and this arm exists because widening the taxonomy without
+// raising it would have lost whole boards. The reply is one object per KEPT title, and at 500 tokens it was
+// already truncating on the TEN-word list (EnerMech and mennens, "Expected ',' or ']' ... position 1201").
+// The largest board this crawl has met is 60 titles; a verdict entry is ~45 characters, so a board where
+// every title is kept needs roughly 2,700 characters of JSON — about 700 tokens.
+const WORST_BOARD_TITLES = 60;
+const CHARS_PER_VERDICT = 45;
+const CHARS_PER_TOKEN = 4;
+const neededTokens = Math.ceil((WORST_BOARD_TITLES * CHARS_PER_VERDICT) / CHARS_PER_TOKEN);
+check(`the title ceiling fits the worst board seen (${WORST_BOARD_TITLES} titles, about ${neededTokens} tokens)`,
+  TITLE_MAX_TOKENS >= neededTokens,
+  TITLE_MAX_TOKENS >= neededTokens ? `${TITLE_MAX_TOKENS} tokens, with headroom` : `${TITLE_MAX_TOKENS} is BELOW the ${neededTokens} a full board needs — boards would truncate and be lost whole`);
+check('the old 500-token ceiling would NOT have fitted it', 500 < neededTokens,
+  'which is why two boards were already failing to parse before the taxonomy was widened');
 
 console.log(`\ntrades: ${fail ? `${fail} FAILED` : 'all checks passed'}`);
 if (fail) process.exitCode = 1;

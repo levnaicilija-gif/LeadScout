@@ -90,6 +90,13 @@ const TitleVerdicts = z.object({
  */
 export const TITLE_TAXONOMY = TRADE_NAMES.join(', ');
 
+/**
+ * The ceiling on the title verdict. One object per KEPT title, so it scales with the taxonomy's willingness
+ * to keep — see the long note at the call site for why 500 was already too low before item 32 widened it.
+ * Exported so `trades-check` can assert it is large enough for the biggest board this crawl has met.
+ */
+export const TITLE_MAX_TOKENS = 2000;
+
 const TITLE_SYSTEM = `You are reading job titles for RFBT, which supplies skilled trades to industry.
 
 RFBT's taxonomy is exactly these ${TRADE_NAMES.length} terms. "trades" may contain nothing else — anything outside this list is discarded downstream, so a more precise word is a lost one:
@@ -286,11 +293,27 @@ export async function runJobPostsBatch(req: Request) {
       stats.titlesSeen += board.jobs.length;
 
       // Titles first: one cheap call for the whole board.
+      //
+      // TITLE_MAX_TOKENS IS 2000, RAISED FROM 500 ON 2026-10-05, AND IT IS A PREREQUISITE OF ITEM 32'S
+      // RE-READ RATHER THAN A TIDY-UP. The verdict is one object per KEPT title, so the reply grows with
+      // what the prompt is willing to keep — and at 500 tokens it was ALREADY truncating on the ten-word
+      // taxonomy: EnerMech and mennens both ended their last crawl on "Expected ',' or ']' after array
+      // element in JSON at position 1201 / 1161", which is a reply cut off mid-array. Boards here run to 60
+      // titles, so widening the taxonomy to 39 trades would have multiplied that — and the failure takes the
+      // WHOLE board with it (0 kept, an `error:` status), which means the biggest and most productive boards
+      // are exactly the ones that would have been lost, while the run still paid for every one of them.
       const ai = await claude.messages.create({
-        model: MODEL_CLASSIFY, max_tokens: 500, system: TITLE_SYSTEM,
+        model: MODEL_CLASSIFY, max_tokens: TITLE_MAX_TOKENS, system: TITLE_SYSTEM,
         messages: [{ role: 'user', content: board.jobs.map((j, i) => `${i}: ${j.title}${j.location ? ` — ${j.location}` : ''}`).join('\n') }],
       });
       budget.add(await logModelCall(db, ws.id, MODEL_CLASSIFY, `job titles ${c.name}`, ai.usage));
+      // A TRUNCATED REPLY SAYS SO, instead of arriving as a parse error that reads like a broken board. The
+      // two are different faults needing different fixes — one is a token ceiling, the other is a model
+      // returning something that is not JSON — and the old wording could not tell them apart. This is the
+      // same rule as "an empty Decision-maker cell says WHICH absence it is".
+      if (ai.stop_reason === 'max_tokens') {
+        throw new Error(`the title verdict was cut off at the ${TITLE_MAX_TOKENS}-token ceiling after ${board.jobs.length} titles — raise TITLE_MAX_TOKENS; the board was NOT judged`);
+      }
       const text = ai.content.filter((x) => x.type === 'text').map((x: any) => x.text).join('');
       const keep = TitleVerdicts.parse(JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? '{}')).keep
         .filter((k) => Number.isInteger(k.i) && k.i >= 0 && k.i < board.jobs.length);
