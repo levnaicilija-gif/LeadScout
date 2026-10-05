@@ -2344,3 +2344,50 @@ stops being swept, that half of the rule stops being tested. And an expectation
 that cannot be computed is NOT JUDGED rather than SUSPECT, the exit-2 idiom: this
 sweep runs nightly and its verdict is on Home for everyone, so a manufactured
 SUSPECT on a correct table would redden it for every user.
+
+
+32. (CONTINUED) THE TWO FALSE POSITIVES AND THE TITLE PROMPT — DONE 2026-10-02.
+    THE FINGERPRINT RE-READ IS NOT DONE AND CANNOT BE UNTIL THE CAP RESETS.
+
+Built in the owner's stated order: the false positives first, then the prompt.
+
+1. `dogger` IS GONE. It matched DOGGER BANK in 11 articles, and neither anchoring
+   nor span containment can help — "Dogger" IS the whole word and nothing longer
+   overlaps it. Australian adverts are not a population here, so nothing real is
+   lost; `banksman` and `rigger/slinger` survive and are asserted to.
+
+2. `mechanic` NO LONGER MATCHES A FIELD OF STUDY — AND THE FIRST ATTEMPT AT THIS
+   WAS WRONG, WHICH IS THE PART WORTH KEEPING. Suppressing the trailing plural
+   ("mechanics" never matches) stopped "quantum mechanics" and ALSO broke an arm
+   this check already had: `"Industrial Mechanics, day shift" IS mechanic`, a real
+   plural JOB TITLE. The instruction was to stop matching the field of study, not
+   to stop matching plural titles, and a rule that cannot tell those apart is not
+   the fix. So the plural stays and the QUALIFIER is refused instead, by lookbehind:
+   FIELD_OF_STUDY = quantum, rock, soil, fluid, applied, classical, statistical,
+   continuum, fracture. It UNDER-MATCHES on purpose — "structural mechanics" is
+   left out, because every word added can only remove a real trade from a real
+   advert, and hasRfbtTrades is a binary 0.4 of the fit score. The lookbehind binds
+   to the word immediately in front, which is asserted: "rock excavation on site;
+   we need a mechanic" still finds one.
+
+3. TITLE_SYSTEM IS GENERATED FROM TRADE_NAMES, never typed. The prompt told the
+   model "RFBT's taxonomy is exactly these ten words" and that anything else "is
+   discarded downstream" — so 97% of 7,722 titles were discarded and the 29 new
+   trades could not reach Hiring now by any route. Mutation 3 names all 29 that the
+   hand-typed list could not keep. The worked examples were corrected with it:
+   "Rigger" -> rigger and "Kranfører" -> crane operator, both of which used to map
+   to fitter because neither trade existed in the old list.
+
+PROVED BY THREE MUTATIONS, each attributable: restoring the alias fails the Dogger
+Bank arms; dropping notAfter fails the three field-of-study arms; reverting the
+taxonomy to the hand-typed ten fails the coverage arms and prints the 29 missing
+trades. A FOURTH arm was DELETED for being vacuous rather than left in to pad the
+count: "Doggerbank South" as one closed word never matched even with the alias
+present, so it asserted something true and unattributable.
+
+WHAT IS NOT DONE, AND IT IS THE HALF THAT CHANGES THE DATA: clearing the 201 board
+fingerprints so the boards are re-read under the widened prompt, about EUR 0.22.
+The daily cap was spent on the website batches when this landed, and re-reading
+before the prompt was widened would have bought nothing anyway. Until that runs,
+the widened prompt affects only NEWLY changed boards — the 29 trades are reachable
+in principle and still absent from Hiring now in practice.

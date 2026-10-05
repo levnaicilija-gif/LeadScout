@@ -9,6 +9,8 @@ import { atsListUrl, parseAtsJobs, fetchWorkday, detectAts, type AtsJob, type At
 import { claude, MODEL_CLASSIFY, MODEL_EXTRACT } from '@/lib/ai/claude';
 import { logModelCall, Budget, DAILY_BUDGET_EUR } from '@/lib/cost';
 import { inferTrades } from '@/lib/trades';
+// The vocabulary itself, for the title prompt below. A pure data module — no model, no database.
+import { TRADE_NAMES } from '@/lib/trade-vocabulary';
 import { countryFromText, countryFromJobLocation, isEuropean } from '@/lib/geo';
 import { cleanTitle, titleFromPage, stripFurniture, needsPageTitle } from '@/lib/job-title';
 import { z } from 'zod';
@@ -72,10 +74,28 @@ const TitleVerdicts = z.object({
   })).nullish().transform((v) => v ?? []),
 });
 
+/**
+ * THE TAXONOMY IS GENERATED FROM trade-vocabulary.ts, NEVER TYPED HERE (item 32, 2026-10-02).
+ *
+ * This prompt used to name "exactly these ten words" and list them by hand, which is how the crawl came to
+ * speak a vocabulary the rest of the app had outgrown: the vocabulary grew to 39 trades on 2026-09-27 and the
+ * MODEL was still told that anything outside the original ten "is discarded downstream". Only titles in
+ * `keep` are ever inserted, so **97% of 7,722 titles read were discarded** — 484 seen per board against 19
+ * kept, and 31 of 39 boards keeping nothing at all — and the 29 new trades could not reach Hiring now by any
+ * route. The matcher was never the blocker; the prompt was.
+ *
+ * Generated, so the two cannot drift apart again. A hand-typed list has already drifted once, silently, and
+ * the symptom was a 97% discard rate that looked like boards simply having no trade vacancies on them.
+ * `trades-check` asserts this string actually contains the whole vocabulary rather than trusting the join.
+ */
+export const TITLE_TAXONOMY = TRADE_NAMES.join(', ');
+
 const TITLE_SYSTEM = `You are reading job titles for RFBT, which supplies skilled trades to industry.
 
-RFBT's taxonomy is exactly these ten words. "trades" may contain nothing else — anything outside this list is discarded downstream, so a more precise word is a lost one:
-welder, painter, blaster, pipefitter, fitter, ndt, rope access, wind technician, electrician, scaffolder
+RFBT's taxonomy is exactly these ${TRADE_NAMES.length} terms. "trades" may contain nothing else — anything outside this list is discarded downstream, so a more precise word is a lost one:
+${TITLE_TAXONOMY}
+
+Use the most precise term that fits. A rigger is a rigger, not a fitter; a crane operator is a crane operator. Only fall back to a broader term when no specific one applies.
 
 Keep a title when it is one of those trades, or a foreman, supervisor or QA/QC inspector directly over them. The titles are in many languages: read them in whatever language they are written, and map to the list above.
 
@@ -90,7 +110,7 @@ Worked examples, so the mapping is not guessed at:
 - "Overflatebehandler" (NO) → blaster, painter
 - "Fagingeniør Mekanisk" (NO) → fitter
 - "Werkplaatsmedewerker" (NL, workshop hand) → fitter
-- "Rigger", "Kranfører" (NO) → fitter
+- "Rigger" (NO) → rigger, and "Kranfører" (NO) → crane operator. BOTH USED TO MAP TO fitter here, because neither trade existed in the old ten-word list; they are their own trades now, and mapping them to fitter would throw away exactly the precision this list was widened to capture.
 - "EKH Keurmeester" (NL, lifting-gear inspector) → ndt
 
 NOT wanted: office, sales, marketing, finance, HR, legal, IT, software, data, design, procurement, consultancy, graduate schemes, internships, or engineering roles that are desk-based design rather than site trades. An apprenticeship in a trade IS wanted.

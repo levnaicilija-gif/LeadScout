@@ -53,17 +53,21 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  * A term becomes a word-anchored pattern whose separators are interchangeable. Built once per term at
  * module load, never inside a loop over rows.
  */
-function wordPattern(term: string): RegExp {
+function wordPattern(term: string, notAfter?: readonly string[]): RegExp {
   const parts = term.split(/[\s\-/]+/).filter(Boolean).map(escape);
-  // A trailing plural is allowed so a stored "welders" still counts; see property 1 above.
-  return new RegExp(`\\b${parts.join('[\\s\\-/]+')}s?\\b`, 'gi');
+  // A trailing plural is allowed so a stored "welders" still counts; see property 1 above. Where a term
+  // declares `notAfter`, the match is additionally refused when one of those qualifiers sits in front of it —
+  // "quantum mechanics" is a field of study, "Industrial Mechanics" is an advert. A LOOKBEHIND rather than a
+  // suppressed plural, because suppressing the plural cannot tell those two apart and breaks the second.
+  const deny = notAfter?.length ? `(?<!\\b(?:${notAfter.map(escape).join('|')})\\s)` : '';
+  return new RegExp(`${deny}\\b${parts.join('[\\s\\-/]+')}s?\\b`, 'gi');
 }
 
 type Term = { trade: Trade; term: string; re: RegExp };
 
 /** Every word-matchable term: each canonical name, plus each alias that is not `exact`. */
 const WORD_TERMS: Term[] = TRADES.flatMap((d) => [
-  { trade: d.trade, term: d.trade, re: wordPattern(d.trade) },
+  { trade: d.trade, term: d.trade, re: wordPattern(d.trade, (d as { notAfter?: string[] }).notAfter) },
   ...((d as { aliases?: readonly Alias[] }).aliases ?? [])
     .filter((a) => (a.mode ?? 'word') === 'word')
     .map((a) => ({ trade: d.trade, term: a.term, re: wordPattern(a.term) })),

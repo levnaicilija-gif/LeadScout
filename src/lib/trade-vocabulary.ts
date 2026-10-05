@@ -45,12 +45,32 @@ export type TradeCategory = 'blue_collar' | 'drilling_crew' | 'marine_crew' | 'w
  */
 export type MatchMode = 'word' | 'exact';
 
+/**
+ * Words that turn a trade's PLURAL into a field of study, so the term must not match after them.
+ *
+ * `mechanic` is the case that earned this, and the first attempt at it was WRONG in an instructive way:
+ * suppressing the trailing plural outright ("mechanics" never matches) stopped "quantum mechanics" and also
+ * broke this file's own existing arm, `"Industrial Mechanics, day shift" IS mechanic` — a real plural JOB
+ * TITLE. The instruction was to stop matching the field of study, not to stop matching plural titles, and a
+ * rule that cannot tell those apart is not the fix. The discriminator is the QUALIFIER in front of it.
+ *
+ * DELIBERATELY SHORT, AND IT UNDER-MATCHES. Only the physics and engineering fields are listed; anything
+ * vaguer ("structural mechanics") is left out, because every word added here can only remove a real trade
+ * from a real advert, and `hasRfbtTrades` is a binary 0.4 of the fit score.
+ */
+export const FIELD_OF_STUDY = ['quantum', 'rock', 'soil', 'fluid', 'applied', 'classical', 'statistical', 'continuum', 'fracture'];
+
 export type Alias = { term: string; mode?: MatchMode; why?: string };
 
 export type TradeDef = {
   /** The canonical name. Stored in job_posts.trades and leads.trades_inferred, and shown on screen. */
   trade: string;
   category: TradeCategory;
+  /**
+   * Qualifiers that must NOT precede this trade's name — see `FIELD_OF_STUDY`. Used by `mechanic` alone, so
+   * that "quantum mechanics" is not a vacancy while "Industrial Mechanics" still is.
+   */
+  notAfter?: string[];
   /** Other real titles for the SAME trade. The canonical name is always matched too, as `word`. */
   aliases?: Alias[];
   /** Why this trade is on the list at all, or what evidence put it here. */
@@ -126,7 +146,12 @@ export const TRADES = [
     aliases: [
       { term: 'rigger/slinger' },
       { term: 'banksman', why: 'the UK title for the man directing the lift' },
-      { term: 'dogger', why: 'the Australian and offshore title for the same job' },
+      // REMOVED 2026-10-02: `dogger` is the real Australian title and was measured matching DOGGER BANK in
+      // 11 articles — the North Sea wind field, in a corpus that is largely about offshore wind. Anchoring
+      // cannot help, because "Dogger" IS the whole word; nor can span containment, because nothing longer
+      // overlaps it. An alias that fires on a place name in the one corpus we read is worse than a missing
+      // alias: it puts a trade on articles about a wind farm and feeds the binary 0.4 trades weight.
+      // Australian adverts are not a population here, so nothing real is lost.
     ],
     why: 'anchored: "triggered" must not match, which it did 4 times in the real corpus',
   },
@@ -152,8 +177,11 @@ export const TRADES = [
   { trade: 'instrument technician', category: 'blue_collar', aliases: [{ term: 'e&i technician' }] },
   { trade: 'qa/qc inspector', category: 'blue_collar', aliases: [{ term: 'qaqc inspector' }] },
   {
-    trade: 'mechanic', category: 'blue_collar',
-    why: 'anchored: "mechanical" must not match, which it did 19 times in the real corpus',
+    // `notAfter` since 2026-10-02: anchoring stopped "mechanical" (19 matches) but NOT the plural the default
+    // `s?` allows, so "quantum mechanics" and "rock mechanics" still tagged a mechanic. The plural itself is
+    // kept, because "Industrial Mechanics, day shift" is a real advert title this file already asserts.
+    trade: 'mechanic', category: 'blue_collar', notAfter: FIELD_OF_STUDY,
+    why: 'anchored, and the plural refused after a field-of-study qualifier: "mechanical" matched 19 times and "quantum mechanics" is not a vacancy',
   },
   {
     trade: 'substation technician', category: 'blue_collar',

@@ -24,6 +24,9 @@ import {
   tradesInText, tradeOfField, inferTrades, hasRfbtTrades, categoryOf,
   RFBT_TRADE_LIST, TRADES, BLUE_COLLAR,
 } from '../src/lib/trades';
+// The crawl's own title taxonomy, read from the module that builds it: the point of item 32's third part is
+// that the prompt and the vocabulary are ONE source, so the check must read the real string, not a copy.
+import { TITLE_TAXONOMY } from '../src/lib/jobs/job-posts-batch';
 
 let fail = 0;
 const check = (name: string, pass: boolean, detail: string) => {
@@ -236,6 +239,57 @@ check('bare "quality control" is NOT a qa/qc inspector scope',
   'a scope word is required — otherwise every contract announcement matches');
 check('"quality control inspection" IS',
   inferTrades([], 'quality control inspection scope').trades.includes('qa/qc inspector' as any), 'with a scope word it fires');
+
+// ---- ITEM 32's two measured false positives, both arms each -------------------------------------------
+// Each was found by running the real corpus, not by reading the list, and each is asserted in BOTH
+// directions: the real title it must still match, and the measured prose it must no longer match. A
+// one-sided arm would pass if the term were deleted outright, which is not the fix either.
+console.log('\n--- item 32: the two false positives the expansion introduced ---');
+
+// 1. `dogger` matched DOGGER BANK in 11 articles, in a corpus largely about offshore wind.
+// "Doggerbank" as one closed word was deliberately dropped from this list: the mutation that restores the
+// alias does NOT make it fail, because `\b` never matched inside the compound in the first place. It asserted
+// something true and unattributable, which is the vacuous kind this file exists to avoid.
+for (const prose of ['Dogger Bank wind farm', 'the Dogger Bank C project']) {
+  check(`"${prose}" yields no rigger`, !tradesInText(prose).includes('rigger' as any),
+    tradesInText(prose).includes('rigger' as any) ? 'MATCHED rigger — the place name is not a trade' : 'not matched, as a place name must not be');
+}
+check('"dogger" is not a term at all any more', tradesInText('dogger').length === 0,
+  tradesInText('dogger').length ? `MATCHED ${JSON.stringify(tradesInText('dogger'))}` : 'gone');
+// The trade itself must survive its alias being dropped — otherwise this reads as a fix and is a deletion.
+check('rigger still matches its own name', tradesInText('Rigger / Slinger wanted').includes('rigger' as any), 'rigger intact');
+check('banksman still maps to rigger', tradesInText('Banksman needed offshore').includes('rigger' as any), 'the surviving alias still fires');
+
+// 2. `mechanic` matched the PLURAL, which the default trailing `s?` allows: "mechanics" is a field of study.
+for (const prose of ['quantum mechanics research', 'rock mechanics and soil behaviour', 'fluid mechanics modelling']) {
+  check(`"${prose}" yields no mechanic`, !tradesInText(prose).includes('mechanic' as any),
+    tradesInText(prose).includes('mechanic' as any) ? 'MATCHED mechanic — a field of study is not a trade' : 'not matched');
+}
+check('"Mechanic" the title still matches', tradesInText('Industrial Mechanic (day shift)').includes('mechanic' as any), 'the singular title still fires');
+// THE ARM THAT KILLED THE FIRST ATTEMPT, asserted here as well as above so the trade-off cannot be lost: the
+// PLURAL JOB TITLE must still match. Suppressing the trailing plural stopped "quantum mechanics" and broke
+// this, which is why the rule is a qualifier lookbehind and not a singular-only term.
+check('"Industrial Mechanics" (plural TITLE) still matches', tradesInText('Industrial Mechanics, day shift').includes('mechanic' as any),
+  'the plural title survives — only the field-of-study qualifiers are refused');
+check('"mechanical" still does not match', !tradesInText('mechanical solutions provider').includes('mechanic' as any), 'the original anchoring holds');
+// The qualifier must be refused only IMMEDIATELY before the word, or the rule would silence a whole sentence.
+check('a mechanic later in a sentence about rock is still found',
+  tradesInText('rock excavation on site; we need a mechanic').includes('mechanic' as any),
+  'the lookbehind binds to the word in front, not to the sentence');
+// The plural must still work for every OTHER trade, or the rule has leaked from one term to all of them.
+check('"welders" (plural) still matches welder', tradesInText('Welders wanted, 6G').includes('welder' as any),
+  'the plural is still the default everywhere else');
+check('"scaffolders" (plural) still matches scaffolder', tradesInText('Scaffolders required').includes('scaffolder' as any), 'default plural intact');
+
+// ---- ITEM 32's third part: the crawl's title prompt speaks the WHOLE vocabulary ------------------------
+// The prompt is generated from TRADE_NAMES, and this asserts the generated string really does carry every
+// trade — not that the join exists. A hand-typed list drifted silently once and cost 97% of 7,722 titles.
+console.log('\n--- item 32: the title prompt names every trade in the vocabulary ---');
+const missingFromPrompt = (RFBT_TRADE_LIST as readonly string[]).filter((t) => !TITLE_TAXONOMY.includes(t));
+check(`all ${RFBT_TRADE_LIST.length} trades are in the crawl's title taxonomy`, missingFromPrompt.length === 0,
+  missingFromPrompt.length ? `MISSING ${JSON.stringify(missingFromPrompt)} — the crawl cannot keep a title it is not told about` : 'every one present');
+check('the taxonomy is not the old ten words', RFBT_TRADE_LIST.length > 10 && TITLE_TAXONOMY.includes('rigger'),
+  'rigger reaches the prompt, which it could not before');
 
 console.log(`\ntrades: ${fail ? `${fail} FAILED` : 'all checks passed'}`);
 if (fail) process.exitCode = 1;
