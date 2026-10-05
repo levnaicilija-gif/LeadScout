@@ -97,6 +97,57 @@ export const TITLE_TAXONOMY = TRADE_NAMES.join(', ');
  */
 export const TITLE_MAX_TOKENS = 2000;
 
+/** What `writePosting` did, so a caller can count the three outcomes separately instead of guessing. */
+export type PostingWrite =
+  | { outcome: 'written'; error: null }
+  /** The URL is already on file under a DIFFERENT company: the row was refreshed and ownership left alone. */
+  | { outcome: 'refreshed_elsewhere'; error: null; ownerId: string }
+  | { outcome: 'failed'; error: string };
+
+/**
+ * Write one posting, and NEVER let a duplicate company row steal a posting that is already on file.
+ *
+ * ITEM 39, 2026-10-05. `job_posts` carries TWO unique indexes: `job_posts_company_source_uidx` on
+ * (company_id, source_url) from 0006, and `job_posts_source_url_uidx` on **source_url ALONE** from 0014. The
+ * upsert targets the first, so a URL already on file under ANOTHER company violates the second and the write
+ * is refused with `23505` — the posting is DROPPED, logged in `writeErrors`, and the run carries on. Seven
+ * were lost that way in item 32's re-read.
+ *
+ * THE CAUSE IS DUPLICATE COMPANY ROWS, NOT STALE POSTINGS, and that is why this is not a one-line change to
+ * `onConflict: 'source_url'`. All seven were pairs of rows for ONE firm: `VESTAS` and `Vestas Manufacturing`
+ * share the identical `careers_url`; `Nadara` and `renantis` are the same company either side of its rebrand;
+ * `FSE Fläminger Stahl- & Energieeelementebau GmbH` and `Fläminger Stahl- uns Energieelementebau GmbH` are
+ * two misspellings. Conflicting on `source_url` alone would overwrite `company_id`, so each crawl would MOVE
+ * the posting to whichever duplicate ran last — and since both rows are live and both are crawled, the owner
+ * would FLAP every cycle, moving which Hiring now row shows the advert and which company accumulates its
+ * signals. That trades a visible, logged refusal for a silent oscillation, which is worse.
+ *
+ * So the rule is: REFRESH, NEVER REASSIGN. A posting already on file elsewhere has its volatile fields
+ * brought up to date — it is seen, it is open, its reading is the newest one — while `company_id` is left
+ * exactly as it was, and the caller is told which company holds it so the duplicate pair can be named in the
+ * run's report rather than discovered again next month. Merging the company rows is identity work
+ * (`findOrCreateCompany`) and deliberately not done here, where a wrong merge is unrecoverable.
+ */
+export async function writePosting(db: any, row: Record<string, any>): Promise<PostingWrite> {
+  // Read the error. A failed read here would look exactly like "no such URL" and would send the write down
+  // the upsert path, straight back into the 23505 this function exists to stop.
+  const { data: existing, error: readErr } = await db.from('job_posts')
+    .select('id, company_id').eq('source_url', row.source_url).maybeSingle();
+  if (readErr) return { outcome: 'failed', error: `the existing posting could not be looked up: ${readErr.code ?? ''} ${readErr.message}` };
+
+  if (existing && existing.company_id && existing.company_id !== row.company_id) {
+    // company_id is withheld deliberately — see the note above. Everything else is the fresh reading.
+    const { company_id: _ignored, ...refresh } = row;
+    const { error } = await db.from('job_posts').update(refresh).eq('id', existing.id);
+    return error
+      ? { outcome: 'failed', error: `${error.code ?? ''} ${error.message}` }
+      : { outcome: 'refreshed_elsewhere', error: null, ownerId: String(existing.company_id) };
+  }
+
+  const { error } = await db.from('job_posts').upsert(row, { onConflict: 'company_id,source_url' });
+  return error ? { outcome: 'failed', error: `${error.code ?? ''} ${error.message}` } : { outcome: 'written', error: null };
+}
+
 const TITLE_SYSTEM = `You are reading job titles for RFBT, which supplies skilled trades to industry.
 
 RFBT's taxonomy is exactly these ${TRADE_NAMES.length} terms. "trades" may contain nothing else — anything outside this list is discarded downstream, so a more precise word is a lost one:
@@ -119,6 +170,15 @@ Worked examples, so the mapping is not guessed at:
 - "Werkplaatsmedewerker" (NL, workshop hand) → fitter
 - "Rigger" (NO) → rigger, and "Kranfører" (NO) → crane operator. BOTH USED TO MAP TO fitter here, because neither trade existed in the old ten-word list; they are their own trades now, and mapping them to fitter would throw away exactly the precision this list was widened to capture.
 - "EKH Keurmeester" (NL, lifting-gear inspector) → ndt
+
+A BARE "OPERATOR" IS NOT A TRADE ON THIS LIST. The taxonomy holds several operator-shaped trades and each means one specific job: "dp operator" is DYNAMIC POSITIONING, holding a vessel on station, and "roustabout" is drilling crew on a rig. A control room, plant, machine, process or vehicle operator is none of them. Where a title says only "Operator" with no trade in it, return nothing for that title rather than reaching for the nearest operator word.
+
+Worked examples of titles to REFUSE, so the line is not guessed at:
+- "Control Room Operator" → nothing. A control room is not dynamic positioning.
+- "Operator Tysvær, Norway" → nothing. A place name does not make it a trade.
+- "Trencher Operator Trainee on board" → nothing. A trencher on a dredger is not drilling crew.
+- "Machine Operator", "Process Operator", "Plant Operator" → nothing.
+But "DP Operator", "Dynamic Positioning Operator" → dp operator, and "Crane Operator" / "Kranfører" → crane operator, because each of those names the actual job.
 
 NOT wanted: office, sales, marketing, finance, HR, legal, IT, software, data, design, procurement, consultancy, graduate schemes, internships, or engineering roles that are desk-based design rather than site trades. An apprenticeship in a trade IS wanted.
 
@@ -260,9 +320,11 @@ export async function runJobPostsBatch(req: Request) {
   const { data: companies, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const stats = { companies: 0, unchanged: 0, noBoard: 0, titlesSeen: 0, tradeTitles: 0, postsWritten: 0, detailed: 0, outsideEurope: 0, noTitle: 0 };
+  const stats = { companies: 0, unchanged: 0, noBoard: 0, titlesSeen: 0, tradeTitles: 0, postsWritten: 0, detailed: 0, outsideEurope: 0, noTitle: 0, refreshedElsewhere: 0 };
   const found: any[] = [];
   const writeErrors: string[] = [];
+  // Item 39: adverts refreshed under a DUPLICATE company row, named so the pair can be merged by hand.
+  const duplicateOwners: string[] = [];
 
   for (const c of companies ?? []) {
     if (budget.exhausted) break;
@@ -391,10 +453,17 @@ export async function runJobPostsBatch(req: Request) {
           } catch { /* the title-level row still stands */ }
         }
 
-        const { error: up } = await db.from('job_posts').upsert(row, { onConflict: 'company_id,source_url' });
-        if (up) {
+        const wrote = await writePosting(db, row);
+        if (wrote.outcome === 'failed') {
           // A posting that Haiku kept and the database refused is a silent hole in Hiring now.
-          writeErrors.push(`${c.name} · ${row.role}: ${up.code ?? ''} ${up.message}`.slice(0, 200));
+          writeErrors.push(`${c.name} · ${row.role}: ${wrote.error}`.slice(0, 200));
+        } else if (wrote.outcome === 'refreshed_elsewhere') {
+          // NOT an error and NOT a new posting: the advert is already on file under a duplicate company row,
+          // so it was refreshed in place and ownership was left alone. Named rather than counted, because the
+          // only real fix is merging the two company rows and that needs a person.
+          stats.refreshedElsewhere++;
+          const { data: owner } = await db.from('companies').select('name').eq('id', wrote.ownerId).maybeSingle();
+          duplicateOwners.push(`${c.name} · ${row.role}: already on file under "${owner?.name ?? wrote.ownerId}" — refreshed there, ownership unchanged`.slice(0, 220));
         } else {
           stats.postsWritten++;
           found.push({ company: c.name, title: row.role, location: row.location, country: row.country, via: board.via });
@@ -425,5 +494,9 @@ export async function runJobPostsBatch(req: Request) {
     spentToday: Number(budget.totalToday.toFixed(4)), cap, budgetLeft: Number(budget.remaining.toFixed(4)),
     found: found.slice(0, 40),
     writeErrors: writeErrors.slice(0, 10),
+    // Item 39: adverts that are already on file under a DUPLICATE company row. Reported separately from
+    // writeErrors on purpose — they are no longer failures, and they name the company pairs a person needs
+    // to merge. An empty list is the healthy state; a growing one is an identity problem, not a crawl one.
+    duplicateOwners: duplicateOwners.slice(0, 10),
   });
 }

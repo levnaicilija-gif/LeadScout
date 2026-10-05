@@ -2540,3 +2540,72 @@ caution applies as to NAV in board-title-check: the noun must be the generic one
 WORTH KEEPING EITHER WAY: the three named false positives (dogger, plural
 mechanics, solar) came back 0, 0, 0 on real data, so the matcher half of item 32 is
 confirmed in production and not only in its own check.
+
+
+39. (DONE 2026-10-05) — AND THE DIAGNOSIS IN ITEM 32's WRITE-UP WAS WRONG
+
+The earlier note said "the insert is not an upsert on source_url". It IS an upsert.
+`job_posts` carries TWO unique indexes — `job_posts_company_source_uidx` on
+(company_id, source_url) from 0006 and `job_posts_source_url_uidx` on **source_url
+ALONE** from 0014 — and the upsert targets the first, so a URL already on file under
+ANOTHER company violated the second and was refused with 23505 and dropped.
+
+THE CAUSE IS DUPLICATE COMPANY ROWS, which is why this is not a one-line change.
+All 7 were two rows for one firm, confirmed in the data rather than assumed:
+  VESTAS / Vestas Manufacturing   — the IDENTICAL careers_url
+  Nadara / renantis               — the same company either side of its rebrand
+  FSE Flaeminger ... / Flaeminger Stahl- uns Energieelementebau — two misspellings
+Conflicting on source_url alone overwrites company_id, so each crawl would MOVE the
+advert to whichever duplicate ran last; both rows are live and both are crawled, so
+the owner would FLAP every cycle. THIS WAS PROVED, NOT ARGUED: with the naive
+`onConflict: 'source_url'` the probe's own arm reports "MOVED to f231a928…".
+
+THE RULE IS REFRESH, NEVER REASSIGN. `writePosting` (exported, so it can be tested
+without a 300-board crawl) looks the URL up, and where it belongs to a different
+company it updates the volatile fields and WITHHOLDS company_id, returning the
+owner's id so the run can name the duplicate pair in `duplicateOwners` — separate
+from `writeErrors`, because it is no longer a failure. Merging the company rows is
+identity work and deliberately not done here, where a wrong merge is unrecoverable.
+
+`posting-write-check` is in the gate: 12 assertions over three arms (new URL
+inserted, same company updates in place, different company refreshes without taking
+ownership), with arm 3 asserting the two halves SEPARATELY — a function that did
+nothing would satisfy "ownership unchanged" on its own. Three mutations: the old
+behaviour reproduces the real `23505 … job_posts_source_url_uidx`, the naive fix
+MOVES ownership, and a no-op refresh fails only the refresh half.
+
+
+46. (DONE 2026-10-05) — BOTH PARTS, AND BOTH ARMS CAUGHT ONE OF MY OWN RULES
+
+(a) THE MODEL'S MAPPINGS. TITLE_SYSTEM now carries a rule and four worked examples
+of titles to REFUSE — the first negative examples this prompt has ever had, every
+existing one being a mapping to make. "dp operator" means dynamic positioning and
+"roustabout" is drilling crew; a control room, plant, machine, process or vehicle
+operator is neither, and a bare "Operator" returns nothing. "DP Operator" and
+"Crane Operator" / "Kranfoerer" still map, which is the other arm.
+
+(b) cleanTitle / stripFurniture, three real strings from the re-read:
+  - a TRAILING instruction ("Geruestbauer (m/w/d) mehr erfahren"). BUTTON and NAV
+    are both anchored to the whole string, so a glued suffix escaped both.
+    *** MY FIRST VERSION REUSED BUTTON's LIST AND TOOK "Open position" DOWN TO
+    "Open" ***, because BUTTON rightly holds bare generic nouns that are ordinary
+    last words inside a real title. Caught by this file's own second arm before it
+    shipped. TRAILING_INSTRUCTION is its own, narrower list: multi-word and verb
+    instructions only.
+  - a publication line ("SITE HSE MANAGER Published on September 18, 2026 …"):
+    the cue and its tail go. Other arm: a bare "on" in "Technician based on
+    Teesside" survives.
+  - a glued section heading ("ProjectsProject ManagerUnited Kingdom", Fugro). NOT
+    stripped — nothing says where the real title starts — so the POSTING PAGE is
+    asked. The cause was an OVER-BROAD EXEMPTION, not a missing rule:
+    needsPageTitle already had a glued-words test, and its name-prefix exemption
+    `[A-Z][a-z]*[A-Z][a-z]*` was unbounded, so it matched "ProjectsProject" too and
+    stripped the very evidence the test looks for. Narrowed to at most three
+    lowercase letters, which is what a name prefix is (Mc, Mac, Van, De).
+
+AND A FALSE CLAIM IN A COMMENT, CORRECTED: that rule cited "VatsVindafjord" as an
+example it catches. It never did, before or after — the exemption removes any
+capitalised glued pair, so the rule only fires where the first fragment is
+lowercase, and "Vats" is the same shape as "Van". Separating them needs a name
+list, not a pattern. The limit is now ASSERTED (`!needsPageTitle('VatsVindafjord')`)
+so the next reader meets the real behaviour instead of the comment's version.

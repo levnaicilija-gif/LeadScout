@@ -83,6 +83,16 @@ step municipal-buyer npx tsx scripts/municipal-buyer-check.ts
 # able seaman. It also pins the property that let this ship without re-scoring: every one of the ten
 # original trades is blue_collar, so hasRfbtTrades answers identically for every trades array on file.
 step trades npx tsx scripts/trades-check.ts
+# Item 39: job_posts carries a unique index on source_url ALONE (0014) as well as one on
+# (company_id, source_url) (0006), so an advert already on file under a DUPLICATE company row was
+# refused with 23505 and DROPPED — seven of them in item 32's re-read. This proves the write refreshes
+# such a row and never reassigns it, which is the half a naive onConflict change would have broken.
+step posting-write npx tsx --env-file=.env.local scripts/posting-write-check.ts
+# NEVER GATED UNTIL 2026-10-05, found while adding item 46's arms: this file holds the ATS detection and
+# every title rule — BUTTON, NAV (which stopped "Browse job offers" being stored as a role and offered to a
+# candidate), the reference-code refusal, and now the scrape-residue stripping. CLAUDE.md has cited it as a
+# check since 2026-09-14 and the gate never ran it, so all of that was unprotected. Pure, no env needed.
+step board-title npx tsx scripts/board-title-check.ts
 # Item 27: the three reasons a company has no contact must stay tellable apart — nobody looked, we looked
 # and nothing was printed, there is no site. It also asserts the property that lets the server cell and
 # the 'use client' drawer share one rule: site-read-state.ts imports NOTHING, so importing it into the

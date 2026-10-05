@@ -10,7 +10,35 @@ import * as cheerio from 'cheerio';
  * Careful with the language: "Vacature windturbine monteur in Zeeland" IS a title, and a
  * one-word "Serviceelektriker" is too. Only the phrase that is purely an instruction is junk.
  */
-const BUTTON = /^(bekijk( deze)?( vacature| vacatures)?|lees meer|meer( info(rmatie)?)?|solliciteer( direct| nu)?|read more|more( info| details)?|view( job| vacancy| details)?|see( job| more| details)?|apply( now| here)?|details|se stilling(en)?|les mer|søk( på stillingen)?| ?ansøg( nu)?|læs mere|mer info|ansök|hae|lisätiedot|weiterlesen|mehr erfahren|jetzt bewerben|postuler|en savoir plus|vacature|vacatures|vacancy|vacancies|job|jobs|stilling|stillinger|trade role|open position|position)$/i;
+const BUTTON_BODY = "bekijk( deze)?( vacature| vacatures)?|lees meer|meer( info(rmatie)?)?|solliciteer( direct| nu)?|read more|more( info| details)?|view( job| vacancy| details)?|see( job| more| details)?|apply( now| here)?|details|se stilling(en)?|les mer|søk( på stillingen)?| ?ansøg( nu)?|læs mere|mer info|ansök|hae|lisätiedot|weiterlesen|mehr erfahren|jetzt bewerben|postuler|en savoir plus|vacature|vacatures|vacancy|vacancies|job|jobs|stilling|stillinger|trade role|open position|position";
+const BUTTON = new RegExp(`^(${BUTTON_BODY})$`, 'i');
+
+/**
+ * THE SAME INSTRUCTION GLUED ON THE END OF A REAL TITLE (item 46, 2026-10-05).
+ *
+ * BUTTON and NAV are both anchored to the WHOLE string, which is right — "Vacature windturbine monteur in
+ * Zeeland" is a title and must survive. But a site that renders its "read more" link inside the same element
+ * as the title produces "Gerüstbauer (m/w/d) mehr erfahren", where the instruction is a SUFFIX, and that is
+ * not refused by either rule. Four Schüttler Gerüstbau rows reached Hiring now that way in item 32's re-read.
+ *
+ * Stripped rather than refused, because what is in front of it is a perfectly good title — the opposite
+ * judgement from the glued-heading case below, where there is no way to know where the real title starts.
+ *
+ * ITS OWN LIST, NARROWER THAN BUTTON'S, AND THAT IS NOT TIDINESS. Reusing BUTTON's alternation here took
+ * "Open position" down to "Open", because BUTTON rightly includes bare generic nouns — "position", "job",
+ * "vacancy", "details" — which are fine as a WHOLE title and are ordinary last words inside a real one. This
+ * holds only the multi-word and verb instructions that genuinely turn up glued to a title, so it cannot eat a
+ * noun off the end of a real role. Caught by this file's own second arm before it ever shipped.
+ */
+const TRAILING_INSTRUCTION = "lees meer|mehr erfahren|read more|more info(rmatie)?|meer info(rmatie)?|weiterlesen|les mer|læs mere|mer info|lisätiedot|en savoir plus|jetzt bewerben|apply now|apply here|solliciteer( direct| nu)?|søk på stillingen|ansøg nu|se stillingen|bekijk deze vacature|view details|see details|read details";
+const TRAILING_BUTTON = new RegExp(`[\\s,·|–—-]+(${TRAILING_INSTRUCTION})$`, 'i');
+
+/**
+ * A publication line scraped into the title: "SITE HSE MANAGER Published on September 18, 2026 Netherlands
+ * Freelance Based on experience" (Aventa, item 32's re-read). Everything from the cue onward is the site's
+ * own metadata, never part of the role, so the cue and its tail both go.
+ */
+const PUBLISHED_ON = /\s*\b(published|posted)\s+on\b.*$/i;
 
 /**
  * The same instruction with a verb in front of it — "Browse job offers", "Se alle stillinger".
@@ -68,7 +96,7 @@ export function stripFurniture(raw: string, companyName?: string | null): string
   let t = raw.replace(/\s+/g, ' ').trim();
   for (let i = 0; i < 4; i++) {
     const before = t;
-    t = t.replace(SALARY, '').replace(MARKERS, '').trim();
+    t = t.replace(PUBLISHED_ON, '').replace(TRAILING_BUTTON, '').replace(SALARY, '').replace(MARKERS, '').trim();
     if (companyName) {
       // The company's own name inside its own vacancy title says nothing.
       const esc = companyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -91,8 +119,24 @@ export function needsPageTitle(raw: string, companyName?: string | null): boolea
   if (TRAILING_NOISE.test(t)) return true;                           // a separator-joined tail
   if (companyName && new RegExp(companyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(t)) return true;
   if (MARKERS.test(t) || SALARY.test(t)) return true;
-  // Two words run together with no space — "VatsVindafjord", "automatikerHandling".
-  if (/[a-zæøåäöü][A-ZÆØÅÄÖÜ]/.test(t.replace(/\b[A-Z][a-z]*[A-Z][a-z]*\b/g, ''))) return true;
+  // Two words run together with no space — "automatikerHandling".
+  //
+  // WHAT THIS RULE DOES NOT CATCH, corrected 2026-10-05: the comment here used to cite "VatsVindafjord" as an
+  // example, and it never caught that and still does not. The exemption below removes any capitalised glued
+  // pair, so the rule only fires where the FIRST fragment is lowercase. "Vats" and "Van" are the same shape to
+  // a regex — three lowercase letters before a capital — so separating a glued Norwegian place name from
+  // "VanOord" would need a name list, not a pattern, and a wrong guess here throws away a real title. Left
+  // uncaught deliberately and said out loud, rather than left as a comment claiming otherwise.
+  //
+  // THE EXEMPTION IS NARROWED TO A NAME PREFIX (item 46, 2026-10-05), and that over-broad exemption — not a
+  // missing rule — is why "ProjectsProject ManagerUnited Kingdom" (Fugro) reached Hiring now as a role. The
+  // exemption exists for a name that legitimately carries an inner capital, "McDermott" or "VanOord", and it
+  // was written as `[A-Z][a-z]*[A-Z][a-z]*`: unbounded, so it also matched "ProjectsProject" and
+  // "ManagerUnited" and stripped the very evidence the test below looks for. A NAME PREFIX IS SHORT — Mc, Mac,
+  // Van, De, O — so at most three lowercase letters may precede the inner capital. Seven is a section heading
+  // glued to a title, and this returns true so the POSTING PAGE is asked what it calls itself, rather than
+  // guessing where the real title starts: unlike a trailing "mehr erfahren", there is nothing here to strip.
+  if (/[a-zæøåäöü][A-ZÆØÅÄÖÜ]/.test(t.replace(/\b[A-Z][a-z]{0,3}[A-Z][a-z]*\b/g, ''))) return true;
   return false;
 }
 
