@@ -1506,6 +1506,13 @@ OWNER'S DECISIONS, 2026-09-27:
   - the 103 TENDER-AWARD companies are HELD pending item 29, and that includes the
     61 that classify to a real industry — splitting the tender population further
     was judged to add complexity for a small gain.
+    *** THE HOLD IS RELEASED — do not re-apply it. The owner approved ALL 103
+    tender companies, municipal ones included, and confirmed it again on
+    2026-10-05 when the 48 never-looked-up tender awards were run. --news-only
+    REMAINS as a flag, because running one population at a time is independently
+    useful, but it is no longer guarding a decision: an unfiltered run is now the
+    expected way to use the script rather than a mistake. Everything below is kept
+    for the reasoning that produced the hold, not as a live instruction. ***
   - the 145 run FIRST, alone. The 31 follow once the news-only predicate exists.
 
 WHY THE TENDER HOLD IS NOT CAUTION BUT MEASUREMENT: of 109 tender-award leads on a
@@ -2391,3 +2398,145 @@ The daily cap was spent on the website batches when this landed, and re-reading
 before the prompt was widened would have bought nothing anyway. Until that runs,
 the widened prompt affects only NEWLY changed boards — the 29 trades are reachable
 in principle and still absent from Hiring now in practice.
+
+
+45. A RUN THAT SPANS 00:00 UTC KEEPS CHARGING THE NEW DAY AGAINST THE OLD DAY'S
+    REMAINING ROOM
+
+Recorded 2026-10-05, observed on 2026-10-01/02 during the tender retry batch.
+
+WHAT HAPPENED. `Budget.open(db, cap)` reads the day's spend ONCE, when the run
+starts, and the run then decrements that figure in memory. The retry batch started
+at 12:25 UTC on 2026-10-01 with EUR 0.9166 already spent, the machine slept, and
+the run resumed at 02:41 and 07:41 on 2026-10-02 — still deciding affordability
+from 2026-10-01's total. Its own closing line said "spend today EUR 1.2060 of
+EUR 2" while cap-status, reading the database, said EUR 0.8204 for the real day.
+
+WHICH DIRECTION IT ERRS, AND WHY THAT IS NOT REASSURING. Here it was CONSERVATIVE:
+the stale figure was higher than the new day's, so the run allowed itself less than
+it could have. The opposite is equally reachable and is the one that matters — a
+run starting at 23:50 on a quiet day and continuing past midnight into a day the
+04:00 radar crawl has already spent EUR 1.90 of would believe the room was still
+there and spend straight through the cap. Nothing would report an error: the cap is a
+stop-before, computed from a figure that is simply out of date.
+
+IT IS THE SAME CLASS AS THE STALE LOCAL CLOCK already recorded in CLAUDE.md, one
+layer in: there the instrument was `new Date()`, here it is a cached total that was
+true when it was read. Both answer confidently and wrongly, and both are only
+visible if something re-reads the authority.
+
+WHEN TAKEN:
+  - re-read the day's spend when the UTC DAY CHANGES mid-run, not on every call
+    (`spentTodayEur` is a paged read over cost_log and belongs nowhere near a
+    per-item loop). The day boundary is knowable from the same DB-stamped row
+    cap-status already uses.
+  - decide explicitly what a run should DO at the boundary: continue against the
+    new day's room, or stop and report that it crossed midnight. Stopping is the
+    more honest default — a batch that silently becomes a different day's batch
+    makes its own report unreadable, which is what happened here.
+  - a run's closing line must print the figure it would get by RE-READING, not its
+    in-memory total, or the report will keep disagreeing with cap-status.
+  - the daily total itself was never breached in the observed instance; this is
+    about the figure the decision is made FROM, so no backfill or correction of
+    past spend is needed.
+
+
+32. (THE RE-READ, DONE 2026-10-05) — THE WIDENED PROMPT IS NOW IN THE DATA, AND IT
+    MORE THAN DOUBLED WHAT HIRING NOW HOLDS
+
+Prerequisite found and fixed FIRST, before any money was spent: the title verdict's
+ceiling was 500 tokens and was ALREADY truncating on the ten-word list (EnerMech
+and mennens, "Expected ',' or ']' ... position 1201 / 1161"). One object per KEPT
+title means the reply grows with what the prompt will keep, so widening to 39
+trades would have lost whole boards — the biggest and most productive ones — while
+still paying for them. Raised to 2000 and a truncated reply now says so by name
+(05c3264). mennens is the clearest vindication: it had been failing to parse, and
+it produced 30 of the 109 new postings once it could be read.
+
+THE RUN: 214 fingerprints cleared (the queue said 201; the real figure had drifted),
+240 board crawls over 24 capped passes, 70 "no board", 1,657 titles seen, 134 kept,
+109 postings written. Fenced with cap=0.90 so it could not eat the tender batch's
+budget. Cost about EUR 0.42 against the EUR 0.22 estimate, which was titles only
+and did not price the detail reads on newly kept postings.
+
+WHAT IT BOUGHT, measured against a baseline taken before the clear:
+  job_posts        146 -> 211   (+65 net; 109 written, the rest existing URLs)
+  open postings     71 -> 127   (+56)
+  distinct trades    12 -> 23
+  new trades seen     2 -> 13   of 29
+  Hiring now rows        48 companies with an open posting
+Real titles behind the new trades: "Industrimekanikere" (AIBEL), "Machinist"
+(Burckhardt), "Senior ROV Pilot Technician" and "ROV Supervisor" (Gardline),
+"Salvage Diver" -> commercial diver, "Skandi Flora Able Seaman", "QC-inspektorer"
+(StS), "Expressions of interest - Ratings/AB & Crane Operators" (DOF).
+
+THE THREE FALSE POSITIVES THE OWNER NAMED ARE CLEAN: dogger 0, plural "mechanics"
+0, solar 0, and rigger is tagged on 0 postings. The matcher work holds.
+
+BUT THE WIDENED PROMPT INTRODUCED ITS OWN, AND THEY ARE THE MODEL'S MAPPINGS RATHER
+THAN THE MATCHER'S — a different layer, needing a different fix:
+  - "Control Room Operator" (Equinor) and "Operator Tysvoer, Norway" (Norcable)
+    both -> dp operator. A DP operator holds a vessel on station; neither of these
+    is that. The model appears to map a bare "Operator" to the nearest operator
+    trade.
+  - "Trencher Operator Trainee on board" (DEME) -> roustabout. A trencher on a
+    dredger is not drilling crew.
+  - "Crew Chief (Field Based)" (ERM) -> site manager. Arguable, not clearly wrong.
+  - MANGLED SCRAPES NOW GET THROUGH, because the white-collar trades admit them:
+    "ProjectsProject ManagerUnited Kingdom" (Fugro) and "SITE HSE MANAGER Published
+    on September 18, 2026 Netherlands Freelance ..." (Aventa) are concatenated nav
+    text, and four Schuettler rows carry the nav suffix "mehr erfahren". cleanTitle
+    rejects a phrase that IS an instruction; it does not reject a real title with
+    furniture glued to it.
+  - 26 open postings carry NO trade at all, and 18 carry only white-collar or crew
+    trades, so they take no blue_collar fit weight. Both are visible on the screen.
+
+AND A SEPARATE DEFECT THE RUN EXPOSED: 7 postings failed to write with 23505
+"duplicate key value violates unique constraint job_posts_source_url_uidx" (3
+Vestas Manufacturing, 3 Nadara, 1 FSE Flaeminger). The insert is not an upsert on
+source_url, so a posting whose URL is already on file is DROPPED rather than
+refreshed. It is reported in writeErrors and the run continues, which is why nobody
+had noticed. This belongs with item 39 (the onConflict existence check) and is the
+live instance of it.
+
+NOT DONE: none of the above is fixed. The owner asked for the re-read and the
+report, and the mis-mappings are a prompt change with its own both-arms check.
+
+
+46. THE TITLE PROMPT MAPS A BARE "OPERATOR" TO A CREW TRADE, AND MANGLED SCRAPES
+    REACH THE SCREEN THROUGH THE WHITE-COLLAR TRADES
+
+Found by item 32's own re-read, 2026-10-05, on real rows. Not fixed: the owner
+asked for the re-read and the report, and both halves need both-arms checks.
+
+THE MIS-MAPPINGS (the MODEL's, not the matcher's — tradesInText is clean on all
+three of the false positives it was blamed for):
+  "Control Room Operator" (Equinor)      -> dp operator
+  "Operator Tysvoer, Norway" (Norcable)  -> dp operator
+  "Trencher Operator Trainee" (DEME)     -> roustabout
+A DP operator holds a vessel on station and a roustabout is drilling crew; a
+control-room or cable-plant operator is neither. The widened taxonomy gave the
+model more operator-shaped trades to reach for and no guidance on when NOT to.
+WHEN TAKEN: the fix is prompt guidance plus a worked NEGATIVE example, which this
+prompt has never had — every example in it is a mapping to make, none is a mapping
+to refuse. "dp operator" means dynamic positioning on a vessel; a control room,
+plant or machine operator is not a trade on this list. Both arms: the real DP
+advert must still map, these three must not.
+
+THE MANGLED TITLES. cleanTitle rejects a phrase that IS an instruction ("Read
+more", a bare "jobs") and a requisition code. It does not reject a REAL title with
+site furniture glued to it, and until the taxonomy admitted project manager, site
+manager and hse officer, such rows were dropped for having no trade anyway — so
+this is a pre-existing gap that item 32 made visible:
+  "ProjectsProject ManagerUnited Kingdom"                        (Fugro)
+  "SITE HSE MANAGER Published on September 18, 2026 Netherlands" (Aventa)
+  "Geruestbauer (m/w/d) mehr erfahren" and three siblings        (Schuettler)
+WHEN TAKEN: strip a known nav suffix ("mehr erfahren", "lees meer", "read more")
+and refuse a title carrying a "Published on <date>" fragment or a run of three
+concatenated capitalised words with no separator. Measure against all open postings
+first — the last two rules are the kind that quietly eat real titles, and the same
+caution applies as to NAV in board-title-check: the noun must be the generic one.
+
+WORTH KEEPING EITHER WAY: the three named false positives (dogger, plural
+mechanics, solar) came back 0, 0, 0 on real data, so the matcher half of item 32 is
+confirmed in production and not only in its own check.

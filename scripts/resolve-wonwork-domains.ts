@@ -94,7 +94,13 @@ async function addressCheck(domain: string, a: WinnerAddress | null): Promise<Ch
   if (artErr) throw new Error(`the dates behind these leads could not be read: ${artErr}`);
   const todo = new Map<string, { id: string; name: string; notice: string | null; leadCountry: string | null; lookups: number; final: boolean; age: number }>();
   for (const l of leads ?? []) {
-    // ITEM 27, THE OWNER'S HOLD: --news-only processes ONLY news-sourced won-work leads and skips every
+    // THE HOLD THIS FLAG WAS WRITTEN FOR IS RELEASED (2026-10-05). The owner approved ALL 103 tender-award
+    // companies, municipal ones included, and the 48 never-looked-up ones were run that day. `--news-only`
+    // STAYS, because running one population at a time is independently useful — but it is no longer guarding
+    // a decision, so an UNFILTERED run is now the expected use of this script rather than a mistake. The note
+    // below is kept for the reasoning that produced the hold; read it as history, not as an instruction.
+    //
+    // ITEM 27, THE OWNER'S HOLD (HISTORICAL): --news-only processes ONLY news-sourced won-work leads and skips every
     // tender award. Both kinds live under kind = 'won_work', so this script has always covered them
     // together — and on 2026-09-27 the owner APPROVED the 31 news-sourced companies while HOLDING the 103
     // tender-award ones pending item 29. Running unfiltered would spend on exactly the companies being
@@ -142,7 +148,7 @@ async function addressCheck(domain: string, a: WinnerAddress | null): Promise<Ch
   const pending = eligible.sort(discoveryOrder).slice(0, LIMIT);
   const budget = await Budget.open(db);
   const startSpend = budget.totalToday;
-  console.log(`won-work companies with no website: ${all.length}${newsOnly ? ' (NEWS-SOURCED ONLY — tender awards held, item 29)' : ''} · never looked up ${all.filter((t) => t.lookups === 0 && !t.final).length} · missed once (a retry is due) ${all.filter((t) => t.lookups === 1 && !t.final).length} · final "not found" ${all.filter((t) => t.final).length} · to look up now: ${pending.length}${retriesOnly ? ' (retries only)' : ''} · spend today €${startSpend.toFixed(4)} of €${budget.capEur} · ${write ? 'writing' : 'dry run — nothing stored'}`);
+  console.log(`won-work companies with no website: ${all.length}${newsOnly ? ' (NEWS-SOURCED ONLY — the tender hold was RELEASED 2026-10-05; this flag now just narrows the run)' : ''} · never looked up ${all.filter((t) => t.lookups === 0 && !t.final).length} · missed once (a retry is due) ${all.filter((t) => t.lookups === 1 && !t.final).length} · final "not found" ${all.filter((t) => t.final).length} · to look up now: ${pending.length}${retriesOnly ? ' (retries only)' : ''} · spend today €${startSpend.toFixed(4)} of €${budget.capEur} · ${write ? 'writing' : 'dry run — nothing stored'}`);
   console.log(`order: freshest first by item 17's lead age (not when we stored it) — ${eligible.filter((t) => ageBucket(t) === 0).length} at ${FRESH_DAYS} days or younger, ${eligible.filter((t) => ageBucket(t) === 1).length} older, ${eligible.filter((t) => ageBucket(t) === 2).length} with no date (last)`);
 
   // Without --write nothing is looked up at all: a lookup is paid for whether or not its answer is stored, so a "dry run"
