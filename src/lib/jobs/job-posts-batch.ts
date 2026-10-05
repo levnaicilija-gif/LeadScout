@@ -148,7 +148,8 @@ export async function writePosting(db: any, row: Record<string, any>): Promise<P
   return error ? { outcome: 'failed', error: `${error.code ?? ''} ${error.message}` } : { outcome: 'written', error: null };
 }
 
-const TITLE_SYSTEM = `You are reading job titles for RFBT, which supplies skilled trades to industry.
+/** Exported so trades-check can assert BOTH halves of the operator rule survive — see item 47. */
+export const TITLE_SYSTEM = `You are reading job titles for RFBT, which supplies skilled trades to industry.
 
 RFBT's taxonomy is exactly these ${TRADE_NAMES.length} terms. "trades" may contain nothing else — anything outside this list is discarded downstream, so a more precise word is a lost one:
 ${TITLE_TAXONOMY}
@@ -178,7 +179,12 @@ Worked examples of titles to REFUSE, so the line is not guessed at:
 - "Operator Tysvær, Norway" → nothing. A place name does not make it a trade.
 - "Trencher Operator Trainee on board" → nothing. A trencher on a dredger is not drilling crew.
 - "Machine Operator", "Process Operator", "Plant Operator" → nothing.
-But "DP Operator", "Dynamic Positioning Operator" → dp operator, and "Crane Operator" / "Kranfører" → crane operator, because each of those names the actual job.
+BUT A TITLE THAT NAMES A TRADE **AND** SAYS "OPERATOR" IS STILL THAT TRADE — refuse the bare word, never the trade beside it. These are KEEPS, not refusals:
+- "DP Operator", "Dynamic Positioning Operator" → dp operator, and "Crane Operator" / "Kranfører" → crane operator: each names the actual job.
+- "Fagoperatør Mekanisk" (NO, skilled mechanical operator) → mechanic. "Mekanisk" is the trade; "operatør" does not cancel it.
+- "Offshore Operations & Maintenance Technician" → mechanic. Offshore O&M on a wind farm or platform is mechanical maintenance work.
+- "Operatører innen elektrofag" (NO) → electrician, and "Industrimekaniker" / "Underhållsmekaniker" → mechanic.
+The test is simple: does the title name a trade as well as a role word? Then keep it. Is "operator" the ONLY thing it says about the work? Then return nothing.
 
 NOT wanted: office, sales, marketing, finance, HR, legal, IT, software, data, design, procurement, consultancy, graduate schemes, internships, or engineering roles that are desk-based design rather than site trades. An apprenticeship in a trade IS wanted.
 

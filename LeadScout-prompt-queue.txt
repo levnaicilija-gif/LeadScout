@@ -2609,3 +2609,45 @@ capitalised glued pair, so the rule only fires where the first fragment is
 lowercase, and "Vats" is the same shape as "Van". Separating them needs a name
 list, not a pattern. The limit is now ASSERTED (`!needsPageTitle('VatsVindafjord')`)
 so the next reader meets the real behaviour instead of the comment's version.
+
+
+47. ITEM 46's RE-READ LEFT FOUR BAD ROWS OPEN, AND 46(a) LOOKS LIKE AN
+    OVER-CORRECTION ON EQUINOR
+
+Recorded 2026-10-05 from item 46's own verification run. NOT fixed: the budget was
+nearly spent and both halves need a decision.
+
+WHAT WORKED, AND IT WORKED COMPLETELY. 46(b)'s stripping is retroactive, because the
+rows were REWRITTEN by the re-crawl: "mehr erfahren" is gone from all four
+Schuettler rows and "Published on September 18, 2026 Netherlands Freelance ..." is
+gone from Aventa's, which now reads "SITE HSE MANAGER". Zero rows carry either
+residue.
+
+WHAT DID NOT. 46(a) stops the model KEEPING such a title again; it does not remove
+the rows already on file, and four are still OPEN with their wrong trades:
+    "Control Room Operator"                  ["dp operator"]
+    "Operator Tysvaer, Norway"                ["dp operator"]
+    "Trencher Operator Trainee on board"     ["roustabout"]
+    "ProjectsProject ManagerUnited Kingdom"  ["project manager"]
+The reason is deliberate behaviour documented under item 17: the crawl closes
+postings no longer on a board only when the board CHANGED and at least one trade
+title was kept. Equinor, Norcable and Fugro now keep ZERO, so nothing is closed and
+the stale rows survive. A refusal rule cannot clean up after itself.
+WHEN TAKEN: decide whether these are closed or re-tagged. "Control Room Operator"
+is a real advert that is simply not a DP operator, so closing it discards a true
+posting while leaving it misrepresents the trade — that is a judgement, not a bug
+fix, which is why it is not taken here.
+
+AND THE PART TO LOOK AT FIRST: EQUINOR NOW KEEPS 0 OF 11, WHERE IT KEPT 3. Only one
+of those three should have gone. The other two are real trade adverts —
+"Fagoperatoer Mekanisk" (already tagged mechanic) and "Offshore Operations &
+Maintenance Technician" — so the four REFUSE examples appear to have taught the
+model to drop any title containing "operator"/"operatoer" rather than only a bare
+one. Both rows are still on file, so nothing is lost today, but the next time that
+board changes they will be closed and not re-added.
+WHEN TAKEN: the prompt needs the other arm it currently lacks — a worked POSITIVE
+example of an operator title that DOES map, "Fagoperatoer Mekanisk" (NO) -> mechanic
+because the title names the trade. Every refusal added in 46(a) has a counter-example
+in board-title-check but the PROMPT has only the refusals, and a prompt is exactly
+where a one-sided rule over-reaches. Re-crawl Equinor afterwards and require it to
+keep 2 of 11, not 0 and not 3.

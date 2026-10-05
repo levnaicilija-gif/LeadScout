@@ -26,7 +26,7 @@ import {
 } from '../src/lib/trades';
 // The crawl's own title taxonomy, read from the module that builds it: the point of item 32's third part is
 // that the prompt and the vocabulary are ONE source, so the check must read the real string, not a copy.
-import { TITLE_TAXONOMY, TITLE_MAX_TOKENS } from '../src/lib/jobs/job-posts-batch';
+import { TITLE_TAXONOMY, TITLE_MAX_TOKENS, TITLE_SYSTEM as TITLE_SYSTEM_TEXT } from '../src/lib/jobs/job-posts-batch';
 
 let fail = 0;
 const check = (name: string, pass: boolean, detail: string) => {
@@ -305,6 +305,29 @@ check(`the title ceiling fits the worst board seen (${WORST_BOARD_TITLES} titles
   TITLE_MAX_TOKENS >= neededTokens ? `${TITLE_MAX_TOKENS} tokens, with headroom` : `${TITLE_MAX_TOKENS} is BELOW the ${neededTokens} a full board needs — boards would truncate and be lost whole`);
 check('the old 500-token ceiling would NOT have fitted it', 500 < neededTokens,
   'which is why two boards were already failing to parse before the taxonomy was widened');
+
+// ---- ITEM 47: THE TITLE PROMPT CARRIES BOTH ARMS, NOT JUST THE REFUSALS ------------------------------
+// A prompt cannot be unit-tested — only the live crawl can say what the model does with it — so what IS
+// testable is that NEITHER SIDE OF THE RULE HAS BEEN DELETED. This exists because 46(a) shipped the refusals
+// ALONE and over-corrected: Equinor went from keeping 3 of 11 to keeping 0, and two of those three were real
+// trade adverts ("Fagoperatør Mekanisk", "Offshore Operations & Maintenance Technician"). A one-sided rule in
+// a prompt over-reaches exactly the way a one-sided regex does, and this file already knows that about regexes.
+console.log('\n--- item 47: the title prompt refuses a bare "operator" AND keeps a trade beside one ---');
+for (const refuse of ['Control Room Operator', 'Operator Tysvær', 'Trencher Operator Trainee', 'Machine Operator']) {
+  check(`the prompt still names "${refuse}" as a title to refuse`, TITLE_SYSTEM_TEXT.includes(refuse),
+    TITLE_SYSTEM_TEXT.includes(refuse) ? 'present' : 'MISSING — the refusal half has been deleted');
+}
+for (const keep of ['Fagoperatør Mekanisk', 'Offshore Operations & Maintenance Technician', 'DP Operator', 'Crane Operator']) {
+  check(`and still names "${keep}" as one to KEEP`, TITLE_SYSTEM_TEXT.includes(keep),
+    TITLE_SYSTEM_TEXT.includes(keep) ? 'present' : 'MISSING — the positive half is gone, which is what over-corrected Equinor to 0 of 11');
+}
+// The two halves must be distinguishable, not merely both present: a prompt listing a title under BOTH
+// headings would satisfy every assertion above while telling the model nothing.
+const refuseBlock = TITLE_SYSTEM_TEXT.slice(TITLE_SYSTEM_TEXT.indexOf('titles to REFUSE'), TITLE_SYSTEM_TEXT.indexOf('BUT A TITLE THAT NAMES A TRADE'));
+check('"Fagoperatør Mekanisk" is NOT inside the refuse block', !refuseBlock.includes('Fagoperatør'),
+  'the keep example must not sit under the refusals, or the prompt contradicts itself');
+check('"Control Room Operator" IS inside the refuse block', refuseBlock.includes('Control Room Operator'),
+  'and the refusal must actually be under the refusals');
 
 console.log(`\ntrades: ${fail ? `${fail} FAILED` : 'all checks passed'}`);
 if (fail) process.exitCode = 1;
