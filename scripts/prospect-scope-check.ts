@@ -109,5 +109,45 @@ check('an ordinary contractor has no such note', keptBySite('Ocean Winds') === n
 // An empty or missing name is for the PREDICATE to judge, not this rule — it must not exclude on nothing.
 check('an empty name is not excluded by this rule', nonProspect('') === null && nonProspect(null) === null, 'null for both');
 
+// ---- ITEM 50: THE TRADE BODIES BY NAME ---------------------------------------------------------------
+// The word pattern above catches none of the bodies in this database, because not one of them contains the
+// word "association". Found when the paid queue's FIRST entry turned out to be "Norwegian Offshore Wind".
+console.log('\n--- the named trade bodies are excluded ---');
+for (const body of ['Norwegian Offshore Wind', 'WindEurope', 'NedZero', 'Wind Energy Ireland',
+  'Offshore Energies UK', 'RenewableUK', 'Green Power Denmark', 'Svensk Vindenergi', 'Fornybar Norge',
+  'Global Wind Organisation', 'The Rich North Sea programme', 'Polish Offshore Wind Industry Chamber']) {
+  const r = nonProspect(body);
+  check(`"${body}" is excluded`, !!r && r.category === 'association / body', r ? `${r.category}: ${r.term}` : 'NOT EXCLUDED — this is the gap item 50 exists to close');
+}
+// Case and punctuation must not matter: these are real spellings from the table.
+check('"NORWEGIAN OFFSHORE WIND" in caps is excluded too', !!nonProspect('NORWEGIAN OFFSHORE WIND'), 'case-folded');
+check('"Bundesverband Windenergie Offshore e.V." is excluded', !!nonProspect('Bundesverband Windenergie Offshore e.V.'), 'punctuation collapsed');
+check('"Green Power Denmark / independent" is excluded', !!nonProspect('Green Power Denmark / independent'), 'the slash-joined row in the table');
+
+// ---- THE OTHER ARM, AND IT IS THE ONE THAT PROTECTS REVENUE ------------------------------------------
+// A real company whose name CONTAINS a body's name, or one of the body-ish words, must survive. Matching
+// exactly is what makes this safe; a substring or a widened word pattern would have failed every line here.
+console.log('\n--- and a real company carrying those words is NOT excluded ---');
+for (const real of [
+  'NedZero Productions',                       // a real row in this table, next to "NedZero" itself
+  'Norwegian Offshore Wind Services AS',       // the shape a contractor named after the sector takes
+  'Wind Energy Ireland Services Ltd',
+  'Forward Construction Agency',               // a real EPC company with its own domain
+  'Northern Offshore Services',                // in the live queue of 94
+  'Vestas Northern & Central Europe',
+  'Offshore Energies Group Ltd',
+  'KK WindSolutions',
+  'Karstensens Skibsvaerft',
+]) {
+  const r = nonProspect(real);
+  check(`"${real}" is kept`, r === null || r.category !== 'association / body',
+    r === null ? 'in scope' : `EXCLUDED as ${r.category}: ${r.term} — a real prospect was dropped`);
+}
+// The port exception still stands: item 27 keeps a port, because a port contracts trades.
+check('a port authority is still kept', nonProspect('Salacgriva port authority') === null, 'the SITE exception is untouched');
+// And the pre-existing categories are untouched by the new list.
+check('a bank is still excluded', nonProspect('Danske Bank')?.category === 'bank / finance', 'unchanged');
+check('a university is still excluded', nonProspect('KTH Royal Institute of Technology')?.category === 'academic', 'unchanged');
+
 console.log(`\nprospect scope: ${fail ? `${fail} FAILED` : 'all checks passed'}`);
 if (fail) process.exitCode = 1;

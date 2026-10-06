@@ -2766,3 +2766,81 @@ names to be on-brand broke "Winergy / Flender", so EITHER is enough. Four mutati
 prove the rules; one of them shows defence in depth — with the host list disabled,
 Logi Trans is still refused by the shared-domain arm, and the assertion checks WHICH
 rule fired rather than only that something did.
+
+
+50. ITEM 27's "ASSOCIATIONS ARE OUT OF SCOPE FOR EVER" CATCHES NONE OF OUR
+    ASSOCIATIONS — AND THEY ARE IN TOMORROW'S PAID QUEUE
+
+Found 2026-10-05 while live-verifying item 49's guard. The FIRST company in the paid
+lookup queue was "Norwegian Offshore Wind" — the members directory whose import put a
+conference site on nine companies. It was not skipped as a non-prospect.
+
+prospect-scope.ts HAS the rule (`association|federation|forbund|forening|cluster|
+chamber of|confederation|society|verband|syndicat`) and item 27 calls it permanent.
+But every industry body in our data is named like a company, so NONE is caught:
+    Norwegian Offshore Wind -> null      WindEurope          -> null
+    NedZero                 -> null      Wind Energy Ireland -> null
+    Offshore Energies UK    -> null
+The pattern matches the WORD "association", and these bodies never use it.
+
+IT HAS ALREADY COST MONEY: "Wind Energy Ireland" was resolved to
+windenergyireland.com in the 2026-10-05 Industry Contacts batch — a correct domain for
+an organisation that employs no trades, so the EUR 0.023 bought nothing and the
+company is now a contact-discovery target that can only yield the body's own staff.
+
+WHY ITEM 49's GUARD IS NOT THE ANSWER: it refused Norwegian Offshore Wind only because
+norwegianoffshorewind.no is on the directory host list, which exists for a different
+reason. windenergyireland.com is not a directory and never will be; it is simply not a
+prospect. Two different rules, and conflating them would put every trade association's
+real website on a host deny-list.
+
+WHEN TAKEN, and it is cheap: a NAME list beside the word pattern, the belt-and-braces
+shape item 27 already chose — the five above plus the obvious siblings (WindEurope,
+NedZero, RenewableUK, Energi Danmark's trade bodies, Fornybar Norge, Offshore Energies
+UK). Measure it against all 94 remaining Industry Contacts companies BEFORE the next
+batch, because each false negative is EUR 0.023 and a useless discovery target, and
+each false POSITIVE silently removes a real prospect — so both arms, as ever.
+
+ITEM 50 — DONE 2026-10-06. Measured FIRST, against all 94, which changed the design.
+
+The word pattern catches none of our bodies; a NAME list does. TRADE_BODIES holds the
+five the owner named plus every body found in the table, matched on the EXACT
+canonicalised name with a leading "the" the only variation allowed.
+
+WIDENING THE WORD PATTERN WAS MEASURED AND REJECTED: 165 of 5,934 rows carry a
+body-ish word (association, federation, cluster, institute, council, agency, authority,
+programme, forum, academy, foundation…) and they include "Forward Construction Agency",
+a real EPC company with its own domain; every port authority, which item 27 EXEMPTS
+because a port contracts trades; and "KTH Royal Institute of Technology", already
+caught as academic. Exact matching cannot make that mistake, and the table contains the
+pair that proves it: "NedZero" is excluded, "NedZero Productions" is not.
+
+EFFECT ON THE LIVE QUEUE: 2 of 94 removed — Norwegian Offshore Wind and The Rich North
+Sea programme. Small, because most bodies carry sector 'irrelevant' and were already
+outside resolve-domains' predicate; the point is not the EUR 0.046 saved but that
+neither becomes a contact-discovery target whose only yield is the body's own staff.
+
+BOTH ARMS, and the second is the one that protects revenue: nine real names that carry
+a body's name or a body-ish word are asserted to SURVIVE — NedZero Productions,
+Norwegian Offshore Wind Services AS, Wind Energy Ireland Services Ltd, Forward
+Construction Agency, Northern Offshore Services, Vestas Northern & Central Europe,
+Offshore Energies Group Ltd, KK WindSolutions, Karstensens Skibsvaerft — plus the port
+exception and the pre-existing bank and academic categories, so the new list cannot have
+quietly widened them.
+
+
+51. THE JOB-BOARD UNIT: ONE MORE CYCLE UNDER THE WIDENED TITLE PROMPT, THEN DECIDE
+
+Owner's decision 2026-10-06. The boards stay ENABLED for one more full crawl cycle,
+because these generalist boards are where item 32's 29 new trades should first appear
+and the previous cycles all ran under the OLD ten-word prompt.
+
+WHAT IT COSTS AND WHAT IT HAS RETURNED, measured 2026-10-06: the unit ran overnight
+(00:45-01:10 UTC) across www.subsea.org, offshorejobvacancy.com, oilandgaspeople.com
+and www.oilgasvacancy.com, read about 40 adverts for EUR 0.0698 — and `via='board'`
+postings are still 0 of 225. The tick notes read kept:0 read:0 back to 2026-09-21. At
+that rate it is roughly EUR 2 a month for nothing.
+
+AFTER THE CYCLE: report postings KEPT PER BOARD. If via='board' is still 0, DISABLE the
+boards and record the cost and the decision here. Do not disable before the cycle — the
+whole point is that the prompt the boards were judged under has changed.

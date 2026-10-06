@@ -54,6 +54,46 @@ const CATEGORIES: { category: string; re: RegExp }[] = [
  */
 const SITE = /\b(ports?|harbour|harbor|havn|haven|hafen|puerto|porto|terminal|docks?|dockyard|shipyard|astilleros|werft|verft|yards?)\b/i;
 
+/**
+ * THE TRADE BODIES BY NAME, because none of them contains the word "association" (item 50, 2026-10-05).
+ *
+ * The pattern above has been in place since 2026-09-26 and catches ZERO of the bodies actually in this
+ * database, which was found only when the paid queue was read aloud and its FIRST entry was "Norwegian
+ * Offshore Wind" — the members directory whose own import had just put a conference site on nine companies.
+ * Measured the same day: `nonProspect` returned null for Norwegian Offshore Wind, WindEurope, NedZero, Wind
+ * Energy Ireland and Offshore Energies UK alike. Every one of them is named like a company.
+ *
+ * IT HAS ALREADY COST MONEY: Wind Energy Ireland was resolved to windenergyireland.com in the 2026-10-05
+ * batch — a correct domain for an organisation that employs no trades.
+ *
+ * MATCHED ON THE EXACT NAME, NEVER AS A SUBSTRING, and that is the whole design. Widening the word pattern
+ * instead was measured and rejected: 165 company rows carry a body-ish word, and they include `Forward
+ * Construction Agency` (a real EPC firm with its own domain), every port authority — which item 27
+ * deliberately EXEMPTS, because a port contracts trades — and `KTH Royal Institute of Technology`, already
+ * caught as academic. An exact list cannot have a false positive of that kind by construction: "NedZero" is
+ * excluded and "NedZero Productions" is not, which is a real pair in this table.
+ *
+ * Compiled from the data rather than from memory: every row whose name matched a known body, plus the five
+ * the owner named. Most carry sector 'irrelevant' and are therefore already outside resolve-domains' own
+ * predicate — only `Norwegian Offshore Wind` and `The Rich North Sea programme` were in the live queue of
+ * 94 — so this is belt-and-braces exactly as the note at the top of this file describes, not the queue.
+ */
+const TRADE_BODIES = new Set([
+  // The five the owner named.
+  'norwegian offshore wind', 'windeurope', 'wind europe', 'nedzero', 'wind energy ireland', 'offshore energies uk',
+  // Found in this database on 2026-10-05.
+  'renewableuk', 'renewable uk', 'bundesverband windenergie offshore e v', 'green power denmark',
+  'green power denmark independent', 'svensk vindenergi', 'danish export association', 'fornybar norge',
+  'eurelectric', 'bwo', 'global wind organisation', 'the rich north sea programme', 'rich north sea programme',
+  'polish offshore wind industry chamber', 'eopsa european onshore power supply association',
+  'international copper association europe', 'floating offshore wind technology research association',
+  // Siblings of the above, named for completeness so the next import does not reintroduce one.
+  'nwea', 'wind denmark', 'ocean energy europe', 'hydrogen europe', 'solar power europe', 'norwep', 'intpow',
+]);
+
+/** The name as the list stores it: lowercase, accents kept, punctuation collapsed to single spaces. */
+const canonBody = (s: string) => String(s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
+
 export type NonProspect = { category: string; term: string; keptBySite?: string };
 
 /**
@@ -63,6 +103,14 @@ export type NonProspect = { category: string; term: string; keptBySite?: string 
 export function nonProspect(name: string | null | undefined): NonProspect | null {
   const n = String(name ?? '');
   if (!n.trim()) return null;                       // nothing to judge on: let the predicate decide
+  // The named bodies first, and EXACTLY — a leading "the" is the only variation allowed, so a longer company
+  // name that merely begins with a body's name is untouched. No SITE exception applies: a trade body is not a
+  // port, and "Norwegian Offshore Wind" carries no site word anyway.
+  const canon = canonBody(n);
+  const bare = canon.replace(/^the /, '');
+  if (TRADE_BODIES.has(canon) || TRADE_BODIES.has(bare)) {
+    return { category: 'association / body', term: n.trim() };
+  }
   const hit = CATEGORIES.find(({ re }) => re.test(n));
   if (!hit) return null;
   const site = n.match(SITE);
