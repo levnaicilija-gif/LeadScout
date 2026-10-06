@@ -7,6 +7,8 @@ import { httpGet } from '@/lib/http';
 import { DIRECTORIES, NOT_A_MEMBER, type Directory } from '@/lib/directories';
 import { detectEmployerType } from '@/lib/agency-detector';
 import { sectorFor } from '@/lib/sector';
+import { looksLikeDirectory } from '@/lib/site-scope';
+import { looksLikeMembershipTier, pickMemberSite } from '@/lib/directory-member';
 import { tierFor, regionFor } from '@/lib/geo';
 export const maxDuration = 300;
 
@@ -91,9 +93,12 @@ async function run(req: Request) {
   const results: any[] = [];
   for (const d of wanted) {
     const stat = { directory: d.key, status: d.status, note: d.note, members: 0, matched: 0, domainsAdded: 0, newCompanies: 0, error: undefined as string | undefined };
+    // Members the guards refused, NAMED. A silent skip is indistinguishable from a directory that simply
+    // listed fewer members, and the two want different fixes.
+    const skipped: string[] = [];
     try {
       const page = await fetchPage(d.url, d.browser ? { force: 'browser' } : {});
-      if (page.status !== 'live') { stat.error = `list page unreachable: ${page.note ?? 'no reason'}`; results.push(stat); continue; }
+      if (page.status !== 'live') { stat.error = `list page unreachable: ${page.note ?? 'no reason'}`; results.push({ ...stat, skipped: skipped.slice(0, 15) }); continue; }
 
       let members: Member[] = [];
       if (d.mode === 'direct') {
@@ -110,13 +115,40 @@ async function run(req: Request) {
           // Profile pages are usually plain HTML even when the list is not — try the cheap path.
           const sub = await fetchPage(prof);
           if (sub.status !== 'live') continue;
-          const ext = sub.links.find((l) => { try { const u = new URL(l); return u.origin !== new URL(d.url).origin && !NOT_A_MEMBER.test(u.hostname); } catch { return false; } });
-          if (ext) members.push({ name: sub.title.split(/[|–-]/)[0].trim() || hostWord(new URL(ext).hostname), domain: new URL(ext).hostname.replace(/^www\./, '') });
+          // EVERY external candidate, not the first one. Taking `find`'s answer is what put this directory's
+          // own conference on nine member companies — see directory-member.ts for the full account.
+          const hosts: string[] = [];
+          for (const l of sub.links) {
+            try {
+              const u = new URL(l);
+              if (u.origin !== new URL(d.url).origin && !NOT_A_MEMBER.test(u.hostname)) hosts.push(u.hostname.replace(/^www\./, ''));
+            } catch { /* not a URL */ }
+          }
+          const memberName = sub.title.split(/[|–-]/)[0].trim();
+          // A membership TIER as the name means the page title was not the member's name, so the parse failed
+          // and nothing about this member can be trusted — not even a domain that happens to look right.
+          const tier = looksLikeMembershipTier(memberName);
+          if (tier) { skipped.push(`${prof}: the page title reads "${memberName}", which is a membership tier and not a company — nothing stored`); continue; }
+          const pick = pickMemberSite(memberName || hostWord(hosts[0] ?? ''), hosts);
+          if (!pick.host) { skipped.push(`${memberName || prof}: ${pick.why}`); continue; }
+          members.push({ name: memberName || hostWord(pick.host), domain: pick.host });
         }
       }
       stat.members = members.length;
 
+      // ONE DOMAIN MAY SERVE ONE MEMBER PER RUN. Several members sharing a host is not a group of companies
+      // at one firm, it is the signature of a positional parse failure — nine rows carried
+      // floatingwinddays.com that way. The first is still stored (it may be right); the rest are reported.
+      const usedHost = new Map<string, string>();
       for (const m of members) {
+        const already = usedHost.get(m.domain);
+        if (already) { skipped.push(`${m.name}: ${m.domain} was already taken by "${already}" in this run — a shared host across members means the page was misread`); continue; }
+        usedHost.set(m.domain, m.name);
+        // A directory, event or platform host is never a member's own site, whichever mode found it.
+        const dir = looksLikeDirectory(m.domain);
+        if (dir) { skipped.push(`${m.name}: ${dir}`); continue; }
+        const tierName = looksLikeMembershipTier(m.name);
+        if (tierName) { skipped.push(`"${m.name}" is a membership tier, not a company — nothing stored`); continue; }
         const k = canonical(m.name).toLowerCase();
         const hit = byName.get(k) ?? byName.get(hostWord(m.domain));
         if (hit) {
@@ -137,7 +169,7 @@ async function run(req: Request) {
     } catch (e: any) {
       stat.error = String(e?.message ?? e).slice(0, 200);
     }
-    results.push(stat);
+    results.push({ ...stat, skipped: skipped.slice(0, 15) });
   }
 
   const { count: withDomain } = await db.from('companies').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace).not('domain', 'is', null);

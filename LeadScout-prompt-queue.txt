@@ -2844,3 +2844,54 @@ that rate it is roughly EUR 2 a month for nothing.
 AFTER THE CYCLE: report postings KEPT PER BOARD. If via='board' is still 0, DISABLE the
 boards and record the cost and the decision here. Do not disable before the cycle — the
 whole point is that the prompt the boards were judged under has changed.
+
+
+52. THE MEMBER-DIRECTORY IMPORT — WHAT IT DID, AND THE GUARD (DONE 2026-10-06)
+
+This is the ORIGIN of item 49's wrong domains, diagnosed from the code and matched
+against the rows it produced rather than guessed at.
+
+WHAT IT DOES TODAY. /api/jobs/directories has two modes. `direct` reads the list page
+and takes each external anchor as a member, with the anchor's TEXT as the name, keyed
+by host in a Map — so it can only ever emit one row per host. `profile` mode visits
+each member's own page on the directory and takes:
+    sub.links.find(external)            as the member's WEBSITE
+    sub.title.split(/[|–-]/)[0]         as the member's NAME
+Both are POSITIONAL GUESSES, and profile mode `push`es rather than keying by host,
+which is why several rows could share one domain.
+
+HOW THAT PRODUCED THE ROWS WE FOUND:
+  - Norwegian Offshore Wind banners its own conference, Floating Wind Days, on every
+    member page. That link sits above the member's own website in the DOM, so `find`
+    returned it for EVERY profile: nine companies with CORRECT names and
+    floatingwinddays.com as their domain.
+  - NedZero's member page was titled with a membership TIER, so the first title segment
+    was "Premium". That became a company row named "Premium" carrying another member's
+    domain, oceanwinds.com.
+Neither reported anything: the run counted a matched member and moved on.
+
+THE GUARD, in src/lib/directory-member.ts so it is testable without a crawl:
+  - pickMemberSite(name, hosts) replaces `find`. It drops directories, events and
+    platforms (looksLikeDirectory); PREFERS a host whose brand carries the member's
+    name, which is positive evidence rather than position; accepts a single remaining
+    candidate, because most of these directories link only the member and refusing that
+    would throw away what the import is for; and with SEVERAL candidates and no name
+    match it STORES NOTHING and says why.
+  - looksLikeMembershipTier(name) refuses a name that IS a tier or a page heading,
+    anchored to the whole name — "Premium" is refused, "Premium Wind Services AS" is
+    not. In profile mode a tier name means the title was not the member's name at all,
+    so the member is skipped entirely rather than stored under a guessed domain.
+  - ONE DOMAIN MAY SERVE ONE MEMBER PER RUN. Several members sharing a host is the
+    signature of exactly this parse failure, so the first is stored and the rest are
+    reported.
+  - every refusal is NAMED in a `skipped` list on the response, because a silent skip
+    reads identically to a directory that simply listed fewer members.
+
+PROVED BY FOUR MUTATIONS, each attributable: dropping the directory filter, ignoring
+name evidence, restoring the take-the-first rule, and disabling the tier list each fail
+their own arms. One of them shows the layering — with the directory filter gone,
+KOSMOS ENERGY is still refused, but by the name arm, and the assertion checks WHICH
+reason came back rather than only that something did.
+
+NOT DONE: the nine cleared rows are not re-imported from this directory. They are in
+the paid lookup queue instead, which now also refuses a directory domain (item 49).

@@ -93,6 +93,11 @@ step posting-write npx tsx --env-file=.env.local scripts/posting-write-check.ts
 # candidate), the reference-code refusal, and now the scrape-residue stripping. CLAUDE.md has cited it as a
 # check since 2026-09-14 and the gate never ran it, so all of that was unprotected. Pure, no env needed.
 step board-title npx tsx scripts/board-title-check.ts
+# The member-directory import's two positional guesses: the FIRST external link on a profile page as the
+# member's website (which put this directory's own conference on nine companies) and the page title's first
+# segment as the name (which created a company called "Premium"). Both arms, because each guard can only
+# take real members away and the import exists to find domains for free.
+step directory-member npx tsx scripts/directory-member-check.ts
 # Item 27: the three reasons a company has no contact must stay tellable apart — nobody looked, we looked
 # and nothing was printed, there is no site. It also asserts the property that lets the server cell and
 # the 'use client' drawer share one rule: site-read-state.ts imports NOTHING, so importing it into the
