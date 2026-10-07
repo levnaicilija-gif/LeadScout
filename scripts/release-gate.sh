@@ -7,9 +7,19 @@
 # if any step failed. The log is .cache/gate-<date>-<time>.log; screenshots go to .cache/shots.
 set -u
 PORT="${1:-3100}"
+# TWO TIERS. TIER=fast runs everything that costs nothing — typecheck, build and every pure or
+# database-only check — and is for running on EVERY change. TIER=full adds the browser and model probes
+# and is what must pass BEFORE A DEPLOY. Default is FULL, because the safe default for a release gate is
+# the one that actually gates a release; fast is opted into.
+TIER="${TIER:-full}"
+if [ "$TIER" != fast ] && [ "$TIER" != full ]; then
+  echo "TIER must be fast or full, not: $TIER" >&2; exit 2
+fi
 cd "$(dirname "$0")/.." || exit 1
 mkdir -p .cache
 LOG=".cache/gate-$(date +%Y%m%d-%H%M%S).log"
+# When this run began, so the cost summary at the end can isolate THIS gate from the one before it.
+export GATE_STARTED_AT="$(node -e "console.log(new Date().toISOString())")"
 : > "$LOG"
 FAILED=()
 
@@ -93,7 +103,9 @@ step posting-write npx tsx --env-file=.env.local scripts/posting-write-check.ts
 step fixture-cache npx tsx --env-file=.env.local scripts/fixture-cache-check.ts
 # The named LIVE check for cv-parse: one real call whenever the prompt changes and otherwise at least weekly,
 # with the cache explicitly off for it. Without this the cache would quietly retire the only test of the model.
+if [ "$TIER" = full ]; then
 step cv-parse-live env LEADSCOUT_TEST_RUN=cv-parse-live-check npx tsx --env-file=.env.local scripts/cv-parse-live-check.ts
+fi
 # NEVER GATED UNTIL 2026-10-05, found while adding item 46's arms: this file holds the ATS detection and
 # every title rule — BUTTON, NAV (which stopped "Browse job offers" being stored as a role and offered to a
 # candidate), the reference-code refusal, and now the scrape-residue stripping. CLAUDE.md has cited it as a
@@ -376,7 +388,9 @@ step bullet-audit npx tsx scripts/bullet-audit-check.ts
 step pool-read npx tsx scripts/pool-read-check.ts
 step candidate-phone npx tsx scripts/candidate-phone-check.ts
 
-if [[ " ${FAILED[*]-} " == *" build "* ]]; then
+if [ "$TIER" = fast ]; then
+  echo "=== FAST TIER: the browser and model probes were not run. Run TIER=full before deploying." | tee -a "$LOG"
+elif [[ " ${FAILED[*]-} " == *" build "* ]]; then
   echo "=== the build failed, so nothing was served or tested against it" | tee -a "$LOG"
 else
   # A stale server on the port serves old chunks and fails correct code.
@@ -389,7 +403,18 @@ else
   LEADSCOUT_FIXTURE_CACHE=1 npx next start -p "$PORT" > ".cache/server-$PORT.log" 2>&1 &
   for _ in $(seq 1 60); do curl -s -o /dev/null "http://localhost:$PORT/api/health" && break; nap 2000; done
   BASE="http://localhost:$PORT"
+  echo "=== test-budget" | tee -a "$LOG"
+  npx tsx --env-file=.env.local scripts/test-budget-check.ts >> "$LOG" 2>&1
+  BUDGET_CODE=$?
+  if [ "$BUDGET_CODE" -eq 0 ]; then echo "    pass" | tee -a "$LOG"
+  elif [ "$BUDGET_CODE" -eq 2 ]; then echo "    SPENT — the model-calling probes will be skipped" | tee -a "$LOG"
+  else echo "    FAIL (exit $BUDGET_CODE) — the budget could not be judged" | tee -a "$LOG"; FAILED+=(test-budget); fi
+  # pdf-check is the ONE model-calling step outside the memory-guarded block below, so it is guarded here.
+  if [ "$BUDGET_CODE" -eq 2 ]; then
+    echo "=== pdf-check SKIPPED: the test budget is spent" | tee -a "$LOG"
+  else
   step pdf-check env LEADSCOUT_TEST_RUN=pdf-check npx tsx --env-file=.env.local scripts/pdf-check.ts
+  fi
   step pdf-name-audit npx tsx --env-file=.env.local scripts/pdf-name-audit.ts
   # ENOUGH MEMORY FOR THE BROWSER STEPS, checked HERE and not at the top of the gate. The floor used to be read
   # once before `next build`, which is the wrong moment: the build front-loads its own memory and the gate then
@@ -403,8 +428,15 @@ else
   # this step buys is a two-second refusal instead of a 25-minute ambiguous one; it does not buy a green gate.
   # All four failures passed in ISOLATION against the identical build, so the shared factor is gate load —
   # CLAUDE.md holds the stalled-read hypothesis and item 31 is the measurement that would test it.
+  if [ "$BUDGET_CODE" -ne 2 ]; then
   step memory-preflight npx tsx scripts/memory-preflight.ts
-  if [[ " ${FAILED[*]-} " == *" memory-preflight "* ]]; then
+  fi
+  # IS THERE ROOM IN TODAY'S TEST BUDGET? Test traffic was 61% of thirty days of model spend and had no
+  # ceiling at all, because the EUR 2.00 daily cap deliberately excludes it so a gate cannot starve the crawl.
+  # Exit 2 means spent, and the probes below are skipped BY NAME — never silently, so a cheap gate says why.
+  if [ "$BUDGET_CODE" -eq 2 ]; then
+    echo "=== the browser and model probes were SKIPPED: today's test budget is SPENT. Everything before this point passed. Raise it for one run with TEST_BUDGET_USD=<n>." | tee -a "$LOG"
+  elif [[ " ${FAILED[*]-} " == *" memory-preflight "* ]]; then
     echo "=== the browser steps were SKIPPED: not enough memory. Everything before this point passed." | tee -a "$LOG"
   else
   step verify-e2e npx tsx --env-file=.env.local scripts/verify-e2e.ts "$BASE"
@@ -508,9 +540,15 @@ else
   killport
 fi
 
+# What this run cost, and today's running test spend. Read-only, one query, and it never fails the gate:
+# a cost report that could turn a green run red would be a reason to delete it.
+echo "=== gate cost" | tee -a "$LOG"
+npx tsx --env-file=.env.local scripts/gate-cost-summary.ts 2>&1 | tee -a "$LOG"
+
 echo | tee -a "$LOG"
 if [ "${#FAILED[@]}" -gt 0 ]; then
-  echo "GATE FAILED: ${FAILED[*]} — details in $LOG" | tee -a "$LOG"
+  echo "GATE FAILED ($TIER tier): ${FAILED[*]} — details in $LOG" | tee -a "$LOG"
+  echo 'RE-RUN THE FAILING STEP ALONE, not a fresh full gate. Its command is the line after its === header in the log. A second full gate costs another $0.58 and 25 minutes, burns 2-3 GB it never gives back, and risks two gates interleaving — which produced six phantom failures in one night.' | tee -a "$LOG"
   exit 1
 fi
-echo "GATE PASSED — $LOG" | tee -a "$LOG"
+echo "GATE PASSED ($TIER tier) — $LOG" | tee -a "$LOG"

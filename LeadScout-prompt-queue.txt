@@ -3115,3 +3115,53 @@ machine is live and primes it.
 STAGES: cv-parse now. The saving is measured over the next gates — THIS gate stores and
 saves nothing, the next one replays — then document-read, then candidate-score. Each
 stage is one line added to ALLOWED plus its own live check.
+
+
+57. TEST-COST CONTROLS: a cost line per gate, two tiers, and a daily test budget
+    (built 2026-10-07; item 4 of the owner's list is CORRECTED and NOT built)
+
+1. EVERY GATE NOW PRINTS WHAT IT COST. `gate-cost-summary.ts` runs last and reports this
+   run's model calls and dollars plus today's running test spend, from the DATABASE's own
+   day. It never fails the gate — a cost report that could turn a green run red would be
+   a reason to delete it — and it says when a run made far fewer than 44 calls, because
+   that means the browser block did not run rather than that the gate got cheaper.
+
+2. TWO TIERS. TIER=fast runs typecheck, build and every pure or database-only check and
+   is for EVERY change; TIER=full adds the browser and model probes and is what must pass
+   BEFORE A DEPLOY. Default is FULL, because the safe default for a release gate is the
+   one that gates a release. Measured: the fast tier ran 72 steps for $0.00 and 0 model
+   calls. A FAILING STEP IS RE-RUN ALONE, never as a fresh full gate — the verdict line
+   now says so, with the reason: another full gate costs $0.58 and 25 minutes, burns 2-3
+   GB it never gives back, and risks two gates interleaving, which produced six phantom
+   failures in one night.
+
+3. A DAILY TEST BUDGET, default $5.00, CHOSEN FROM THE DATA. Test spend exceeded $5.00 on
+   SIX of the 28 days with rows (Sep 15 $10.72, 24 $5.07, 25 $5.12, 26 $11.29, 27 $7.09,
+   28 $5.10), every one a day of eight or more gates; $5.00 is about eight full gates, so
+   it bounds the runaway day without interrupting ordinary work. A tighter $3.00 would
+   have bitten on twelve of twenty-eight, which is a budget that trains people to override
+   it. Exit 2 = spent, and the gate then skips the model probes BY NAME. Exit 1 = could
+   not judge, which FAILS rather than passing: an unreadable total must never read as
+   "room available".
+   TWO FLAWS FOUND BY RUNNING IT rather than by reading it: pdf-check sits OUTSIDE the
+   memory-guarded block and still made two model calls, so it is guarded separately; and
+   memory-preflight still FAILED the run when the block was skipped for budget reasons,
+   blaming low memory for a policy decision, so it is now skipped when the budget is spent.
+   Proved end to end: budget forced to $0.01 gives 0 model calls, $0.00, GATE PASSED, every
+   skip named.
+
+4. *** THE FIXTURE REDUCTION AS SPECIFIED WOULD REDUCE COVERAGE, AND THE MISTAKE IS MINE.
+   NOT BUILT. *** My earlier summary said job-suggest-probe scores "~14 candidates", which
+   was wrong and produced the instruction "reduce it to 3 candidates". Read from the
+   source: the probe seeds ONE candidate and EIGHT postings, and SHORTLIST=10 in
+   /api/candidate/suggest means that one candidate is scored against up to ten jobs — the
+   14 calls are JOBS SCORED, not candidates. Worse, the eight postings are eight DISTINCT
+   assertions (two survive; six are excluded for six separately nameable reasons — wrong
+   trade ×3, UK right to work, US geography, a navigation title), so cutting them to three
+   would delete five checks.
+   THE RIGHT LEVER, for the owner to accept: the probe's candidate is shortlisted against
+   the WHOLE live board (147 open postings), so most of the ten jobs it pays to score are
+   real postings irrelevant to its assertions, and its result depends on whatever is on the
+   board that day. Scoping the probe to its OWN seeded postings would cut about ten scored
+   jobs to two or three AND make the probe deterministic — cheaper and stronger at once.
+   It needs a full gate to prove the assertions still hold, which memory has blocked.
