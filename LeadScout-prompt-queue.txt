@@ -2995,3 +2995,70 @@ bam.co.uk/DE versus bamnuttall.co.uk/GB.
 STILL OUTSTANDING: four Ørsted Wind rows, one with a literal typo ("Ørsted Wind Pover"),
 to be merged after the Ørsted lookup retry — and the people-matching rule must be
 checked FIRST, which is the whole lesson of this entry.
+
+
+55. NAMES THAT DIFFER MID-WORD, AND THE Ø THAT SPLITS A COMPANY IN TWO —
+    MEASURED 2026-10-07, NOT BUILT. The owner decides whether to build it.
+
+NIDEC IS ONE CASE OF A GENERAL PATTERN (owner's framing). `people.company_name` and
+`companies.name` are written by different hands — event lists, directory imports, TED
+notices — and attendeeMatch links them only when the canonical forms are EQUAL or the
+person's name EXTENDS the company's, word by word. Two spellings that differ INSIDE a
+word therefore never meet. NIDEC holds three such spellings and no single company name
+reaches more than two of them, which is why the rename made it worse and was reverted.
+The three people rows are NOT rewritten (owner): that would overwrite what a list said.
+
+HOW BIG IS IT — the trustworthy figure, after the first measurement was thrown away:
+    10,245 distinct people.company_name values · 6,515 match by name · 734 as group
+    2,996 match NOTHING, carrying 4,407 people
+      of those: 30 names / 41 people / 28 company rows are MID-WORD — identical to a
+                real company row once spaces are removed, so a space-insensitive match
+                recovers them exactly. ZF Windpower/ZF Wind Power, DekaBank/Deka Bank,
+                Woodthilsted/Wood Thilsted, Wind Europe/WindEurope, AkzoNobel/Akzo
+                Nobel, GEO.XYZ/GEOxyz, ASSOsubsea/ASSO.subsea, BayWa re/BayWa r.e.
+                2,865 names / 4,196 people have NO company row at all — no matcher
+                change helps those; the company is simply absent.
+    MY FIRST PASS SAID 131 NAMES AND WAS WRONG. It counted a squashed PREFIX as a
+    match, which is the same over-reach as containment in site-scope: it paired
+    "Universidad Carlos III de Madrid" with a company row literally named "Univers",
+    and "Hydrotechnik Offshore GmbH" with "Hydro" (Norsk Hydro). Only EXACT equality
+    once spaces are removed is evidence. The prefix figure is reported separately and
+    must not be quoted as the size of the problem.
+
+AND THE BIGGER HALF IS Ø, WHICH IS ITEM 53 ONE MODULE OVER. canonCompany folds accents
+by NFD-decomposing and dropping combining marks — and Ø, Æ, ß, þ, ð have NO canonical
+decomposition, exactly as in site-scope's words() (fixed in 4f65f53). So "Ørsted" and
+"Orsted" are two different companies to this codebase. Measured over the 330 people
+whose company name contains orsted in either spelling:
+    keeper "Ørsted"  reaches 280/330 today · 329/330 if canonCompany folds Ø
+    keeper "Orsted"  reaches  49/330 today · 329/330 if canonCompany folds Ø
+    space-insensitivity adds NOTHING here (329 either way) — the Ø is the whole gap.
+
+IS THE FOLD SAFE? canonCompany decides COMPANY IDENTITY, where findOrCreateCompany's own
+docstring says a wrong merge is unrecoverable, so this was measured before being
+recommended: the fold changes the canonical form of 60 of 5,930 rows and creates SIX new
+collisions, and every single one is a genuine duplicate pair of one firm —
+    ORSTED WIND POWER + ØRSTED WIND POWER · Orsted Wind + Ørsted Wind
+    Orsted Windpower + Ørsted WindPower · Ramboll + Rambøll
+    FØN Energy Services + FON Energy Services · Vargronn + Vårgrønn
+Not one false pairing. The fold does not merge anything by itself; it makes those six
+pairs VISIBLE to findOrCreateCompany and to the duplicate scan.
+
+RECOMMENDATION, for the owner to accept or refuse: build the general fix rather than
+renaming case by case. Two bounded changes, each with both arms and a mutation —
+  (1) fold the atomic letters in canonCompany, as site-scope already does. Recovers 49
+      Ørsted people and surfaces six real duplicate pairs. The 60 affected rows must be
+      listed in the commit, because this changes company IDENTITY.
+  (2) add an EXACT space-insensitive arm to attendeeMatch — never a prefix one.
+      Recovers 41 people across 28 companies, and would have fixed NIDEC with no rename.
+Case-by-case renames are strictly worse: NIDEC proved a rename can trade one orphan for
+two, and there are 19 Ørsted company rows to rename rather than one rule to change.
+
+ØRSTED IS NOT FOUR ROWS, IT IS NINETEEN. The merge is NOT written, awaiting the owner's
+decision on the keeper. Only one of the 19 carries a domain — "Ørsted" (orsted.com) —
+and it is the best keeper by reach. The rest are national and typo variants: Ørsted North
+America, ORSTED WIND POWER, Orsted Wind, Ex Ørsted / Independent, Ørsted Wind Power NL,
+ORSTED POLSKA OF SERVICES (×2 spellings), ØRSTED WIND POWER, Ørsted OF Services Sp. z
+o.o., Orsted Wind Power North America, Orsted Windpower, ørsted servics, Orsted Germany,
+Orsted Benelux, Ørsted WindPower, Ørsted Wind Pover, and more. Several are REAL national
+entities rather than duplicates, so this is not one merge — it is a decision per row.
