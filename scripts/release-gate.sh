@@ -98,6 +98,10 @@ step board-title npx tsx scripts/board-title-check.ts
 # segment as the name (which created a company called "Premium"). Both arms, because each guard can only
 # take real members away and the import exists to find domains for free.
 step directory-member npx tsx scripts/directory-member-check.ts
+# The paid lookup queue spends money per company, so every clause that narrows it is asserted. Added for the
+# staffing_agency exclusion: the six NES / Fircroft brand rows are a competitor and were kept out of this
+# queue only because they happen to carry no country, which one future edit could change.
+step lookup-queue npx tsx --env-file=.env.local scripts/lookup-queue-check.ts
 # Item 27: the three reasons a company has no contact must stay tellable apart — nobody looked, we looked
 # and nothing was printed, there is no site. It also asserts the property that lets the server cell and
 # the 'use client' drawer share one rule: site-read-state.ts imports NOTHING, so importing it into the

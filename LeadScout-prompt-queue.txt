@@ -2930,3 +2930,68 @@ WHY IT MATTERS BEYOND THIS ONE ROW: `words()` is shared by siteScope's branch an
 country rules, so every Scandinavian company name was being compared in a half-folded
 form. Nothing else had failed visibly, which is the familiar shape — the fault was
 silent until a rule read the comparison strictly.
+
+
+54. THE DUPLICATE CLEAN-UP AS EXECUTED (2026-10-07) — AND THE TWO PLACES IT BIT BACK
+
+Owner-directed, one group at a time, every write read back. Nothing was merged that
+the owner had not named.
+
+PART (c): "Premium" and "nordex online" DELETED (zero dependents each, re-counted
+immediately before the delete because job_posts, workspace_company_state and
+radar_verdicts all CASCADE from companies). "nl" RENAMED to European Energy
+Netherlands — it carries nl.europeanenergy.com and a live board, so deleting would
+have lost a real entity.
+
+PART (b): all five parent/subsidiary pairs LEFT SEPARATE. Three carry hard evidence —
+VARD/Vard Electro and Brunvoll/Brunvoll Mar-El have DIFFERENT registry numbers, and
+Acteon/Acteon-UTEC both hold people. Baggermaatschappij Boskalis corrected from
+staffing_agency to epc_contractor: its employer_type_source was 'name', a stale
+name-guess, and TODAY'S detectEmployerType returns 'unknown' for that name, so the
+current code does not reproduce it — no code fix needed.
+
+PART (a): eight groups merged — VESTAS, Nadara (keeper chosen by the owner for its
+domain), Flaminger, NIDEC SSB, Siemens Gamesa, Nordex, RWE Offshore, DTU Wind.
+radar_verdicts joins by company_NAME, not company_id, and was rewritten as part of
+every merge. people.company_name was NOT rewritten — it records what an event list
+said — and that decision is what produced the first problem below.
+
+*** WHERE IT BIT BACK (1): KEEPING THE LONGER NAME ORPHANS INDUSTRY CONTACTS. ***
+attendeeMatch matches a person whose company_name EQUALS the company's or EXTENDS it
+(theirs.startsWith(key + ' ')). So merging the short name into the long one silently
+cut 56 people loose — 46 at Siemens Gamesa, 9 at NORDEX, 1 at NIDEC. Fixed by renaming
+the keepers to the SHORT form (Siemens Gamesa, Nordex, RWE Offshore, DTU WIND), which
+makes both spellings match: the short one by name, the long one as 'group'. 57 of 58
+now resolve, confirmed through attendeesAt rather than from the rule.
+  TWO MEASUREMENT TRAPS INSIDE THAT CONFIRMATION, both of which first read as
+  orphaning and were neither: attendeesAt CAPS at 50 people, so "43 of 46 reached"
+  was the cap and not a loss (187 total matches), and VESTAS's one person reached 0
+  of the first 50 while matching perfectly well as 'group' (385 total matches).
+  A capped list is not an answer about membership.
+
+*** WHERE IT BIT BACK (2): THE NIDEC RENAME MADE IT WORSE, AND WAS REVERTED. ***
+Renaming to the person's own spelling fixed that person and broke two others: `people`
+holds THREE spellings — "Nidec SSB Wind Systems", "NIDEC SSB Wind Systems GmbH" and
+"Nidec SSB Windsystems" — and because they differ MID-WORD no single company name
+matches all three. Old name: 2 of 3 reachable. New name: 1 of 3. Reverted to
+"NIDEC SSB Wind Systems". The only real fix is normalising the three people rows, which
+is rewriting source provenance and was not done. ONE PERSON (Andreas Pröbsting) REMAINS
+UNREACHABLE and that is a known, recorded cost.
+
+PONDERA: four tangled rows for two firms, slash-joined in both orders. NOT merged or
+renamed (owner). Only the two people whose own record names a firm were attributed:
+Eric Arends, whose title literally reads "International offices Pondera", to Pondera;
+Matthew Hunt, "Director, Environment-Resilience-Renewables UK", to royalhaskoningdhv.
+SEVEN PEOPLE REMAIN ON "Pondera / Royal HaskoningDHV" AND NOTHING ON FILE SEPARATES THE
+TWO FIRMS FOR THEM — `people` has no email column (emails live in `contacts`, and none
+of the nine appears there), so there is no domain to attribute them by. They stay put.
+
+COLAS: three rows LEFT ALONE (owner). site-scope already treats the établissement as a
+group-site case deliberately, so merging would erase a distinction the code makes.
+
+PASSER and BAM: untouched, not duplicates — different registry numbers, and
+bam.co.uk/DE versus bamnuttall.co.uk/GB.
+
+STILL OUTSTANDING: four Ørsted Wind rows, one with a literal typo ("Ørsted Wind Pover"),
+to be merged after the Ørsted lookup retry — and the people-matching rule must be
+checked FIRST, which is the whole lesson of this entry.

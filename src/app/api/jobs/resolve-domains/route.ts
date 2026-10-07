@@ -96,7 +96,18 @@ async function run(req: Request) {
       .in('country', p.get('country') && COUNTRIES.includes(p.get('country')!.toUpperCase()) ? [p.get('country')!.toUpperCase()] : COUNTRIES)
       .in('sector', RELEVANT)
       .is('domain', null).is('careers_checked_at', null)
-      .or('careers_status.is.null,careers_status.neq.no_domain_found');
+      .or('careers_status.is.null,careers_status.neq.no_domain_found')
+      // A STAFFING AGENCY IS A COMPETITOR, NOT A PROSPECT, AND IT IS EXCLUDED EXPLICITLY (2026-10-07).
+      // The board crawl has filtered `neq('employer_type','staffing_agency')` since item 1; this route never
+      // did. The six NES / Fircroft brand rows were tagged staffing_agency and were nevertheless kept out of
+      // this queue only by ACCIDENT — they carry no country and already have a domain — so the protection
+      // rested on two unrelated facts that a single future edit could remove. 152 companies are tagged.
+      //
+      // The NULL-SAFE form, deliberately: `employer_type <> 'staffing_agency'` is NULL for a null
+      // employer_type, which Postgres treats as not-true, so a plain .neq() would silently drop every
+      // company whose type has not been judged yet. That is 0 rows today and exactly the kind of number
+      // that changes; an unclassified company must stay eligible.
+      .or('employer_type.is.null,employer_type.neq.staffing_agency');
     if (provenance) q = q.lt('domain_lookups', 2);
     return q.order('id').range(from, from + 999);
   };
