@@ -54,6 +54,27 @@ function isTest(db: SupabaseClient, workspaceId: string): Promise<boolean> {
   return testWorkspace.get(workspaceId)!;
 }
 
+/**
+ * FOR THE FIXTURE CACHE ONLY — who is in scope, and is their workspace test-marked?
+ *
+ * The cache must refuse to operate anywhere but a test workspace, and the only place that knows which
+ * workspace a model call belongs to is this file's request scope. Exposed as a narrow reader rather than by
+ * exporting the AsyncLocalStorage itself, so nothing else can start writing to the scope.
+ *
+ * `isTest` returns FALSE when it cannot tell — an unreadable workspace, or no workspace at all. That is the
+ * safe direction here: a cache that cannot prove it is in a test workspace must behave as if it is in
+ * production and do nothing.
+ */
+export function fixtureScope(): { tool: string | null; workspaceId: string | null; isTest: () => Promise<boolean> } {
+  const req = requestScope.getStore();
+  const tool = toolScope.getStore() ?? null;
+  return {
+    tool,
+    workspaceId: req?.workspaceId ?? null,
+    isTest: () => (req?.workspaceId ? isTest(req.db, req.workspaceId) : Promise.resolve(false)),
+  };
+}
+
 /** The cost_log row for one attempt. Pure, so model-meter-check can hold it to its shape. */
 export function usageRow(input: { tool: string; model: string; usage?: { input_tokens?: number; output_tokens?: number }; workspaceId: string | null; userId: string | null; test: boolean; testRun?: string | null }) {
   const inT = input.usage?.input_tokens ?? 0;

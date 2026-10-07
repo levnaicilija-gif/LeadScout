@@ -1,7 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { jsonFromReply } from './json-reply';
-import { recordUsage } from './meter';
+import { recordUsage, fixtureScope } from './meter';
+import { readFixture, writeFixture } from './fixture-cache';
 export const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 /**
@@ -48,6 +49,18 @@ export async function askJson<S extends z.ZodTypeAny>(schema: S, system: string,
   const shape = keys.length ? ` The object must use exactly these top-level keys: ${keys.map((k) => `"${k}"`).join(', ')}.` : '';
   const base = `${system}\nReturn valid JSON only. Return a single JSON object, not an array.${shape} No prose, no markdown fences.`;
 
+  // THE FIXTURE CACHE, test workspaces only (see fixture-cache.ts for the four locks). Keyed on the system
+  // prompt, the user content and the model, so a changed prompt or a changed fixture misses by construction.
+  // It sits HERE because askJson is the one choke point every cached tool passes through; a per-tool hook
+  // would have to be remembered three times. A replay returns before any billing, which IS the saving.
+  const cacheInput = { tool: fixtureScope().tool ?? '', model, system: base, user };
+  const replayed = await readFixture(cacheInput);
+  if (replayed) {
+    // Parsed through the SAME schema as a live reply: a fixture stored before a schema change must fail here
+    // rather than hand a probe a shape the product no longer accepts.
+    return schema.parse(replayed.response);
+  }
+
   let lastProblem = '';
   // Two attempts. The first failure is described back to the model rather than thrown at the
   // recruiter: every one of these seen in practice — a key under another name, a field sent as
@@ -68,7 +81,11 @@ export async function askJson<S extends z.ZodTypeAny>(schema: S, system: string,
     const text = r.content.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
 
     try {
-      return schema.parse(jsonFromReply(text));
+      const parsed = schema.parse(jsonFromReply(text));
+      // Store only a reply that PARSED. Caching a malformed one would make every later run fail identically
+      // and look like a product fault.
+      await writeFixture(cacheInput, parsed);
+      return parsed;
     } catch (e: any) {
       if (attempt === 1) throw e;
       lastProblem = e instanceof z.ZodError

@@ -3062,3 +3062,56 @@ ORSTED POLSKA OF SERVICES (×2 spellings), ØRSTED WIND POWER, Ørsted OF Servic
 o.o., Orsted Wind Power North America, Orsted Windpower, ørsted servics, Orsted Germany,
 Orsted Benelux, Ørsted WindPower, Ørsted Wind Pover, and more. Several are REAL national
 entities rather than duplicates, so this is not one merge — it is a decision per row.
+
+
+56. THE FIXTURE CACHE — STAGE 1 (cv-parse), built 2026-10-07
+
+WHY, measured: over the 30 days to 2026-10-07 test traffic was 61% of all model
+spend — $77.69 of $127.55 — and the three largest kinds were probes re-deriving the
+SAME answer from the SAME fixtures: cv-parse $19.65, document-read $11.47,
+candidate-score $10.25. A full gate is 44 calls and about $0.58, and the gate ran 247
+times in those 30 days. None of that spend bought new information after the first run.
+
+THE KEY IS THE DESIGN. sha256(tool + model + system prompt + user content). Change the
+prompt and the key changes; change the fixture CV and the key changes; switch model and
+the key changes. There is no manual "clear the cache" step to forget, and a stale entry
+is simply never read again. The key is NOT normalised — one trailing space in the prompt
+is a different key, because a prompt is bytes.
+
+FOUR INDEPENDENT LOCKS, each proved by its own mutation:
+  1. LEADSCOUT_FIXTURE_CACHE=1, set ONLY by release-gate.sh when it starts next start;
+  2. a refusal whenever VERCEL is set — production AND preview both set it, so the
+     deployed app can never read or write this cache however else it is configured;
+  3. the workspace in scope must be marked is_test, read through the meter's own request
+     scope (fixtureScope()); when that cannot be determined the answer is NO;
+  4. an ALLOW-LIST — stage 1 is cv-parse ALONE, so widening it is a deliberate edit.
+
+IT ANNOUNCES ITSELF, because a replayed run that looks identical to a live one is worse
+than no cache: it would quietly stop proving the model works. Every replay prints
+"[fixture-cache] REPLAYED ..." and appends to .cache/model-fixtures/replayed.log, which
+the gate truncates per run, and the `fixture-replays` step prints the count LAST so it
+covers every probe above it.
+
+THE NAMED LIVE CHECK: scripts/cv-parse-live-check.ts makes one REAL call whenever the
+prompt changes and otherwise at least weekly, with the cache explicitly switched off for
+it. The prompt is hashed from `parseCv.toString()` rather than from a copy of the text —
+the template literal lives inside that function, so there is no second copy to drift,
+which is the mistake TITLE_SYSTEM made by holding a hand-typed list of trades. THE
+SCHEDULE ONLY ADVANCES ON A PASS: a failed live check stays due, or one bad day would
+buy a week of silence from the only thing checking the model. Both arms proved by
+running it twice and then tampering the recorded hash: unchanged → SKIPPED with no model
+call; changed → RUNNING LIVE.
+
+A REPLAY IS PARSED THROUGH THE SAME SCHEMA as a live reply, so a fixture stored before a
+schema change fails loudly instead of handing a probe a shape the product has outgrown.
+And only a reply that PARSED is ever stored — caching a malformed one would make every
+later run fail identically and look like a product fault.
+
+NOT COMMITTED TO THE REPO, deliberately: a cv-parse response contains the fixture
+candidate's name and possibly a date of birth, and this repo does not put a person's
+name in a tracked file. The cache lives in .cache (gitignored), so the first run on any
+machine is live and primes it.
+
+STAGES: cv-parse now. The saving is measured over the next gates — THIS gate stores and
+saves nothing, the next one replays — then document-read, then candidate-score. Each
+stage is one line added to ALLOWED plus its own live check.

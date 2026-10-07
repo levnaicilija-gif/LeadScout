@@ -88,6 +88,12 @@ step trades npx tsx scripts/trades-check.ts
 # refused with 23505 and DROPPED — seven of them in item 32's re-read. This proves the write refreshes
 # such a row and never reassigns it, which is the half a naive onConflict change would have broken.
 step posting-write npx tsx --env-file=.env.local scripts/posting-write-check.ts
+# The fixture cache decides what the other probes PROVE, so it is checked harder than what it caches: the key
+# must change on a changed prompt, fixture, model or tool, and all four locks must hold on their own.
+step fixture-cache npx tsx --env-file=.env.local scripts/fixture-cache-check.ts
+# The named LIVE check for cv-parse: one real call whenever the prompt changes and otherwise at least weekly,
+# with the cache explicitly off for it. Without this the cache would quietly retire the only test of the model.
+step cv-parse-live env LEADSCOUT_TEST_RUN=cv-parse-live-check npx tsx --env-file=.env.local scripts/cv-parse-live-check.ts
 # NEVER GATED UNTIL 2026-10-05, found while adding item 46's arms: this file holds the ATS detection and
 # every title rule — BUTTON, NAV (which stopped "Browse job offers" being stored as a role and offered to a
 # candidate), the reference-code refusal, and now the scrape-residue stripping. CLAUDE.md has cited it as a
@@ -375,7 +381,12 @@ if [[ " ${FAILED[*]-} " == *" build "* ]]; then
 else
   # A stale server on the port serves old chunks and fails correct code.
   killport
-  npx next start -p "$PORT" > ".cache/server-$PORT.log" 2>&1 &
+  # THE FIXTURE CACHE IS OPT-IN AND THIS IS THE ONLY PLACE THAT OPTS IN. The probes in this block drive
+  # THIS server, so the cache lives in its process; production never sees the flag, and fixture-cache.ts
+  # refuses outright when VERCEL is set. Replays are counted and printed by the fixture-replays step below,
+  # because a replayed gate that looks identical to a live one would stop proving the model works.
+  rm -f .cache/model-fixtures/replayed.log
+  LEADSCOUT_FIXTURE_CACHE=1 npx next start -p "$PORT" > ".cache/server-$PORT.log" 2>&1 &
   for _ in $(seq 1 60); do curl -s -o /dev/null "http://localhost:$PORT/api/health" && break; nap 2000; done
   BASE="http://localhost:$PORT"
   step pdf-check env LEADSCOUT_TEST_RUN=pdf-check npx tsx --env-file=.env.local scripts/pdf-check.ts
@@ -491,6 +502,8 @@ else
   else echo "    FAIL (exit $code)" | tee -a "$LOG"; FAILED+=("industry-follow"); fi
   step smoke npx tsx --env-file=.env.local scripts/smoke.ts "$BASE"
   step design-shots env SCREEN_BASE="$BASE" SHOT_DIR=".cache/shots" npx tsx --env-file=.env.local scripts/design-shots.ts
+  # LAST, so the count covers every probe above it: how many model calls were REPLAYED rather than made.
+  step fixture-replays npx tsx scripts/fixture-replays.ts
   fi
   killport
 fi
