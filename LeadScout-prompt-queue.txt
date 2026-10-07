@@ -2895,3 +2895,38 @@ reason came back rather than only that something did.
 
 NOT DONE: the nine cleared rows are not re-imported from this directory. They are in
 the paid lookup queue instead, which now also refuses a directory domain (item 49).
+
+
+53. Ø AND Æ DEFEATED THE BRAND TEST, AND IT REFUSED A REAL DOMAIN (fixed 2026-10-07)
+
+Found by running, not by reading: the first full batch under item 49's mayStoreDomain
+REFUSED "ØRSTED WIND POWER" the domain orsted.com — "carries nothing of the brand
+orsted". It plainly does.
+
+THE CAUSE. `words()` folds accents by NFD-decomposing and dropping combining marks,
+which works for ö, å, ñ and é because each is a base letter plus a mark. Ø (U+00D8)
+and Æ (U+00C6) are ATOMIC letters with no canonical decomposition, so they passed
+through untouched and "ørsted" never contained "orsted". Å decomposes, which is why
+Scandinavian names worked often enough to hide this for two days.
+
+COST: one wasted lookup (EUR 0.023) and one wrongly refused domain. No data was
+corrupted — the refusal stamps the attempt, so ØRSTED WIND POWER sits at lookup 1 of 2
+and the next batch retries it with the fix in place. The two OTHER refusals in the same
+run were CORRECT and are now asserted as such, because this fold WIDENS matching and
+that is exactly where it could do harm: "Skagen SSB" is still refused
+skagensmaleren.dk, which belongs to Skagen Blade Technology.
+
+THE FIX folds the atomic letters explicitly — ø→o, æ→ae, œ→oe, ß→ss, þ→th, ð→d, ł→l,
+đ→d — to the forms a domain actually uses (ørsted.com, not oersted.com). Mutation-proved:
+removing the fold reproduces the production message verbatim.
+
+THE RESIDUAL LIMIT, recorded rather than smoothed over: this does not reconcile the
+Danish and Norwegian spellings of one word (værft / verft). That is a different word
+rather than a different encoding, and guessing between them would accept wrong domains
+to save the occasional lookup — the wrong direction for a rule that decides what gets
+stored.
+
+WHY IT MATTERS BEYOND THIS ONE ROW: `words()` is shared by siteScope's branch and
+country rules, so every Scandinavian company name was being compared in a half-folded
+form. Nothing else had failed visibly, which is the familiar shape — the fault was
+silent until a rule read the comparison strictly.

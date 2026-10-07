@@ -1,5 +1,5 @@
 /** A group's website is told apart from the winning entity's own: npx tsx scripts/site-scope-check.ts */
-import { siteScope, looksLikeDirectory, mayStoreDomain, brandOf } from '../src/lib/site-scope';
+import { siteScope, looksLikeDirectory, mayStoreDomain, onBrandName, brandOf } from '../src/lib/site-scope';
 
 let failed = 0;
 const check = (ok: boolean, what: string, got?: unknown) => { console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${what}${ok ? '' : ` — ${JSON.stringify(got)}`}`); if (!ok) failed++; };
@@ -74,6 +74,26 @@ let sc = siteScope({ companyName: 'KOSMOS ENERGY', domain: 'floatingwinddays.com
 check(sc.scope === 'group', 'a contained name that carries none of the brand is STILL a different company', sc);
 sc = siteScope({ companyName: 'Vestas Manufacturing', domain: 'vestas.com', sharedWith: ['VESTAS'] });
 check(sc.scope === 'own', 'while a contained name that DOES carry the brand is still the same company', sc);
+
+// ---- THE LETTERS NFD CANNOT DECOMPOSE (2026-10-07) ---------------------------------------------------
+// MEASURED IN PRODUCTION, NOT IMAGINED: the first real batch run under mayStoreDomain REFUSED
+// "ØRSTED WIND POWER" the domain orsted.com, saying it "carries nothing of the brand orsted" — because Ø is
+// an atomic letter with no canonical decomposition, so the accent fold left "ørsted" alone. Å decomposes,
+// which is why Scandinavian names worked often enough to hide this.
+console.log('\n--- Ø and Æ fold to the forms a domain actually uses ---');
+check(onBrandName('ØRSTED WIND POWER', 'orsted.com'), 'ØRSTED WIND POWER carries the brand orsted — the production false positive');
+check(onBrandName('Ørsted', 'orsted.com'), 'and so does Ørsted itself');
+check(onBrandName('Ørsted Wind Power A/S', 'orsted.com'), 'with a legal form too');
+let st = mayStoreDomain('ØRSTED WIND POWER', 'orsted.com', ['Ørsted']);
+check(st.ok, 'so ØRSTED WIND POWER may now STORE orsted.com, which it was refused in the live run', st);
+check(onBrandName('Søby Værft A/S', 'soby-vaerft.dk'), 'æ folds to ae, matching how the domain spells it');
+check(onBrandName('Hafnarfjörður Þór', 'thor.is'), 'þ folds to th');
+// THE OTHER ARM: folding must not make unrelated names match. Both of these refusals were CORRECT in the
+// live run and must stay correct — the fold widens matching, so this is where it could do harm.
+st = mayStoreDomain('Skagen SSB', 'skagensmaleren.dk', ['Skagen Blade Technology']);
+check(!st.ok, 'Skagen SSB is still refused skagensmaleren.dk — a correct refusal from the same live run', st);
+check(!onBrandName('Logi Trans AS', 'floatingwinddays.com'), 'and an unrelated name still carries no brand');
+check(!onBrandName('Premium', 'oceanwinds.com'), 'nor does a membership tier');
 
 console.log(failed ? `\n${failed} failed` : '\nsite scope: all checks passed');
 process.exitCode = failed ? 1 : 0;

@@ -36,7 +36,31 @@ export function brandOf(domain: string): string {
   return sld ?? '';
 }
 
-const words = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(LEGAL, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+/**
+ * LETTERS NFD CANNOT DECOMPOSE, and leaving them out cost a real domain (2026-10-07).
+ *
+ * `words` folds accents by decomposing and dropping the combining marks, which works for ö, å, ñ and é —
+ * every one of those is a base letter plus a mark. **Ø (U+00D8) and Æ (U+00C6) are not**: they are atomic
+ * letters with no canonical decomposition, so they survived the fold untouched. The consequence was measured
+ * in production rather than imagined: `ØRSTED WIND POWER` was REFUSED orsted.com with "carries nothing of the
+ * brand orsted", because "ørsted" does not contain "orsted". Å decomposes, so Scandinavian names happened to
+ * work often enough to hide it.
+ *
+ * Folded to the forms a domain actually uses — ørsted.com, not oersted.com. The residual limit, said out
+ * loud: this does not reconcile the Danish and Norwegian spellings of one word (værft / verft), because that
+ * is a different word rather than a different encoding, and guessing between them would accept wrong domains
+ * to save the odd lookup.
+ */
+const ATOMIC_LETTERS: [RegExp, string][] = [
+  [/ø/g, 'o'], [/æ/g, 'ae'], [/œ/g, 'oe'], [/ß/g, 'ss'], [/þ/g, 'th'], [/ð/g, 'd'],
+  [/ł/g, 'l'], [/đ/g, 'd'], [/ħ/g, 'h'], [/ŧ/g, 't'], [/ı/g, 'i'], [/ŋ/g, 'n'],
+];
+
+const words = (s: string) => {
+  let t = s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  for (const [re, to] of ATOMIC_LETTERS) t = t.replace(re, to);
+  return t.replace(LEGAL, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+};
 
 /**
  * Hosts that are a DIRECTORY, EVENT or PLATFORM rather than a company's own site — never a valid answer to
