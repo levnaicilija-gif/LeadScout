@@ -17,10 +17,21 @@ const same = (a: string, b: string) => sameCompany({ name: a }, { name: b }).sam
 check(canonCompany('ЕКОВАТ - БЪЛГАРИЯ ЕООД') === 'ековат българия еоод', 'a Cyrillic winner keeps its name', JSON.stringify(canonCompany('ЕКОВАТ - БЪЛГАРИЯ ЕООД')));
 check(same('ЕКОВАТ - БЪЛГАРИЯ ЕООД', 'Ековат – България ЕООД'), 'the same Cyrillic name, cased and punctuated differently, is one company');
 check(!same('ЕКОВАТ - БЪЛГАРИЯ ЕООД', 'ЕКОСТРОЙ ЕООД'), 'two different Cyrillic names are two companies');
-check(canonCompany('Ørsted Wind') === 'ørsted wind', 'ø is kept, not turned into a space', JSON.stringify(canonCompany('Ørsted Wind')));
-check(!same('Ørsted Wind', 'rsted Wind'), 'Ørsted and "rsted" are no longer the same name');
-check(!same('Ørsted', 'Orsted'), 'nothing is transliterated: Ørsted and Orsted stay two spellings');
-check(canonCompany('Søas AS') === 'søas', 'a legal form is stripped only as a whole word, in any script', JSON.stringify(canonCompany('Søas AS')));
+check(canonCompany('Ørsted Wind') === 'orsted wind', 'ø is folded to o, never turned into a space', JSON.stringify(canonCompany('Ørsted Wind')));
+check(!same('Ørsted Wind', 'rsted Wind'), 'Ørsted and "rsted" are not the same name');
+// Item 55 (owner, 2026-10-08): the atomic letters NFD cannot decompose are folded, as site-scope already does.
+// Each pair below is a real duplicate found in the companies table by the measurement that justified the fold.
+check(same('Ørsted', 'Orsted') && same('ØRSTED WIND POWER', 'ORSTED WIND POWER'), 'Ø folds: Ørsted and Orsted are one name');
+check(same('Rambøll', 'Ramboll') && same('Vårgrønn', 'Vargronn'), 'and so are Rambøll / Ramboll and Vårgrønn / Vargronn');
+check(same('Sund & Bælt', 'Sund & Baelt') && same('Andreas Süß Gerüstbau GmbH', 'Andreas Suss Gerustbau'),
+  'Æ folds to ae and ß to ss', `${canonCompany('Sund & Bælt')} / ${canonCompany('Andreas Süß Gerüstbau GmbH')}`);
+check(same('Agencja Rozwoju Przemysłu', 'Agencja Rozwoju Przemyslu'), 'Ł folds to l');
+// The other arm: the fold is an ENCODING rule, never a spelling guess, so it must not widen past that.
+check(!same('Søby Værft', 'Søby Verft'), 'a different WORD stays different: værft is not verft', `${canonCompany('Søby Værft')} / ${canonCompany('Søby Verft')}`);
+check(!same('Ørsted', 'Oersted'), 'ø folds to o, the form domains use — not to oe');
+check(!same('Rambøll', 'Ramboll Management Consulting'), 'and descriptive words still separate a folded name from its neighbour');
+check(canonCompany('ЕКОВАТ - БЪЛГАРИЯ ЕООД') === 'ековат българия еоод', 'a non-Latin script is still never transliterated');
+check(canonCompany('Søas AS') === 'soas', 'a legal form is stripped only as a whole word, in any script', JSON.stringify(canonCompany('Søas AS')));
 check(same('Equinor', 'Equinor ASA') && same('AF Gruppen ASA', 'AF Gruppen AS'), 'legal forms still strip as before');
 check(same('Brüel & Kjær Vibro', 'Bruel & Kjær Vibro'), 'accents still strip as before');
 check(!same('Shell', 'Shell Energy'), 'descriptive words still count');

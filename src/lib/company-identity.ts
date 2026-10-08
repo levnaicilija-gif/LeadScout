@@ -15,6 +15,8 @@
  * Shell Energy.
  */
 
+import { foldAtomicLetters } from './atomic-letters';
+
 /**
  * Legal forms only. Nothing that could be part of a company's actual identity.
  *
@@ -28,12 +30,22 @@ const LEGAL = /(?<![\p{L}\p{N}])(a\/s|aps|as|asa|ab|oy|oyj|gmbh|mbh|b\.?v\.?|n\.
  *
  * Letters in every script are kept. The rule used to keep a-z and 0-9 only, which turned
  * "Ørsted" into "rsted" and a Bulgarian winner, "ЕКОВАТ - БЪЛГАРИЯ ЕООД", into nothing at all — so
- * the TED pass rejected a real award as "not a usable company name". Nothing is transliterated:
- * "Ørsted" and "Orsted" stay two spellings, because guessing that they are one is a merge.
+ * the TED pass rejected a real award as "not a usable company name". Non-Latin scripts are still never
+ * transliterated: Cyrillic stays Cyrillic.
+ *
+ * ATOMIC LATIN LETTERS ARE FOLDED, REVERSING AN EARLIER RULE (owner's decision, 2026-10-08, item 55). This
+ * used to keep "Ørsted" and "Orsted" as two spellings on the grounds that equating them is a merge. Measured
+ * before reversing it: NFD already folds ö, å and é, so only the letters with no decomposition (Ø, Æ, ß, Ł…)
+ * were being kept apart — the same half-fold `site-scope` fixed in 4f65f53. Over 5,955 company rows the fold
+ * changes 63 canonical forms and creates SIX new collisions, every one two spellings of one firm (ORSTED /
+ * ØRSTED WIND POWER, Orsted / Ørsted Wind, Orsted Windpower / Ørsted WindPower, Ramboll / Rambøll, FØN / FON
+ * Energy Services, Vargronn / Vårgrønn) and not one false pairing; and it lets the "Ørsted" keeper reach 329
+ * of the 330 Industry Contacts naming the firm, against 280. The fold merges nothing by itself — it makes
+ * those pairs visible to `findOrCreateCompany` and to the duplicate scan. ø becomes o, not oe, because that
+ * is the form domains and event lists use (orsted.com).
  */
 export const canonCompany = (name: string) =>
-  name.toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  foldAtomicLetters(name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''))
     .replace(/\s*\([^)]*\)/g, '')
     .replace(LEGAL, ' ')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')

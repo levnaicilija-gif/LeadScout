@@ -14,6 +14,8 @@
  *            on the winner's own country domain (ccecc.ro for "… ROMANIA SRL") is the local entity's;
  *   shared — the same domain is already on file for a company with a different name.
  */
+import { foldAtomicLetters } from './atomic-letters';
+
 export type SiteScope = { scope: 'own' | 'group'; reason: string | null };
 
 const BRANCH = /\b(etablissement|établissement|agence|agency|branch|filiale|niederlassung|zweigniederlassung|sucursal|succursale|delegaci[oó]n|division|regional|region)\b/i;
@@ -50,17 +52,12 @@ export function brandOf(domain: string): string {
  * loud: this does not reconcile the Danish and Norwegian spellings of one word (værft / verft), because that
  * is a different word rather than a different encoding, and guessing between them would accept wrong domains
  * to save the odd lookup.
+ *
+ * The list itself lives in `atomic-letters.ts`, shared with `canonCompany` since 2026-10-08 (item 55).
  */
-const ATOMIC_LETTERS: [RegExp, string][] = [
-  [/ø/g, 'o'], [/æ/g, 'ae'], [/œ/g, 'oe'], [/ß/g, 'ss'], [/þ/g, 'th'], [/ð/g, 'd'],
-  [/ł/g, 'l'], [/đ/g, 'd'], [/ħ/g, 'h'], [/ŧ/g, 't'], [/ı/g, 'i'], [/ŋ/g, 'n'],
-];
-
-const words = (s: string) => {
-  let t = s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  for (const [re, to] of ATOMIC_LETTERS) t = t.replace(re, to);
-  return t.replace(LEGAL, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-};
+const words = (s: string) =>
+  foldAtomicLetters(s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''))
+    .replace(LEGAL, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
 /**
  * Hosts that are a DIRECTORY, EVENT or PLATFORM rather than a company's own site — never a valid answer to

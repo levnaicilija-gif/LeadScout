@@ -3054,6 +3054,37 @@ renaming case by case. Two bounded changes, each with both arms and a mutation �
 Case-by-case renames are strictly worse: NIDEC proved a rename can trade one orphan for
 two, and there are 19 Ørsted company rows to rename rather than one rule to change.
 
+CHANGE (1) BUILT 2026-10-08 (owner's go-ahead: "the Oe fold"). canonCompany folds the atomic
+letters through src/lib/atomic-letters.ts, the one list it now shares with site-scope's words().
+Re-measured the same day before writing: 63 of 5,955 canonical forms change (the table grew since
+the 60), the SAME six collisions appear and no others, and the "Ørsted" keeper reaches 329 of 330.
+The 63 rows, every one, as the fold rewrites them (name -> canonical form):
+    Ørsted North America · Miljøstyrelsen · İş Enerji Yatırımları A.Ş. · „Zakład Usług Wiertniczych
+    STUDWIERT Kurkowski Piotr” · RadøyGruppen AS · Østermark Grouting · Çalık Rewnewables · Heléns rør
+    · Andreas Süß Gerüstbau GmbH · Ex Ørsted / Independent · DIS - Dansk IngeniørService · Baggerød ·
+    Großmann Ingenieur Consult · Dansk Ingeniørservice · Karmøy Kommune · Næringsforeningen
+    Haugalandet · Høgskolen i Molde · Ørsted Wind Power NL · GDAŃSKA STOCZNIA „REMONTOWA” im. J.
+    Piłsudskiego S.A. · Agencja Rozwoju Przemysłu · Fanø Kran-Service · FØN Energy Services · Wrocław
+    University od economics and business · Ringkjøbing Landbobank · Sund & Bælt · Jørgensen & Utoft ·
+    PRZEDSIĘBIORSTWO BUDOWNICTWA ELEKTROENER GETYCZNEGO ELBUD WARSZAWA SPÓŁKA Z OGRANICZONĄ
+    ODPOWIEDZIALNOŚCIĄ · A. P. Møller-Mærsk · Hans Følsgaard · Rødgaards Import · Halsnæs Kommune ·
+    HØJ Nordic Marine Contractor · Rambøll · ØRSTED WIND POWER · Lund & Sørensen · Bruel & Kjær Vibro
+    · Øglænd System · Towarowa Giełda Energii S.A. · Københavns Universitet · Ørsted OF Services Sp. z
+    o.o. · Thyborøn Port · MT Højgaard Danmark A/S · Ingeniøren · Brüel & Kjær Vibro Remote Montoring ·
+    Rødsand 2 Offshore Windfarm · Vårgrønn · Grupa Przemysłowa Baltic · Berrylife Szoka Kurlit Spółka
+    Komandytowa · ørsted servics · Rambøll Management Consulting · Przedsiębiorstwo Produkcyjno-Usługowe
+    BBAP-ELECTRICS Sp. J. Adam Bladowski Piotr Bobrowicz · København Universitet · Firma Vogl, Roßbach
+    · Søby Værft A/S · Dagbladet Børsen · M. A. Vedøy AS · ÅÆØ 690 · Operatørenes forening for
+    beredskap · Ørsted WindPower · Ørsted · Ørsted Wind Pover · Ørsted Wind · Wexøe
+  each folds ø->o, æ->ae, ß->ss, ł->l, ı->i and the rest; NFD already handled every other accent.
+The fold MERGES NOTHING. It makes six pairs visible: ORSTED/ØRSTED WIND POWER, Orsted/Ørsted Wind,
+Orsted Windpower/Ørsted WindPower, Ramboll/Rambøll, FØN/FON Energy Services, Vargronn/Vårgrønn — the
+last the one pair whose rows DISAGREE on country (GB against NO), which canon-collision-report calls
+the dangerous shape; it is still Vårgrønn, but it is a pair to look at, not to merge on sight.
+company-identity-check holds both arms (the folds; and værft is not verft, ø is o and not oe, Cyrillic
+untouched), proved by five mutations, and is now a gate step — it was never one before. Change (2),
+the space-insensitive attendeeMatch arm, is NOT built.
+
 ØRSTED IS NOT FOUR ROWS, IT IS NINETEEN. The merge is NOT written, awaiting the owner's
 decision on the keeper. Only one of the 19 carries a domain — "Ørsted" (orsted.com) —
 and it is the best keeper by reach. The rest are national and typo variants: Ørsted North

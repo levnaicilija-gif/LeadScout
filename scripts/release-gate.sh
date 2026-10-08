@@ -71,6 +71,10 @@ step compound-signals npx tsx scripts/compound-signals-check.ts
 step phone-on npx tsx scripts/phone-on-check.ts
 step winner-address npx tsx scripts/winner-address-check.ts
 step site-scope npx tsx scripts/site-scope-check.ts
+# What counts as one company name. It decides findOrCreateCompany's matches, where a wrong merge is
+# unrecoverable, and since item 55 (2026-10-08) it folds Ø/Æ/ß — with both arms, so the fold can never
+# quietly widen into a spelling guess.
+step company-identity npx tsx scripts/company-identity-check.ts
 step site-trust npx tsx scripts/site-trust-check.ts
 # Item 37: the site's OWN contact/imprint link is followed, the home page is read for a number, a wrong
 # page never is, and a hand-entered domain says so. The dangerous half is what it must NOT follow — a
