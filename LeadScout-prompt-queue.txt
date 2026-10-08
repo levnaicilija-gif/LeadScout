@@ -2845,6 +2845,32 @@ AFTER THE CYCLE: report postings KEPT PER BOARD. If via='board' is still 0, DISA
 boards and record the cost and the decision here. Do not disable before the cycle — the
 whole point is that the prompt the boards were judged under has changed.
 
+DECIDED 2026-10-08 (owner): THE BOARDS ARE DISABLED. The cycle ran under the widened prompt
+(00:35-01:15 UTC that night) and every board kept NOTHING — via='board' is 0 of 266 postings,
+kept 0 on all nine, every night since the unit started on 2026-09-21.
+  ALL-TIME COST: 728 "board advert" model reads, EUR 1.6043, over 18 days —
+    www.subsea.org 194 calls EUR 0.5099 · offshorejobvacancy.com 198 EUR 0.4266 ·
+    www.oilandgaspeople.com 216 EUR 0.3881 · www.oilgasvacancy.com 72 EUR 0.1735 ·
+    www.rigzone.com 48 EUR 0.1061 (energyjobline, oiljobfinder, roadtechs and teknikjobb
+    never reached a model read).
+  DISABLED, nine rows, read back afterwards (0 job_board sources enabled): offshorejobvacancy.com,
+    energyjobline.com, oilandgaspeople.com, oilgasvacancy.com, oiljobfinder.com, rigzone.com,
+    roadtechs.com, subsea.org/jobs, teknikjobb.se. A data change only — the tick's job-boards unit
+    stays wired and simply finds nothing due, so re-enabling a row is the whole undo.
+
+THE BROWSERLESS TOKEN IS DEAD AND IS NOT BEING RENEWED (owner, 2026-10-08) — BUT THE BOARDS
+WERE NOT ITS ONLY USER, which is what "check nothing else uses it" found. Every board batch has
+logged `wss://production-sfo.browserless.io/ 401 Unauthorized` since the unit's first run on
+2026-09-21. connectBrowser() (src/lib/browser.ts) is ALSO used by:
+  - the FROSIO certificate adapter: all six FROSIO verifications on file, 2026-09-09 to
+    2026-09-22, ended `pending_issuer` through method browser_lookup — a live Verify adapter
+    that has not been able to look anything up for weeks;
+  - fetch-page's browser fallback: no posting has arrived via='browser' since 2026-09-14;
+  - radar's one browser-ruled source, www.woodgroup.com/news (enabled).
+So disabling the boards removes the noisiest symptom, not the dependency. Renewing, replacing
+(BROWSERBASE_API_KEY is the coded alternative) or retiring the browser paths is an owner's
+decision still open.
+
 
 52. THE MEMBER-DIRECTORY IMPORT — WHAT IT DID, AND THE GUARD (DONE 2026-10-06)
 
@@ -3196,3 +3222,81 @@ stage is one line added to ALLOWED plus its own live check.
    board that day. Scoping the probe to its OWN seeded postings would cut about ten scored
    jobs to two or three AND make the probe deterministic — cheaper and stronger at once.
    It needs a full gate to prove the assertions still hold, which memory has blocked.
+   DECIDED 2026-10-08 (owner): NOT BUILT, AND NOT TO BE. Scoping the probe needs either a
+   test-only parameter on /api/candidate/suggest — test code inside a recruiter route — or an
+   industry cap, which cannot work because an unclassified company stays visible to every
+   account, so live postings leak in regardless. The saving is about $0.09 a gate, which does
+   not pay for test code in a product route. The probe stays as it is.
+
+
+58. EUROPE AND DATES — MEASURED 2026-10-08, READ-ONLY, NOTHING CHANGED. The owner decides.
+
+Measured by .cache/investigate/europe-dates.ts plus a supplement for the DEFAULT views (Won
+work = top 50 news + top 50 tender by stored fit; Hiring now = one row per company, agencies
+hidden, aged by its NEWEST advert).
+
+PART 1 — REGION. Hiring now: 140 open postings — Europe 121, non-Europe 1 (AO crane driver),
+unknown 18. The crawl already drops a non-European posting at WRITE time and keeps an unknown
+one. Won work: 325 open leads — news 93 (Europe 34, NON-EUROPE 32, unknown 27), tender 232
+(Europe 223, unknown 9). No screen filters by region; non-European leads are only held at
+fit 25. 36 leads carry no country (item 33), 35 of them with a place in their own text.
+
+PART 2 — DATES.
+  undated: news leads 26 of 93 (28%); tender 0 of 232; postings 0 of 140 (63 of them dated
+    only by first_seen_at).
+  oldest shown: news 2020-11-27 (Abu Qir port project, 2,141 days); tender 2020-05-29
+    (2,323 days); posting 2021-10-08 (1,826 days, an Elektroinstallateur advert).
+  older than 90 days IN THE DEFAULT VIEWS TODAY: Won work news list 6 of 50 (Yeu and
+    Noirmoutier 1,336 d, Moray West 1,045 d and 1,351 d, EFGL 604 d…), tender list 11 of 50
+    (one Czech award 2,323 d); Hiring now 3 of 51 company rows (businessinwind 237 d, Schüttler
+    Gerüstbau 953 d, EBA Elektro- 1,826 d). So yes — years-old items sit in the default views.
+  undated sort: "age unknown", never hidden, and in the DEFAULT sorts (fit, pressure) it
+    sorts WITH FRESH; only "Latest activity" puts it last. 14 of the 26 are in the default
+    top-50 news list.
+
+PART 3 — WHAT EACH PROPOSAL WOULD HIDE.
+  A. non-European hidden by default, "All regions" toggle: Hiring now 1 of 140 postings
+     (near no-op, the crawl already gates); Won work 32 of 325 leads, all news. Unknown
+     country must stay visible (18 postings, 36 leads).
+  B. recency window with a toggle:
+       Hiring now 30 days — by POSTING 54 of 140; by COMPANY ROW (newest advert) 5 of 51.
+       Won work 90 days — news 9 of 93; tender 65 of 232 (6 + 11 of the default top-50s).
+       For reference: tender at 180 d hides 40, at 365 d 26.
+  C. undated news: aging the 26 by FIRST READ (leads.created_at), labelled "first seen",
+     as postings already age from first_seen_at — today all 26 were first read within 45
+     days, so it hides 0 and only changes the label and the sort.
+
+RECOMMENDATION (for the owner to accept or refuse):
+  A — YES for Won work (hides 32 news leads already capped at 25); harmless but pointless on
+      Hiring now. Never hide an UNKNOWN country — that is item 33's job to resolve, not hide.
+  B — Hiring now 30 days judged on the company row's NEWEST advert (hides 5 rows, keeps a
+      company that is still advertising); Won work 90 days for NEWS but NOT for tender: an
+      award has a longer staffing runway (item 17 already ages it at 180/365), and 90 days
+      would hide 65 of 232 including this summer's awards. Tender at 365 days hides 26.
+      The window FILTERS the default view, never deletes, and the toggle shows everything.
+  C — first try to recover a real date from the stored article text with page-dates.ts (free,
+      no model call); age whatever stays undated from first read, labelled "first seen", and
+      at equal fit sort it AFTER a dated fresh lead rather than with it. Never invent a
+      publication date from the read date — the label is what keeps that honest.
+
+
+ITEM 27 / INDUSTRY CONTACTS LOOKUP RUN, 2026-10-08 (owner: "the remaining 49, stopping at about
+EUR 1.00"). The live queue was 43 when measured, not 49. ØRSTED WIND POWER heads it, and the
+owner said skip its retry; the route has no per-company exclude, so the run went country by
+country and left DK out entirely (its other five — E. Edal Support, ccbsafety, Mougaard
+Management, KK WindSolutions, TS TECH — wait for after the Ørsted merge).
+  38 lookups, EUR 0.9019, 19 websites found: 50Hertz, Acciona, Cargostore Worldwide, Cubico,
+  EOLOS, Envision Energy Spain, Exponential Renewables (x1wind.com), IDOM, Lightsource bp,
+  Modvion, Naturgy Renovables, Orlo Energy, RENOGEAR, RES, SSE Renewables, Select Offshore,
+  Skyborn Renewables, Solarig Global Services, West of Orkney. Stopped by its own ceiling with
+  NL, IE and BE untouched.
+  *** TWO DEFECTS THE RUN EXPOSED, not fixed: ***
+  (1) A REFUSAL IS COUNTED AS A MISS. Five companies were refused a domain already held by
+      their group — bp (bp.com, BP Europe), SGRE (siemensgamesa.com), Sener Ingeniería
+      (group.sener), Nordex Acciona and Nordex Energy Spain (nordex-online.com) — and the
+      refusal stamps a lookup, so the NEXT batch re-picked four of them and paid again
+      (about EUR 0.10), and the second refusal wrote careers_status 'no_domain_found'. All five
+      now read "no website found", which is false: each HAS one, its group's. They are the
+      group-site case site-scope already models, refused instead of labelled.
+  (2) brandOf('group.sener') returns "group": .sener is a brand TLD, so the second-level
+      label is the generic word and the brand test compares against nothing.
