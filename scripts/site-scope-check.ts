@@ -1,5 +1,6 @@
 /** A group's website is told apart from the winning entity's own: npx tsx scripts/site-scope-check.ts */
-import { siteScope, looksLikeDirectory, mayStoreDomain, onBrandName, brandOf } from '../src/lib/site-scope';
+import { siteScope, looksLikeDirectory, mayStoreDomain, onBrandName, brandOf, sameGroupHolder } from '../src/lib/site-scope';
+import { canonCompany } from '../src/lib/company-identity';
 
 let failed = 0;
 const check = (ok: boolean, what: string, got?: unknown) => { console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${what}${ok ? '' : ` — ${JSON.stringify(got)}`}`); if (!ok) failed++; };
@@ -94,6 +95,78 @@ st = mayStoreDomain('Skagen SSB', 'skagensmaleren.dk', ['Skagen Blade Technology
 check(!st.ok, 'Skagen SSB is still refused skagensmaleren.dk — a correct refusal from the same live run', st);
 check(!onBrandName('Logi Trans AS', 'floatingwinddays.com'), 'and an unrelated name still carries no brand');
 check(!onBrandName('Premium', 'oceanwinds.com'), 'nor does a membership tier');
+
+// ---- A GROUP'S SITE IS STORED AS THE GROUP'S, NEVER COUNTED AS A MISS (defects 1 and 2, 2026-10-09) -------
+// MEASURED IN PRODUCTION: the 2026-10-08 Industry Contacts run refused five subsidiaries the domain their own
+// group already held, paid a retry for four of them, and then marked all five "no website found".
+console.log('\n--- a domain the same group holds is stored as the group\'s site ---');
+check(brandOf('group.sener') === 'sener', 'a brand TLD is the brand: group.sener → sener, not "group"', brandOf('group.sener'));
+check(brandOf('group.vattenfall.com') === 'vattenfall' && brandOf('winergy-group.com') === 'winergy-group' && brandOf('acme.group') === 'acme',
+  'and a generic label on an ordinary TLD still is not (group.vattenfall.com, winergy-group.com, acme.group)');
+check(brandOf('group.dk') === 'group' && brandOf('careers.online') === 'careers', 'a country or common TLD is never taken as a brand', [brandOf('group.dk'), brandOf('careers.online')]);
+let g = mayStoreDomain('Nordex Acciona', 'nordex-online.com', ['Nordex']);
+check(g.ok && g.group === 'Nordex' && /same group/.test(g.reason ?? ''), 'Nordex Acciona → nordex-online.com is STORED as the group\'s site (held by Nordex)', g);
+g = mayStoreDomain('Nordex Energy Spain', 'nordex-online.com', ['Nordex']);
+check(g.ok && g.group === 'Nordex', 'and so is Nordex Energy Spain', g);
+g = mayStoreDomain('bp', 'bp.com', ['BP Europe']);
+check(g.ok && g.group === 'BP Europe', 'bp → bp.com is stored even though a two-letter name cannot pass the brand test', g);
+g = mayStoreDomain('Sener Ingeneniería y Sistemas, S.A.', 'group.sener', ['Sener']);
+check(g.ok, 'Sener Ingeniería → group.sener is stored once the brand TLD is read', g);
+// THE OTHER ARM: a shared first word is not a group unless the DOMAIN's brand begins with that whole word.
+g = mayStoreDomain('SGRE', 'siemensgamesa.com', ['Siemens Gamesa']);
+check(!g.ok, 'an abbreviation shares nothing printed and is NOT matched — SGRE stays an owner\'s call, never inferred', g);
+g = mayStoreDomain('Wind Power AS', 'windenergyireland.com', ['Wind Energy Ireland']);
+check(!g.ok, 'a generic opening word ("wind") does not make a group when the brand is one token (windenergyireland)', g);
+g = mayStoreDomain('Skagen SSB', 'skagensmaleren.dk', ['Skagen Blade Technology']);
+check(!g.ok && !g.group, 'Skagen SSB is still refused: "skagen" is not the brand "skagensmaleren"', g);
+check(sameGroupHolder('Nordex Acciona', 'acciona.com', ['Acciona']) === null, 'and the FIRST word decides: Nordex Acciona is not in the Acciona GROUP by its second word (the older brand rule may still store it)');
+
+// ---- EITHER SPELLING FITS: ø/ö/æ/ä/å/ü/ß folded (o, a, u…) OR written as a digraph (oe, ae, aa, ue, ss) ---------
+// Owner's decision 2026-10-12. Measured first: 16 of 166 tender winners with a domain flip, all German ü→ue, and
+// HOLBØLL A/S's own site is holboell.dk. Both sides are tested, and the false-positive arms are the point: the
+// digraph only ever REPLACES a letter that is there — it never invents one, and a different word stays different.
+console.log('\n--- either spelling of a name fits its domain ---');
+const fits = (n: string, d: string, want: boolean, why: string) => check(onBrandName(n, d) === want, `${want ? 'FITS' : 'does NOT fit'}: "${n}" ~ ${d} — ${why}`, onBrandName(n, d));
+fits('HOLBØLL A/S', 'holboell.dk', true, 'Danish ø written oe (the HOLBØLL notice, 697631-2026)');
+fits('HOLBØLL A/S', 'holboll.dk', true, 'and ø folded to o still fits');
+fits('HOLBØLL A/S', 'holbøll.dk', true, 'and the letter itself, in an internationalised domain');
+fits('Schüttler Gerüstbau GmbH', 'schuettler-geruestbau.de', true, 'German ü written ue — one of the 16 measured flips');
+fits('Gerüstbau Stuiber GmbH', 'geruestbau-stuiber.co.de', true, 'ü→ue under a second-level .co.de');
+fits('Gröna Räkan AB', 'groenaraekan.se', true, 'Swedish ö and ä written oe and ae');
+fits('Gröna Räkan AB', 'gronarakan.se', true, 'and folded to o and a');
+fits('Vårgrønn AS', 'vaargroenn.no', true, 'Norwegian å written aa and ø written oe');
+fits('Vårgrønn AS', 'vargronn.no', true, 'and both folded');
+fits('Mäkelä Oy', 'maekelae.fi', true, 'Finnish ä written ae');
+fits('Roßbach Gerüstbau GmbH', 'rossbach-geruestbau.de', true, 'ß→ss and ü→ue together');
+// A LIMIT, pinned so nobody reads it as a spelling bug: the brand test is containment of the squashed name, so a
+// domain that REORDERS the name's words fails whatever the spelling — "suessgeruestbau" vs brand "geruestbausuess".
+fits('Andreas Süß Gerüstbau GmbH', 'geruestbau-suess.de', false, 'word order, not spelling — the existing containment rule, unchanged');
+// THE OTHER ARM — nothing is invented, and a different word is not a different encoding.
+fits('Holboll A/S', 'holboell.dk', false, 'a name printed WITHOUT ø is never given an oe it does not have');
+fits('Muller Bau GmbH', 'mueller-bau.de', false, 'nor a plain u a ue');
+fits('Ole Andersen', 'oeland.se', false, 'an oe in a domain is not matched against a name with no ö or ø');
+fits('Søby Værft A/S', 'sobyverft.no', false, 'værft is not verft — a different word, not a spelling');
+fits('Søby Værft A/S', 'shipyard.dk', false, 'and a site that shares nothing still shares nothing');
+fits('Ø AS', 'oe.dk', false, 'and the three-character floor still holds for a digraph spelling');
+check(sameGroupHolder('Schüttler Service GmbH', 'schuettler-geruestbau.de', ['Schüttler Gerüstbau GmbH']) === 'Schüttler Gerüstbau GmbH',
+  'the group rule reads either spelling too: "Schüttler …" is the schuettler group');
+check(sameGroupHolder('Muller Service GmbH', 'mueller-gruppe.de', ['Müller Gruppe GmbH']) === null,
+  'and a name without ü is not put in the mueller group by its holder\'s spelling');
+// HESS GERÜSTBAU, the one live case where the verdict bites (owner: report before and after, do not merge).
+// Before 2026-10-12 neither row was recognised as carrying the brand "hessgeruestbau", so each made the other's
+// site a GROUP site. They are one firm under two legal-form spellings; now they read as one brand family.
+const hessA = 'Hess Gerüstbau GmbH', hessB = 'Hess Gerüstbau GmbH & Co. KG';
+check(siteScope({ companyName: hessA, domain: 'hessgeruestbau.de', sharedWith: [hessB] }).scope === 'own'
+  && siteScope({ companyName: hessB, domain: 'hessgeruestbau.de', sharedWith: [hessA] }).scope === 'own',
+  'Hess Gerüstbau GmbH and … GmbH & Co. KG on hessgeruestbau.de are one brand family — "own", no longer "group"');
+check(mayStoreDomain(hessB, 'hessgeruestbau.de', [hessA]).ok, 'and either may still store it');
+check(siteScope({ companyName: 'Hess Elektro GmbH', domain: 'hessgeruestbau.de', sharedWith: [hessA] }).scope === 'group',
+  'while a different Hess firm on the same site is still a GROUP site — the shared-domain guard is not loosened');
+// canonCompany is deliberately UNCHANGED: company identity keeps ONE canonical form.
+check(canonCompany('Schüttler Gerüstbau GmbH') === canonCompany('Schuttler Gerustbau GmbH')
+  && canonCompany('Schüttler Gerüstbau GmbH') !== canonCompany('Schuettler Geruestbau GmbH'),
+  'canonCompany is unchanged — ü folds to u and is NOT the same name as a ue spelling, so no rows merge',
+  [canonCompany('Schüttler Gerüstbau GmbH'), canonCompany('Schuettler Geruestbau GmbH')]);
 
 console.log(failed ? `\n${failed} failed` : '\nsite scope: all checks passed');
 process.exitCode = failed ? 1 : 0;

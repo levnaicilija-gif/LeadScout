@@ -205,7 +205,12 @@ async function run(req: Request) {
       }
       if (domain && ans.confirmed_by) {
         // With 0033 the search's result has its own columns and companies.source keeps where the company came from.
-        const scope = siteScope({ companyName: c.name, domain, winnerCountry: c.country, sharedWith: (holders.data ?? []).map((h) => h.name) });
+        // A domain held by the SAME GROUP is stored as the group's site, with mayStoreDomain's reason — never
+        // counted as a miss (defect 1, 2026-10-09). siteScope cannot be asked here: a contained name on-brand
+        // ("Nordex Acciona" inside nothing, "Nordex" inside nordex-online) reads as the entity's OWN site there.
+        const scope = allowed.group
+          ? { scope: 'group' as const, reason: allowed.reason }
+          : siteScope({ companyName: c.name, domain, winnerCountry: c.country, sharedWith: (holders.data ?? []).map((h) => h.name) });
         await db.from('companies').update(provenance
           ? { domain, domain_source: 'web search', domain_source_url: ans.source_url ?? null, domain_address_check: 'no_address', domain_scope: scope.scope, domain_scope_reason: scope.reason, sector_note: null, ...stamp }
           : { domain, source: 'web search', source_url: ans.source_url ?? null, sector_note: null },

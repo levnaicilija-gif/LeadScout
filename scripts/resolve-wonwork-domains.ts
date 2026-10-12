@@ -216,7 +216,10 @@ async function addressCheck(domain: string, a: WinnerAddress | null): Promise<Ch
         if (write) await db.from('companies').update({ ...stamp, ...(refusedFinal ? { careers_status: 'no_domain_found' } : {}) }).eq('id', t.id);
         continue;
       }
-      const scope = siteScope({ companyName: t.name, domain: r.domain, winnerCountry: country, sharedWith: (holders ?? []).map((h: any) => h.name) });
+      // Held by the same group: stored as the group's site with the guard's reason, never a miss (defect 1).
+      const scope = allowed.group
+        ? { scope: 'group' as const, reason: allowed.reason }
+        : siteScope({ companyName: t.name, domain: r.domain, winnerCountry: country, sharedWith: (holders ?? []).map((h: any) => h.name) });
       if (scope.scope === 'group') tally.group++;
       const checked = a && (a.city || a.postalCode) ? [a.postalCode, a.city].filter(Boolean).join(' ') : null;
       console.log(`  ${t.name} (${country ?? '—'}): ${r.domain}${attempt > 1 ? ' · found on retry' : ''} · €${r.eur.toFixed(4)} · ${placeLabel(a, place)} · address ${check.replace(/_/g, ' ')}${checked ? ` (${checked})` : ''} · ${scope.scope === 'group' ? `GROUP SITE — ${scope.reason}` : 'own site'}`);

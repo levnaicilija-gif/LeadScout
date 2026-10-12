@@ -14,7 +14,7 @@
  *            on the winner's own country domain (ccecc.ro for "… ROMANIA SRL") is the local entity's;
  *   shared — the same domain is already on file for a company with a different name.
  */
-import { foldAtomicLetters } from './atomic-letters';
+import { foldAtomicLetters, toDigraphs } from './atomic-letters';
 
 export type SiteScope = { scope: 'own' | 'group'; reason: string | null };
 
@@ -35,7 +35,40 @@ const LEGAL = /\b(sa|sas|sasu|sarl|srl|s\.?r\.?l|nv|bv|gmbh|ag|se|kg|ab|as|a\/s|
 export function brandOf(domain: string): string {
   const parts = domain.toLowerCase().replace(/^www\./, '').split('.');
   const sld = parts.length >= 3 && ['co', 'com', 'org', 'net', 'ac', 'gov'].includes(parts[parts.length - 2]) ? parts[parts.length - 3] : parts[parts.length - 2] ?? parts[0];
+  // A BRAND TOP-LEVEL DOMAIN (2026-10-09): Sener's site is group.sener, so the second-level label is the generic
+  // word "group" and the brand is the TLD itself. Read as "group", the brand test compared every Sener entity
+  // against nothing and refused Sener Ingeniería its own group's site. Narrow on purpose: only when the label is
+  // one of these generic words AND the TLD is neither a country code nor a common generic one.
+  const tld = parts[parts.length - 1] ?? '';
+  if (parts.length === 2 && GENERIC_LABEL.test(sld ?? '') && tld.length > 3 && !COMMON_TLD.test(tld)) return tld;
   return sld ?? '';
+}
+const GENERIC_LABEL = /^(group|corporate|corp|global|home|about|careers|jobs|karriere|info|en)$/;
+const COMMON_TLD = /^(com|net|org|info|biz|group|global|international|online|energy|world|tech|site|company|solutions|services)$/;
+
+/**
+ * Is a company in the SAME GROUP as an existing holder of a domain? (defect 1, owner's decision 2026-10-09)
+ *
+ * `mayStoreDomain` used to answer only "store" or "refuse", and a refusal was counted as a miss — so a
+ * subsidiary whose group already held the site was charged a retry, refused again, and finally marked
+ * "no website found", which is false: it has one, its group's. Five did on 2026-10-08 (bp, SGRE, Sener
+ * Ingeniería, Nordex Acciona, Nordex Energy Spain).
+ *
+ * The evidence required is THREE-WAY and all of it printed: the company's first name word, the holder's
+ * first name word and the domain brand's first token are the same word. "Nordex Acciona" / "Nordex" /
+ * nordex-online; "bp" / "BP Europe" / bp; "Sener Ingeniería" / "Sener" / sener. A generic opening word
+ * cannot pass by itself, because the BRAND must start with it as a whole token: windenergyireland.com's
+ * brand is one token, so "Wind Energy Ireland" and "Wind Power AS" are not made a group by the word "wind".
+ * An abbreviation (SGRE for Siemens Gamesa) shares nothing printable and is NOT matched — guessing it would
+ * be inference.
+ */
+export function sameGroupHolder(companyName: string, domain: string, holders: string[]): string | null {
+  // Either spelling of each side (2026-10-12): the brand's first token as a word, the names' first words.
+  const firsts = (s: string) => spellings(s).map((w) => w.split(' ')[0] ?? '');
+  const brandFirsts = spellings(brandOf(domain).split('-')[0] ?? '').map((w) => w.split(' ')[0] ?? '');
+  const mine = firsts(companyName).filter((w) => w.length >= 2 && brandFirsts.includes(w));
+  if (!mine.length) return null;
+  return (holders ?? []).find((h) => firsts(h).some((w) => mine.includes(w))) ?? null;
 }
 
 /**
@@ -58,6 +91,13 @@ export function brandOf(domain: string): string {
 const words = (s: string) =>
   foldAtomicLetters(s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''))
     .replace(LEGAL, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+/**
+ * BOTH SPELLINGS OF A NAME: the folded one above (ø→o, ü→u) and the digraph one a site may use instead (ø→oe,
+ * ü→ue — see toDigraphs). Every brand comparison in this file accepts a match on EITHER, on BOTH sides, so
+ * "HOLBØLL A/S" fits holboell.dk and holbøll.dk alike. One spelling when the name has none of those letters.
+ */
+const spellings = (s: string) => [...new Set([words(String(s ?? '')), words(toDigraphs(String(s ?? '').toLowerCase()))])];
 
 /**
  * Hosts that are a DIRECTORY, EVENT or PLATFORM rather than a company's own site — never a valid answer to
@@ -115,13 +155,16 @@ export function looksLikeDirectory(domain: string): string | null {
  * defeatable in both directions: a short junk name sits inside a real one ("Energy" inside "KOSMOS ENERGY")
  * and a rebrand shares nothing ("Nadara" and "renantis"). Containment is therefore no longer consulted here.
  */
-export function mayStoreDomain(companyName: string, domain: string, holders: string[]): { ok: boolean; reason: string | null } {
+export function mayStoreDomain(companyName: string, domain: string, holders: string[]): { ok: boolean; reason: string | null; group?: string } {
   const dir = looksLikeDirectory(domain);
   if (dir) return { ok: false, reason: dir };
   const others = (holders ?? []).filter((h) => squashName(h) && squashName(h) !== squashName(companyName));
   if (!others.length) return { ok: true, reason: null };
   // Already held by someone else: allowed ONLY where this company's own name carries the domain's brand.
   if (onBrandName(companyName, domain)) return { ok: true, reason: null };
+  // ...or where the holder is visibly the same group: stored, labelled as the GROUP's site, never a miss.
+  const group = sameGroupHolder(companyName, domain, others);
+  if (group) return { ok: true, group, reason: `${domain} is the site of ${group}, the same group as "${companyName}" — stored as the group's site, not this entity's own` };
   return {
     ok: false,
     reason: `${domain} is already on file for ${others.slice(0, 3).join(', ')}${others.length > 3 ? ` and ${others.length - 3} more` : ''}, and "${companyName}" carries nothing of the brand "${brandOf(domain)}" — so this is the wrong company's site, not a group site`,
@@ -145,13 +188,13 @@ const squashName = (s: string) => words(String(s ?? '')).replace(/\s+/g, '');
  * with a group-site warning instead of refused — the cautious direction.
  */
 export function onBrandName(companyName: string, domain: string): boolean {
-  const brand = squashName(brandOf(domain).replace(/-/g, ' '));
-  const name = squashName(companyName);
+  const brands = spellings(brandOf(domain).replace(/-/g, ' ')).map((w) => w.replace(/\s+/g, ''));
+  const names = spellings(companyName).map((w) => w.replace(/\s+/g, ''));
   // BOTH DIRECTIONS, because the brand is not always the shorter of the two: "Winergy" sits inside the brand
   // "winergy-group", while "ssbwindsystems" sits inside "NIDEC SSB Wind Systems". Requiring one direction
   // only broke whichever case it was not written for — both were already asserted in site-scope-check.
-  if (brand.length < 3 || name.length < 3) return false;
-  return name.includes(brand) || brand.includes(name);
+  // And EITHER SPELLING on both sides (2026-10-12): "holboell" is the digraph spelling of HOLBØLL.
+  return names.some((name) => brands.some((brand) => brand.length >= 3 && name.length >= 3 && (name.includes(brand) || brand.includes(name))));
 }
 
 export function siteScope(input: { companyName: string; domain: string; winnerCountry?: string | null; sharedWith?: string[] }): SiteScope {
@@ -159,7 +202,7 @@ export function siteScope(input: { companyName: string; domain: string; winnerCo
   const name = words(companyName);
   const brand = brandOf(domain).replace(/-/g, ' ');
   const tld = domain.toLowerCase().split('.').pop() ?? '';
-  const onBrand = !!brand && (name.startsWith(brand) || name.split(' ')[0] === brand.split(' ')[0]);
+  const onBrand = !!brand && spellings(companyName).some((n) => spellings(brand).some((b) => n.startsWith(b) || n.split(' ')[0] === b.split(' ')[0]));
 
   // A domain on file for another company says "group" only when the two are different entities. The same company stored
   // under two names — "Winergy" and "Winergy / Flender", "NIDEC SSB Wind Systems" and "Nidec SSB Windsystems" — shares its

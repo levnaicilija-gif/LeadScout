@@ -1867,6 +1867,12 @@ supply package that is the mill or the yard, not the field the pipe ends up in �
 so Corinth Pipeworks' Rovuma LNG line-pipe package is GR, and the location text
 naming both Mozambique and the Greek mill is resolved in favour of the mill.
 
+ANOTHER INSTANCE, RECORDED 2026-10-12: e‑STORAGE's "Muswellbrook Solar Farm and
+Battery project" (lead bc1b8fdd, created 2026-10-11 from power-technology.com) is
+stored with country GB. Muswellbrook is in New South Wales, AUSTRALIA. A wrong
+KNOWN country is worse than an unknown one: it is scored and shown as European.
+It is also the lead that tagged "solar" and took the gate's probe industry (item 59).
+
 
 TENDER DISCOVERY — WHAT IT BUYS, MEASURED 2026-09-28
 
@@ -3300,3 +3306,82 @@ Management, KK WindSolutions, TS TECH — wait for after the Ørsted merge).
       group-site case site-scope already models, refused instead of labelled.
   (2) brandOf('group.sener') returns "group": .sener is a brand TLD, so the second-level
       label is the generic word and the brand test compares against nothing.
+
+
+59. ISS FACILITY SERVICES CLASSIFIED PHARMA FROM ONE ADVERT TITLE — a possible classifier issue for
+    item 18 / item 28 (recorded 2026-10-09, owner: do NOT reclassify by hand).
+
+At 12:40 UTC on 2026-10-09 the crawl classified ISS Facility Services as pharma_life_sciences, with ONE piece
+of evidence: the word "pharmakunde" in one advert title, "ISS søger Site Manager til stor pharmakunde i
+Kalundborg" ("site manager for a large pharma CLIENT"). ISS is a facility-services company; the pharma is its
+customer. The classifier reads a company's industry from its advert titles (item 18), so the industry of the
+work's CLIENT became the industry of the EMPLOYER. One title deciding a company's industry — and through it
+which capped accounts see the company — is the thin-signal shape item 28 already warns about.
+  IT BROKE A GATE, which is how it was found: the probes were capped to pharma precisely because no real data
+  lived there, and queue-ids and today went red on one extra Hiring now company. Fixed on the TEST side, not
+  by touching ISS: capProbeToOneIndustry's guard now also refuses when a real company with an open posting
+  carries the probe industry (it checked leads only), naming the company; PROBE_INDUSTRY moved to solar —
+  measured that day as the ONLY industry with no real lead, no real company with an open posting and none
+  ever classified — and probe-industry-check holds both arms in the gate. Solar is a temporary home: item 36
+  exists to bring solar coverage in, and the guard will stop the gate by name the day it does.
+  ALSO AFFECTED, not a gate step: scripts/first-signin-walkthrough.ts chooses pharma to show the "no matches"
+  warning, which ISS now defeats.
+  WHEN TAKEN: decide whether a word naming a CLIENT ("pharmakunde", "for a pharma customer") may classify the
+  employer at all, and whether one advert title is enough evidence to move a company's visibility.
+
+
+60. 2026-10-12 — THE PROBE INDUSTRY, EITHER-SPELLING BRANDS, AND THE HOLBØLL TRACE
+
+PROBE INDUSTRY, AGAIN. The full gate at 09:09 (7.47 GB free, no sweep running) went red on five steps —
+probe-industry, queue-ids, shared-pool, today, smoke — for ONE reason: e‑STORAGE's "Muswellbrook Solar Farm"
+was tagged solar from its project name on 2026-10-11, two days after the probes moved there. 0
+AuthRetryableFetchError, no digest: not the documented fault, so nothing was committed. queue-ids, today and
+smoke each stranded an is_test workspace; all three were removed in the preflight's order.
+  MEASURED over all sixteen industries: pharma_life_sciences was the ONLY one with 0 real leads, 0 companies with
+  an open posting and 0 companies classified (ISS's pharma posting had closed). No industry is immune — pharma,
+  solar, hydrogen, CCS, mining and data centres each have a one-word title trigger, and pharma's pharmaw* is the
+  broadest ("pharmakunde" is still on file in one closed title). Owner: use pharma for now.
+  The guard now runs at the START of every gate (step 2, after leftover-preflight), and when it fails the browser
+  and model probes are SKIPPED BY NAME rather than run for $0.58 to go red at the end.
+
+EITHER SPELLING FITS A DOMAIN (owner's decision). site-scope's brand tests accept a name in its folded spelling
+(ø→o, ü→u) OR its digraph spelling (ø/ö→oe, æ/ä→ae, å→aa, ü→ue, ß→ss), on both sides. toDigraphs lives in
+atomic-letters.ts beside the fold; canonCompany does NOT use it, so company identity is unchanged and nothing
+merges. Measured before: 16 of 166 tender winners with a domain flip, all German ü→ue (Schüttler, Hess, Kraft,
+Tower… Gerüstbau); no Danish, Norwegian or Swedish row flipped, and the only ø winner not yet looked up was
+HOLBØLL. site-scope-check: 11 positive arms, 6 false-positive arms (nothing is invented — "Holboll" without ø is
+not holboell, plain u is not ue, værft is not verft), the group rule, Hess, and canonCompany unchanged. Proved by
+two mutations: disabling the digraph fails 9; making it invent oe/ue from plain o/u fails the false-positive arms.
+A pinned LIMIT that is not spelling: "Andreas Süß Gerüstbau" still does not fit geruestbau-suess.de — word order.
+  HESS GERÜSTBAU GmbH vs GmbH & Co. KG on hessgeruestbau.de — BEFORE: mayStoreDomain allowed both, siteScope called
+  EACH the other's GROUP site, because neither was read as carrying the brand "hessgeruestbau" (ü folded to u).
+  The STORED rows disagree with each other: & Co. KG says group, GmbH says own — written at different times.
+  AFTER: both "own", mayStoreDomain still allows both, and a DIFFERENT Hess firm on that site is still a group
+  site. NOT MERGED, and the stored domain_scope labels were NOT rewritten (owner: do not merge).
+
+HOLBØLL A/S — notice 697631-2026 (Næstved, DK022, DKK 36,978,000), traced end to end, nothing stored.
+  - In the database: lead 256a521e (DK, fit 80, created 2026-10-10 04:00 UTC), company "HOLBØLL A/S" — no domain,
+    0 lookups, company country NULL, industries ['other'].
+  - The query the app sends is the FULL registered address, "Lov Enghavevej 26, 4700 Næstved, DNK" (see the
+    CLAUDE.md correction: 040e09e passes the address as read). The notice also carries CVR 18296675.
+  - One lookup, €0.0343 (4 searches — above the usual €0.023): holboell.dk, confirmed from proff.dk's registry
+    page for CVR 18296675. The site prints 4700, Næstved, the street and the CVR. Not stored: owner wants the
+    chain to re-look it up as its first live proof.
+  - Hiring: yes — "Holbøll søger erfaren rørlægger" and "Bygningskonstruktørpraktikant" on /job-karriere/, no ATS.
+  *** TWO CONTACT-DISCOVERY FINDINGS, NOT FIXED: ***
+  (1) THE SWITCHBOARD IT WOULD STORE IS NOT THE MAIN NUMBER. discoverAtCompany reads the HOME PAGE first and
+      fills a blank once, so it takes +45 55 76 45 43 from holboell.dk; the main number +45 55 76 11 01 is on
+      /kontakt, which is read afterwards and cannot replace it.
+  (2) holboell@holboell.dk IS NOT RECOGNISED AS A GENERAL ADDRESS. emailsOn returned general: null on every page
+      although the company's own-name mailbox is printed on the home page and /kontakt — a local part equal to
+      the brand is not on its list. tilbud@ (quotes) and job@ (careers) are printed too.
+
+THE AUTOMATIC TENDER CHAIN — APPROVED 2026-10-12, NOT YET BUILT. Every TED winner in every country: lookup
+(sending the CVR or company id where the notice has one), the free address check, every existing guard (address
+and brand verification, group-site rule, directory and trade-body refusals, ambiguity flagged not attached,
+municipal ranking, no inferred names), then contact discovery; the existing careers unit already takes any company
+that gains a domain, and the crawl decides the hiring tag. Newest first, then the backlog (113 tender winners never
+looked up). €1.00 tender slice inside the €2.00 cap, today read from the DATABASE clock, run summary in job_ticks
+(cost_log only for real spend), and a kill switch the owner can flip without a deploy. Inflow measured at ~7 new
+winners a day over 30 days and ~18 a day over the last week; ~€0.20-0.45 a day steady state at €0.025 a lookup.
+HOLBØLL is the first live proof.

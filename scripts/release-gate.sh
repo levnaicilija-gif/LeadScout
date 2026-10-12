@@ -41,6 +41,13 @@ killport() {
 # the reasons. Two seconds here against a wasted run — see scripts/leftover-preflight.ts for the night
 # that earned it. It refuses rather than cleans: a leftover is evidence of which probe died and when.
 step leftover-preflight npx tsx --env-file=.env.local scripts/leftover-preflight.ts
+# SECOND, for the same reason: the probes' industry must hold no real data, or every screen probe asserts
+# counts against real rows and reds like a filter regression. It went wrong twice in four days — ISS Facility
+# Services classified pharma (2026-10-09), then e‑STORAGE's "Muswellbrook Solar Farm" tagged solar (2026-10-11),
+# which reddened five steps of a $0.51 gate only at its END. Checked here, at the START, and when it fails the
+# browser and model probes below are SKIPPED BY NAME rather than run against a probe that cannot be isolated.
+# Both arms: the guard fires on a real company with an open posting, and passes on PROBE_INDUSTRY.
+step probe-industry npx tsx --env-file=.env.local scripts/probe-industry-check.ts
 
 step typecheck npx tsc --noEmit
 step build npx next build
@@ -442,6 +449,8 @@ else
     echo "=== the browser and model probes were SKIPPED: today's test budget is SPENT. Everything before this point passed. Raise it for one run with TEST_BUDGET_USD=<n>." | tee -a "$LOG"
   elif [[ " ${FAILED[*]-} " == *" memory-preflight "* ]]; then
     echo "=== the browser steps were SKIPPED: not enough memory. Everything before this point passed." | tee -a "$LOG"
+  elif [[ " ${FAILED[*]-} " == *" probe-industry "* ]]; then
+    echo "=== the browser and model probes were SKIPPED: PROBE_INDUSTRY holds real data, so no probe below could be isolated (see the probe-industry step at the top of this log)." | tee -a "$LOG"
   else
   step verify-e2e npx tsx --env-file=.env.local scripts/verify-e2e.ts "$BASE"
   step lead-drawer-e2e npx tsx --env-file=.env.local scripts/lead-drawer-e2e.ts "$BASE"

@@ -212,10 +212,24 @@ export const testFlagAvailable = (db: SupabaseClient) => haveFlag(db);
 /**
  * The industry a probe workspace follows, chosen because NO real lead carries it.
  *
- * Not a trick: `pharma_life_sciences` is one of the sixteen industries a real account may follow, and
+ * Not a trick: the probe industry is one of the sixteen industries a real account may follow, and
  * the reason it is safe is checked rather than assumed — capProbeToOneIndustry refuses if a real lead
  * ever turns up carrying it. A crawl that starts classifying pharma work would otherwise rot every
  * probe's isolation quietly, months from now, in a way that looks like a product bug.
+ *
+ * MOVED TO SOLAR 2026-10-09 (owner's decision), because exactly that happened to pharma: ISS Facility
+ * Services was classified pharma from one advert title and two gate steps went red. Measured that day, solar
+ * was the ONLY industry with no real lead, no real company with an open posting and no company ever
+ * classified. It is not a permanent home: item 36 exists to bring solar coverage in, and the day it does,
+ * probeIndustryConflict refuses with the company or lead named — a loud stop, never a quiet coin toss.
+ *
+ * BACK TO PHARMA 2026-10-12 (owner's decision), because solar was taken two days later: e‑STORAGE's
+ * "Muswellbrook Solar Farm and Battery project" was tagged solar from its project name on 2026-10-11. Measured
+ * over all sixteen that day, pharma was the ONLY industry with 0 real leads, 0 companies with an open posting
+ * and 0 companies classified (ISS's pharma posting had closed). No industry is immune: pharma, solar, hydrogen,
+ * CCS, mining and data centres can each be acquired from ONE title word, and pharma's `pharma\w*` is the
+ * broadest ("pharmakunde" did it once). So the guard now runs at the START of every gate, and a gate that
+ * cannot isolate its probes skips them by name instead of spending a full run to go red at the end.
  */
 export const PROBE_INDUSTRY = 'pharma_life_sciences';
 
@@ -266,6 +280,22 @@ export async function withTransportRetry<T extends { error: { message: string } 
 }
 
 export async function capProbeToOneIndustry(db: SupabaseClient, uid: string, industry = PROBE_INDUSTRY): Promise<string | null> {
+  const conflict = await probeIndustryConflict(db, industry);
+  if (conflict) return conflict;
+  // Both fields together: 0032's trigger refuses 'all' beside a limit, and a limit under the list size.
+  const { error } = await withTransportRetry(() => db.from('users')
+    .update({ industry_follow: [industry], industry_limit: 1, industry_follow_set_at: new Date().toISOString() })
+    .eq('id', uid));
+  if (!error) return null;
+  if (error.code === '42703' || (/industry_follow/.test(error.message) && /does not exist|schema cache/i.test(error.message))) return null;
+  return `the probe account could not be capped to ${industry}: ${error.message}`;
+}
+
+/**
+ * Is `industry` still free of real data, so a probe capped to it sees only its own rows? null = isolated.
+ * Exported so `probe-industry-check` can hold it to both arms against the live database.
+ */
+export async function probeIndustryConflict(db: SupabaseClient, industry: string): Promise<string | null> {
   // The guard first. If a real lead carries this industry the probe is no longer isolated, and every
   // count it asserts becomes a coin toss — so it fails here, loudly, naming what changed.
   const { count, error: checkErr } = await withTransportRetry(() => db.from('leads')
@@ -290,13 +320,33 @@ export async function capProbeToOneIndustry(db: SupabaseClient, uid: string, ind
   if ((unclassified ?? 0) > 0) {
     return `${unclassified} real lead(s) carry no industry, and an unclassified lead is visible to a capped account — so this probe's counts would include them. Classify them (scripts/industry-backfill.ts) or this isolation is not real`;
   }
-  // Both fields together: 0032's trigger refuses 'all' beside a limit, and a limit under the list size.
-  const { error } = await withTransportRetry(() => db.from('users')
-    .update({ industry_follow: [industry], industry_limit: 1, industry_follow_set_at: new Date().toISOString() })
-    .eq('id', uid));
-  if (!error) return null;
-  if (error.code === '42703' || (/industry_follow/.test(error.message) && /does not exist|schema cache/i.test(error.message))) return null;
-  return `the probe account could not be capped to ${industry}: ${error.message}`;
+  // THE THIRD CONDITION, added 2026-10-09 after it broke a gate: Hiring now reads job_posts THROUGH
+  // companies, so a real COMPANY with an open posting in this industry is visible to the probe even when no
+  // real LEAD is. The crawl classified ISS Facility Services as pharma from one advert title ("…stor
+  // pharmakunde i Kalundborg") at 12:40 UTC, and queue-ids and today failed that evening on one extra
+  // company, reading exactly like a filter regression. Named here so the next one says which company.
+  const { names, error: coErr } = await realOpenPostingCompaniesIn(db, industry);
+  if (coErr) return `could not check for real companies with open postings in ${industry}: ${coErr}`;
+  if (names.length) {
+    return openPostingConflict(industry, names);
+  }
+  return null;
+}
+
+/** The third condition's message, separate so its firing arm can be checked on its own. */
+export const openPostingConflict = (industry: string, names: string[]) =>
+  `real compan${names.length === 1 ? 'y' : 'ies'} with an open posting now carr${names.length === 1 ? 'ies' : 'y'} "${industry}" — ${names.slice(0, 5).join(', ')} — so a probe capped to it sees real Hiring now rows and is no longer isolated. Pick another unused industry for PROBE_INDUSTRY and re-check`;
+
+/** Real (not is_test) companies holding an open posting in this industry — what a capped probe would see on Hiring now. */
+export async function realOpenPostingCompaniesIn(db: SupabaseClient, industry: string): Promise<{ names: string[]; error: string | null }> {
+  const { data, error } = await withTransportRetry(() => db.from('job_posts')
+    .select('companies!inner(name, industries, is_test)')
+    .eq('status', 'open')
+    .contains('companies.industries', [industry])
+    .or('is_test.is.null,is_test.eq.false', { referencedTable: 'companies' })
+    .limit(20));
+  if (error && error.code !== '42703') return { names: [], error: error.message };
+  return { names: [...new Set((data ?? []).map((r: any) => r.companies?.name).filter(Boolean))] as string[], error: null };
 }
 
 export async function followAllForProbe(db: SupabaseClient, uid: string): Promise<string | null> {
