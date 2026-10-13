@@ -3385,3 +3385,51 @@ looked up). €1.00 tender slice inside the €2.00 cap, today read from the DAT
 (cost_log only for real spend), and a kill switch the owner can flip without a deploy. Inflow measured at ~7 new
 winners a day over 30 days and ~18 a day over the last week; ~€0.20-0.45 a day steady state at €0.025 a lookup.
 HOLBØLL is the first live proof.
+
+THE TENDER CHAIN — BUILT 2026-10-12, NOT YET GATED OR DEPLOYED, NOTHING SPENT BY IT.
+  src/lib/jobs/tender-chain.ts (the logic), tender-chain-batch.ts + /api/jobs/tender-chain (cron secret), a fifth
+  tick unit between radar and discovery, scripts/tender-chain.ts (dry run; --ids <id> --write for a named live
+  run), scripts/tender-chain-check.ts in the gate (switch, clock, CVR, every guard; three mutations, each one named
+  failure). The free address check moved to src/lib/address-check.ts, shared with resolve-wonwork-domains.ts.
+  MIGRATION 0062, TO BE APPLIED BY THE OWNER: job_switches (service only, seeded tender-chain = OFF) and
+  db_utc_today(). Until it is applied the chain cannot run, column-exists and rpc-exists fail by design, and the
+  table registry reports "not judged". Kill switch, no deploy:
+      update job_switches set enabled = true,  note = '…', updated_at = now() where name = 'tender-chain';
+      update job_switches set enabled = false, note = '…', updated_at = now() where name = 'tender-chain';
+  The slice is counted from cost_log rows labelled "tender-chain · …"; the organisation-page read inside contact
+  discovery (≤ €0.01, rare) is metered under the cap but not the slice.
+  DRY RUN, 2026-10-12 (day from the HTTP Date header — 0062 not applied): 113 tender winners in the queue, 19 final,
+  0 skipped. Today's room €1.00 → about 38 lookups ≈ €0.96 (€1.30 at HOLBØLL's €0.0343); whole queue ≈ €2.86-3.88,
+  about 3 days. Order: Prinzing Gerüstbau, Heidmann Elektrotechnik, HOLBØLL A/S, Johann Rohrer, Bassenberg Gerüstbau…
+  *** THE BACKLOG IS NOT WHAT IT LOOKED LIKE: 98 OF THE 113 ARE CZECH, FROM FIVE NOTICES (699753-2026 ×33,
+  693584 ×19, 700163 ×17, 694158 ×16, 695085 ×13), WITH AWARD DATES OVER FIVE YEARS OLD (2,327 days, 2020) — item
+  58's "one Czech award 2,323 d" was the visible edge of it. Electrical framework participants republished on TED in
+  2026. Nine queued names look like SOLE TRADERS named as people (Aleš Kozel, Karel Vaníček, Tomáš Havlíček…). By
+  age: 9 at 30 days or younger, 6 at 31-365, 98 older than five years. OWNER'S DECISION PENDING: whether the chain
+  stops at item 17's stale line for awards (365 days), which would leave a queue of 15 (≈ €0.38-0.51) and the daily
+  inflow. ***
+  DECIDED THE SAME DAY (owner): (1) the chain stops at 365 days — item 17's stale line for awards. An older award
+  is "skipped: too old", a verdict COMPUTED on the queue and never written to the company, so nothing is recorded as
+  "no website" and reopening one is changing MAX_AWARD_AGE_DAYS. An UNDATED award is not "too old". (2) the nine
+  sole-trader-looking names are HELD by company id until the owner decides: Bassenberg Gerüstbau (DE, 19 d — the one
+  the hold actually changes; "Gerüstbau" reads like a firm), Aleš Kozel, František Dvořáček, Ing. Martin Barteček,
+  Karel Vaníček, Libor Eichler, Miroslav Cihelka, Pavel Vodička, Tomáš Havlíček (all CZ, 2,327 d). Re-run dry run:
+  QUEUE 14 (8 at 30 days or younger, 6 older), 90 skipped as too old, 9 held, 19 final — about €0.35 (€0.48 at the
+  high end), one day of the slice. tender-chain-check holds both rules, each proved by a mutation.
+  REVISED THE SAME DAY (owner): the nine-name hold is REPLACED BY A PLAIN RULE — a name is held when it has NO
+  COMPANY FORM and NO TRADE WORD (soleTraderName in tender-chain.ts), checked AFTER the age limit, so the eight Czech
+  sole traders report "too old". Bassenberg Gerüstbau is released (a firm); STUDWIERT stays in the queue. The first
+  cut of the rule held 56 of 298 tender winners — almost all firms whose legal form or trade word the lists lacked
+  (d. o. o. with spaces, S.L., Lda, Aktiebolag, Részvénytársaság, ЕООД; Brodogradilište, Stocznia, Wegenbouw) —
+  and after widening it holds 22. ITS KNOWN LIMIT: a bare BRAND reads exactly like a person (DUNAV, APEM, COLAS,
+  BEIRENS, Persyn, "Per Aarsleff"); none of the 22 is in today's paid queue (13 already have a website, the rest are
+  too old or final). Dry run: QUEUE 15, about €0.38 (€0.51 high end), one day of the slice.
+  0062: the owner reported it applied, but around 12:00 Belgrade (three reads over several minutes) the SERVICE ROLE still got PGRST205 for
+  job_switches and PGRST202 for db_utc_today — by CLAUDE.md's rule that means the database lacks them, or the
+  schema cache has not reloaded. Not yet verified; gate held until it is.
+  0062 VERIFIED LATER THE SAME DAY (owner applied it and reloaded the schema cache): as the service role the switch
+  row reads tender-chain / enabled false, db_utc_today() returns 2026-10-12 and equals the day the database stamped
+  on the newest cost_log row (13:26 UTC); the anon key is refused on both ("permission denied for table
+  job_switches", "... for function db_utc_today"). The dry run now dates itself by db_utc_today: queue 15, the same
+  order, about EUR 0.38 (EUR 0.51 high end), tender slice EUR 0.00 of 1.00. The switch stays OFF until the owner
+  approves the HOLBØLL proof run.

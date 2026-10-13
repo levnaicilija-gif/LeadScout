@@ -107,6 +107,7 @@ export const TABLES: Record<string, Entry> = {
   // ---- service: the service role's own machinery --------------------------------------------------
   jobs: { bucket: 'service', scope: { by: 'none' }, why: '0027: the worker queue. A signed-in user must read zero rows' },
   job_ticks: { bucket: 'service', scope: { by: 'none' }, why: '0029: the crawl schedule log. A signed-in user must read zero rows' },
+  job_switches: { bucket: 'service', scope: { by: 'none' }, why: '0062: the owner\'s kill switches for automated spending jobs (tender-chain). Flipped in SQL, no deploy. A signed-in user must read zero rows' },
   // 0049's insurance for the one irreversible step in item 20. They carry a workspace_id column, but
   // it is SERVICE, not private: nothing signed-in may reach them at all, because a backup of one
   // workspace's private activity readable by a signed-in user would reintroduce the leak the whole

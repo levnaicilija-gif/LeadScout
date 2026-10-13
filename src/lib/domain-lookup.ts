@@ -31,6 +31,7 @@ Rules:
 - Only answer with a domain when a page you actually read names that company as itself — its title, header or footer. Quote that text in confirmed_by.
 - THE COUNTRY MUST MATCH. Company names repeat across countries: "AXYS" in Belgium is not AXYS Technologies in British Columbia. If the site you find is a different company in a different country, that is a miss — answer null. Only accept a site whose own pages place the company in the country given, or that is plainly the same group operating there.
 - WHEN A TOWN OR ADDRESS IS GIVEN, IT MUST MATCH TOO. It comes from the company's own registered address on a public contract award notice, never from the buyer. Put the town or postcode in your search terms. A company with the same name in another town is a different company — answer null — unless its own pages show it is the same company (the same town, that office listed as its own, or plainly the same group operating there). A company may trade from a town its website never names, so a site that matches the name and the country but prints no town is not disqualified by that alone: say so in confirmed_by rather than answering null.
+- WHEN A REGISTRATION NUMBER IS GIVEN (from the same notice — a Danish CVR, a company or VAT number), search with it too: a business-registry page that lists that exact number together with a website is strong evidence, and a site printing the same number is the company itself. A site for a company with a DIFFERENT registration number is a different company — answer null.
 - If the company is not clearly identifiable, or you only find it mentioned on someone else's page, answer {"domain": null, "confirmed_by": null, "source_url": null}. A wrong website is far worse than none.
 - domain is the bare hostname without scheme or "www.".`;
 
@@ -39,6 +40,10 @@ export type LookupAddress = { street?: string | null; postalCode?: string | null
 export type LookupInput = {
   name: string; country?: string | null; sector?: string | null;
   address?: LookupAddress | null;
+  /** The winner's registration number as the award notice prints it (cac:PartyLegalEntity/cbc:CompanyID) — a Danish
+   *  CVR, a company or VAT number. Owner's decision 2026-10-12: send it where the notice has one. Omitted, the prompt
+   *  is byte-for-byte what it was, so no existing caller changes. */
+  registrationId?: string | null;
 };
 
 /**
@@ -77,6 +82,8 @@ export function lookupPrompt(c: LookupInput): string {
       ? `Registered address (from the contract award notice): ${[a.street, where].filter(Boolean).join(', ')}`
       : `Town the contract award notice gives for this company (its own registered address, not the buyer's): ${where}`);
   }
+  const reg = c.registrationId?.trim();
+  if (reg) lines.push(`Company registration number (from the contract award notice): ${reg}`);
   if (c.country) lines.push(`Country: ${c.country}`);
   if (c.sector) lines.push(`Sector: ${c.sector}`);
   return lines.join('\n');

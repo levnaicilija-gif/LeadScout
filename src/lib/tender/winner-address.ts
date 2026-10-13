@@ -58,6 +58,9 @@ export function winnerAddress(xml: string, winnerName: string): WinnerAddress | 
     ?? null;
 }
 
+/** The notice's ISO alpha-3 country as the alpha-2 the rest of the app stores. Shared by the tender script and chain. */
+export const ISO3_TO_2: Record<string, string> = { FRA: 'FR', DEU: 'DE', BEL: 'BE', NLD: 'NL', DNK: 'DK', NOR: 'NO', SWE: 'SE', FIN: 'FI', POL: 'PL', CZE: 'CZ', AUT: 'AT', ESP: 'ES', ITA: 'IT', PRT: 'PT', EST: 'EE', LVA: 'LV', LTU: 'LT', HRV: 'HR', SVN: 'SI', SVK: 'SK', ROU: 'RO', BGR: 'BG', HUN: 'HU', IRL: 'IE', GBR: 'GB', LUX: 'LU', GRC: 'GR', CHE: 'CH', CYP: 'CY', MLT: 'MT', ISL: 'IS' };
+
 /** "609867-2026" from a lead or article URL such as https://ted.europa.eu/en/notice/-/detail/609867-2026#winner-2. */
 export const publicationNumber = (url: string | null | undefined) => String(url ?? '').match(/(\d{3,}-\d{4})/)?.[1] ?? null;
 

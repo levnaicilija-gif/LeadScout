@@ -5,6 +5,9 @@ import { runRadarBatch } from './radar-batch';
 import { runJobPostsBatch } from './job-posts-batch';
 import { runCareersDiscoveryBatch } from './careers-discovery-batch';
 import { runJobBoardsBatch } from './job-boards-batch';
+import { runTenderChainBatch } from './tender-chain-batch';
+import { chainSwitch, dbToday, sliceSpent, SLICE_EUR, LOOKUP_ESTIMATE_EUR } from './tender-chain';
+import { spentEur, DAILY_BUDGET_EUR } from '@/lib/cost';
 
 /**
  * The schedule for the three crawls. Supabase pg_cron calls /api/jobs/tick every five minutes (0029), and
@@ -18,6 +21,9 @@ import { runJobBoardsBatch } from './job-boards-batch';
  *
  * What is due is read again before every batch, in this order:
  *   radar       from 04:00 UTC until today's run has read its last source or stopped at the cap
+ *   tender-chain  while its kill switch is on (0062) and today's EUR 1.00 slice and the EUR 2.00 cap both have
+ *               room, by the DATABASE's day — after radar, whose first batch ingests the day's TED winners, and
+ *               before discovery, which then takes every company the chain gave a domain (src/lib/jobs/tender-chain.ts)
  *   discovery   while a company with a domain has never been checked
  *   job-posts   while a company with a board has not been crawled since 00:00 UTC
  *   job-boards  while an enabled job_board source has not been crawled since 00:00 UTC
@@ -31,7 +37,7 @@ import { runJobBoardsBatch } from './job-boards-batch';
  * exits. Before 0029 is applied the tick still runs, unrecorded and unguarded.
  */
 
-export type TickUnit = 'radar' | 'discovery' | 'job-posts' | 'job-boards';
+export type TickUnit = 'radar' | 'tender-chain' | 'discovery' | 'job-posts' | 'job-boards';
 export type TickSource = 'pg_cron' | 'vercel_cron' | 'manual';
 export type TickOptions = { source: TickSource; origin: string; dryRun?: boolean; unit?: TickUnit; force?: boolean; maxBatches?: number };
 
@@ -42,7 +48,8 @@ const START_BATCH_BEFORE_MS = 120_000;
 // job-boards: one board a batch, for the same reason radar takes one source — a board is an index
 // fetch plus up to perBoard link reads, each with its own model call, and one board is what reliably
 // finishes inside the 180 s a batch has left after START_BATCH_BEFORE_MS.
-const BATCH: Record<TickUnit, number> = { radar: 1, discovery: 25, 'job-posts': 4, 'job-boards': 1 };
+// tender-chain: two companies a batch — a lookup measured 20-60 s with its address check and contact discovery.
+const BATCH: Record<TickUnit, number> = { radar: 1, 'tender-chain': 2, discovery: 25, 'job-posts': 4, 'job-boards': 1 };
 const RADAR_HOUR_UTC = 4;
 // An unfinished tick older than the route's 300 s maxDuration (plus margin) was killed.
 const KILLED_AFTER_MS = 330_000;
@@ -69,6 +76,20 @@ async function radarDue(db: SupabaseClient, now: Date): Promise<Due | string> {
   // `more` is written from 2026-09-14; before that, a batch that read fewer sources than its size was the last.
   const more = typeof last.tally?.more === 'boolean' ? last.tally.more : Number(last.tally?.sources ?? 0) >= Number(last.batch);
   return more ? at(next, `continuing at source ${next}`) : `today's run has read its last source`;
+}
+
+/** The tender chain: due while its switch is on and both its slice and the cap have room for one more lookup. */
+async function tenderChainDue(db: SupabaseClient, force: boolean): Promise<Due | string> {
+  const due = (why: string): Due => ({ unit: 'tender-chain', path: `/api/jobs/tender-chain?batch=${BATCH['tender-chain']}`, why });
+  const sw = await chainSwitch(db);
+  if (!sw.enabled) return `kill switch: ${sw.why}`;
+  if (force) return due('forced');
+  const day = await dbToday(db);
+  const slice = await sliceSpent(db, day);
+  if (slice + LOOKUP_ESTIMATE_EUR > SLICE_EUR) return `today's tender slice is spent (€${slice.toFixed(2)} of €${SLICE_EUR.toFixed(2)})`;
+  const cap = await spentEur(db, { day });
+  if (cap + LOOKUP_ESTIMATE_EUR > DAILY_BUDGET_EUR) return `today's cap is spent (€${cap.toFixed(2)} of €${DAILY_BUDGET_EUR.toFixed(2)})`;
+  return due(`slice €${slice.toFixed(2)} of €${SLICE_EUR.toFixed(2)}, cap €${cap.toFixed(2)} of €${DAILY_BUDGET_EUR.toFixed(2)} on ${day}`);
 }
 
 async function discoveryDue(db: SupabaseClient, force: boolean): Promise<Due | string> {
@@ -133,6 +154,7 @@ async function runBatch(due: Due, origin: string): Promise<Note> {
   const req = new Request(`${origin}${due.path}`, { method: 'POST', headers: { 'x-cron-secret': process.env.CRON_SECRET ?? '' } });
   try {
     const res = due.unit === 'radar' ? await runRadarBatch(req)
+      : due.unit === 'tender-chain' ? await runTenderChainBatch(req)
       : due.unit === 'discovery' ? await runCareersDiscoveryBatch(req)
       : due.unit === 'job-boards' ? await runJobBoardsBatch(req)
       : await runJobPostsBatch(req);
@@ -149,6 +171,12 @@ async function runBatch(due: Due, origin: string): Promise<Note> {
       };
     }
     if (due.unit === 'discovery') return { unit: 'discovery', secs: secs(), ...(j.stats ?? {}), remaining: j.remaining };
+    // THE RUN SUMMARY the owner asked for in job_ticks: counts, spend against the slice and the cap, and each company's outcome.
+    if (due.unit === 'tender-chain') {
+      return { unit: 'tender-chain', secs: secs(), day: j.day, queue: j.queue, looked: j.looked, stored: j.stored, group: j.group, refused: j.refused,
+        missed: j.missed, final: j.final, errors: j.errors, contactsGained: j.contactsGained, eur: j.eur, sliceSpent: j.sliceSpent, capSpent: j.capSpent,
+        stopped: j.stopped, capped: !!j.capped, outcomes: j.outcomes };
+    }
     // The board batch reports the same shape as job-posts: its own stats, whether the cap stopped it,
     // and the spend. `kept` being zero while `linksSeen` is not is the signal worth watching here —
     // it is how "the boards are being read but nothing is a vacancy" would show on a tick.
@@ -194,6 +222,7 @@ export async function runTick(db: SupabaseClient, o: TickOptions) {
     const notDue: Partial<Record<TickUnit, string>> = {};
     const checks: [TickUnit, () => Promise<Due | string>][] = [
       ['radar', () => radarDue(db, now)],
+      ['tender-chain', () => tenderChainDue(db, !!o.force)],
       ['discovery', () => discoveryDue(db, !!o.force)],
       ['job-posts', () => jobPostsDue(db, now, !!o.force)],
       ['job-boards', () => jobBoardsDue(db, now, !!o.force)],
@@ -225,7 +254,7 @@ export async function runTick(db: SupabaseClient, o: TickOptions) {
       console.log(`[tick] ${JSON.stringify(note)}`);
       if (note.error) { stopped = `the ${due.unit} batch failed`; break; }
       const progressed = due.unit === 'radar' ? Number(note.sources ?? 0) > 0
-        : due.unit === 'discovery' ? Number(note.looked ?? 0) > 0
+        : due.unit === 'discovery' || due.unit === 'tender-chain' ? Number(note.looked ?? 0) > 0
         : Number(note.companies ?? 0) > 0;
       // A unit at the cap, one that did nothing, or a forced one is not taken again in this tick.
       if (note.capped || !progressed || o.force) skip.add(due.unit);

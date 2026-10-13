@@ -77,6 +77,12 @@ step workspace-scope npx tsx --env-file=.env.local scripts/workspace-scope-check
 step compound-signals npx tsx scripts/compound-signals-check.ts
 step phone-on npx tsx scripts/phone-on-check.ts
 step winner-address npx tsx scripts/winner-address-check.ts
+# The tender chain (2026-10-12) spends real money from the tick every five minutes. Its kill switch reads OFF for
+# anything but a readable "on", a run with the switch off reads nothing at all, "today" is the DATABASE's day, the
+# CVR reaches the lookup without changing any other caller's prompt, and every guard is still on the write path —
+# each proved by a mutation that fails one named assertion (switch ignored, overwrite guard removed, non-prospect
+# skip removed).
+step tender-chain npx tsx scripts/tender-chain-check.ts
 step site-scope npx tsx scripts/site-scope-check.ts
 # What counts as one company name. It decides findOrCreateCompany's matches, where a wrong merge is
 # unrecoverable, and since item 55 (2026-10-08) it folds Ø/Æ/ß — with both arms, so the fold can never

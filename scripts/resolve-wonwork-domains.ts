@@ -19,11 +19,11 @@
  * One lookup per company per run, so a retry is a separate run. Refuses --write until 0033 is applied.
  */
 import { createClient } from '@supabase/supabase-js';
-import * as cheerio from 'cheerio';
 import { Budget } from '../src/lib/cost';
+import { addressCheck, type AddressCheck } from '../src/lib/address-check';
 import { crawlWorkspace } from '../src/lib/crawl-workspace';
 import { lookupDomain, placeFrom } from '../src/lib/domain-lookup';
-import { fetchNoticeXml, publicationNumber, winnerAddress, type WinnerAddress } from '../src/lib/tender/winner-address';
+import { fetchNoticeXml, publicationNumber, winnerAddress, ISO3_TO_2, type WinnerAddress } from '../src/lib/tender/winner-address';
 import { leadSource, primaryArticle } from '../src/lib/lead-source';
 import { siteScope, mayStoreDomain } from '../src/lib/site-scope';
 import { hasDomainProvenance } from '../src/lib/schema-features';
@@ -41,17 +41,10 @@ const limitAt = process.argv.indexOf('--limit');
 const LIMIT = limitAt > 0 ? Number(process.argv[limitAt + 1]) : 200;
 const MAX_LOOKUPS = 2;
 const db = probeAdmin();
-const ISO3_TO_2: Record<string, string> = { FRA: 'FR', DEU: 'DE', BEL: 'BE', NLD: 'NL', DNK: 'DK', NOR: 'NO', SWE: 'SE', FIN: 'FI', POL: 'PL', CZE: 'CZ', AUT: 'AT', ESP: 'ES', ITA: 'IT', PRT: 'PT', EST: 'EE', LVA: 'LV', LTU: 'LT', HRV: 'HR', SVN: 'SI', SVK: 'SK', ROU: 'RO', BGR: 'BG', HUN: 'HU', IRL: 'IE', GBR: 'GB', LUX: 'LU', GRC: 'GR', CHE: 'CH', CYP: 'CY', MLT: 'MT', ISL: 'IS' };
 
-async function html(url: string) {
-  const res = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0 LeadScout' }, redirect: 'follow', signal: AbortSignal.timeout(15000) }).catch(() => null);
-  return res && res.ok ? await res.text().catch(() => '') : '';
-}
-const textOf = (h: string) => { const $ = cheerio.load(h); $('script, style, noscript').remove(); return $('body').text().replace(/\s+/g, ' '); };
+// html, textOf and addressCheck moved to src/lib/address-check.ts (2026-10-12), shared with the tender chain.
+type Check = AddressCheck;
 
-type Check = 'printed' | 'not_printed' | 'site_did_not_load' | 'no_address';
-
-/** The notice's postcode or town printed on the site's home page or one of its contact / imprint pages. */
 /**
  * What the query actually carried, printed per company so a run says which of the three cases it was:
  * the notice's full registered address, the town alone, or nothing at all. Without this the next
@@ -64,21 +57,6 @@ const placeLabel = (a: WinnerAddress | null, p: { city?: string | null; postalCo
   return a?.street ? `searched with the notice's address (${a.street}, ${where})` : `searched with the town "${where}"`;
 };
 
-async function addressCheck(domain: string, a: WinnerAddress | null): Promise<Check> {
-  const wants = [a?.postalCode, a?.city?.split(/[-\s]/)[0]].filter((w): w is string => !!w && w.length >= 3).map((w) => w.toLowerCase());
-  if (!wants.length) return 'no_address';
-  const home = await html(`https://${domain}`);
-  if (!home) return 'site_did_not_load';
-  if (wants.some((w) => textOf(home).toLowerCase().includes(w))) return 'printed';
-  const $ = cheerio.load(home);
-  const links = [...new Set($('a[href]').map((_, x) => $(x).attr('href') ?? '').get().filter((h) => /contact|kontakt|impressum|imprint|mentions|legal|about|over-ons|om-oss|o-nas|chi-siamo|empresa/i.test(h)))].slice(0, 3);
-  for (const l of links) {
-    const url = l.startsWith('http') ? l : `https://${domain}${l.startsWith('/') ? '' : '/'}${l}`;
-    const text = textOf(await html(url)).toLowerCase();
-    if (wants.some((w) => text.includes(w))) return 'printed';
-  }
-  return 'not_printed';
-}
 
 (async () => {
   const provenance = await hasDomainProvenance(db);

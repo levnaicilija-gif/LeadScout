@@ -263,6 +263,9 @@ export async function runRlsSweep(opts: { workspaceName?: string } = {}): Promis
       // user, reports the table hidden, fails the gate and reddens Home for everyone — which is exactly what
       // 0049 backup tables did. It is the crawl cursor and tally; no screen reads it.
       radar_runs: '0055, the crawl cursor and tally',
+      // 0062 — SHIPS WITH THE MIGRATION for the same reason as radar_runs: one service-role row against 0 for a
+      // signed-in user would otherwise read as a hidden table and redden Home for everyone.
+      job_switches: '0062, the owner\'s kill switches for automated spending jobs',
       leads_2c_backup: "0049, the pre-drop copy of leads' per-workspace columns",
       companies_2c_backup: "0049, the pre-drop copy of companies' per-workspace columns",
     };
